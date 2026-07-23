@@ -4,6 +4,8 @@
    and free-form dragging with dynamic year-box sizing.
    ============================================================ */
 
+import { initStorageUI } from './storage.js';
+
 (function () {
   let DATA = null;
 
@@ -11,7 +13,7 @@
     activeTiers: new Set(['strong', 'related', 'weak']),
     mode: 'all',
     selectedModuleId: null,
-    collapsedCourses: new Set(), // Will be populated with all IDs on init
+    collapsedCourses: new Set(),
     positions: {},
   };
 
@@ -20,14 +22,18 @@
   async function init() {
     try {
       DATA = await loadCurriculumData();
+      window.DATA = DATA;
     } catch (err) {
       document.getElementById('board').innerHTML = `<p style="padding:20px;color:#a33;">Failed to load curriculum data.</p>`;
       return;
     }
 
-    // 1. SET ALL COURSES TO BE COLLAPSED BY DEFAULT
+    // 1. SET ALL COURSES TO COLLAPSED BY DEFAULT & LOAD POSITIONS
     DATA.courses.forEach((course) => {
       state.collapsedCourses.add(course.id);
+      if (course.x !== undefined && course.y !== undefined) {
+        state.positions[course.id] = { x: course.x, y: course.y };
+      }
     });
 
     // 2. RENDER BOARD & INTERFACE
@@ -38,18 +44,36 @@
 
     wireEvents();
 
-    // 3. FIT CANVASES & DRAW CONNECTIONS
-    // Uses requestAnimationFrame so DOM layout is finalized before calculating card sizes
+    // 3. WIRE STORAGE SAVE / LOAD BUTTONS
+    initStorageUI(
+      () => ({ 
+        courses: DATA.courses, 
+        connectionsData: { legend: DATA.legend, connections: DATA.connections } 
+      }),
+      ({ courses, connections }) => {
+        DATA.courses = courses;
+        if (connections) {
+          DATA.connections = connections.connections || connections;
+          if (connections.legend) DATA.legend = connections.legend;
+        }
+
+        reindexData();
+        renderBoard(DATA, state.collapsedCourses, state.positions);
+        
+        requestAnimationFrame(() => {
+          document.querySelectorAll('.year-canvas').forEach((canvas) => fitCanvasToContent(canvas));
+          refreshVisuals();
+        });
+      }
+    );
+
+    // 4. FIT CANVASES & DRAW CONNECTIONS
     requestAnimationFrame(() => {
       document.querySelectorAll('.year-canvas').forEach((canvas) => fitCanvasToContent(canvas));
       refreshVisuals();
     });
   }
 
-  /**
-   * Recalculates the bounding box of all course cards inside a canvas
-   * and resizes the canvas to expand or shrink dynamically.
-   */
   function fitCanvasToContent(canvas) {
     const cards = canvas.querySelectorAll('.course-card');
     let maxX = 0;
@@ -59,7 +83,6 @@
       const left = parseFloat(card.style.left) || 0;
       const top = parseFloat(card.style.top) || 0;
       
-      // Use offsetWidth / offsetHeight so collapsed height is measured accurately
       const right = left + card.offsetWidth;
       const bottom = top + card.offsetHeight;
 
@@ -67,7 +90,7 @@
       if (bottom > maxY) maxY = bottom;
     });
 
-    const padding = 40; // Spacing margin around outer edges
+    const padding = 40;
     const minWidth = 480;
     const minHeight = 550;
 
@@ -80,14 +103,13 @@
 
     board.addEventListener('pointerdown', (e) => {
       const handle = e.target.closest('.drag-handle, .course-card-head');
-      if (!handle || e.target.closest('.collapse-btn')) return;
+      if (!handle || e.target.closest('.collapse-btn, .btn-edit-course, .edit-course-btn')) return;
 
       const card = handle.closest('.course-card');
       const canvas = card.closest('.year-canvas');
       if (!card || !canvas) return;
 
       const cardRect = card.getBoundingClientRect();
-      const canvasRect = canvas.getBoundingClientRect();
 
       draggingState = {
         card,
@@ -110,7 +132,6 @@
       let x = e.clientX - canvasRect.left - offsetX;
       let y = e.clientY - canvasRect.top - offsetY;
 
-      // Keep within top-left origin
       x = Math.max(0, x);
       y = Math.max(0, y);
 
@@ -119,12 +140,11 @@
 
       state.positions[courseId] = { x, y };
 
-      // Dynamically shrink/grow canvas box while dragging
       fitCanvasToContent(canvas);
       drawConnections(DATA, state);
     });
 
-    const stopDrag = (e) => {
+    const stopDrag = () => {
       if (draggingState) {
         fitCanvasToContent(draggingState.canvas);
         draggingState.card.classList.remove('is-dragging');
@@ -136,9 +156,23 @@
     board.addEventListener('pointerup', stopDrag);
     board.addEventListener('pointercancel', stopDrag);
 
+    // Single unified click listener for board interactions
     board.addEventListener('click', (e) => {
+      // Gear Button Clicked
+      const editBtn = e.target.closest('.btn-edit-course, .edit-course-btn');
+      if (editBtn) {
+        e.stopPropagation();
+        const card = editBtn.closest('.course-card');
+        if (card && card.dataset.courseId && typeof window.openCourseEditor === 'function') {
+          window.openCourseEditor(card.dataset.courseId);
+        }
+        return;
+      }
+
+      // Collapse (+) / (-) Button Clicked
       const collapseBtn = e.target.closest('.collapse-btn');
       if (collapseBtn) {
+        e.stopPropagation();
         const card = collapseBtn.closest('.course-card');
         const canvas = card.closest('.year-canvas');
         const courseId = card.dataset.courseId;
@@ -153,12 +187,12 @@
           collapseBtn.textContent = '+';
         }
 
-        // Adjust canvas dimensions after collapse/expand height change
         if (canvas) fitCanvasToContent(canvas);
         refreshVisuals();
         return;
       }
 
+      // Module Chip Clicked
       const chip = e.target.closest('.module-chip');
       if (chip) {
         const id = chip.dataset.moduleId;
@@ -168,16 +202,19 @@
       }
     });
 
-    document.getElementById('tierToggles').addEventListener('change', (e) => {
-      const input = e.target.closest('input[data-tier]');
-      if (!input) return;
-      const tier = input.dataset.tier;
-      if (input.checked) state.activeTiers.add(tier);
-      else state.activeTiers.delete(tier);
+    const tierToggles = document.getElementById('tierToggles');
+    if (tierToggles) {
+      tierToggles.addEventListener('change', (e) => {
+        const input = e.target.closest('input[data-tier]');
+        if (!input) return;
+        const tier = input.dataset.tier;
+        if (input.checked) state.activeTiers.add(tier);
+        else state.activeTiers.delete(tier);
 
-      input.closest('.tier-toggle').classList.toggle('is-off', !input.checked);
-      refreshVisuals();
-    });
+        input.closest('.tier-toggle').classList.toggle('is-off', !input.checked);
+        refreshVisuals();
+      });
+    }
 
     window.addEventListener('resize', () => drawConnections(DATA, state));
   }
@@ -188,83 +225,54 @@
     }
   }
 
-/**
- * Opens a modal or prompt to Add or Edit a course.
- * @param {string|null} courseId - Pass ID to edit, or null/undefined to create new.
- */
-window.openCourseModal = function(courseId = null) {
-  let course = DATA.courses.find(c => c.id === courseId);
+  function reindexData() {
+    DATA.moduleById = {};
+    DATA.courseByModuleId = {};
 
-  const isEditing = !!course;
-  const code = prompt(isEditing ? "Edit Course Code:" : "New Course Code (e.g. CHEM 304):", course ? course.code : "");
-  if (!code) return;
-
-  const name = prompt("Course Name:", course ? course.name : "");
-  if (!name) return;
-
-  const year = parseInt(prompt("Year Number (1, 2, 3, etc.):", course ? course.year : "1"), 10) || 1;
-  const textbook = prompt("Textbook Name/Edition:", course ? course.textbook || "" : "");
-
-  if (isEditing) {
-    // Update existing course
-    course.code = code;
-    course.name = name;
-    course.year = year;
-    course.yearLabel = `Year ${year}`;
-    course.textbook = textbook;
-  } else {
-    // Create new course
-    const newId = `course-${Date.now()}`;
-    const newCourse = {
-      id: newId,
-      code: code,
-      name: name,
-      year: year,
-      yearLabel: `Year ${year}`,
-      textbook: textbook,
-      modules: [
-        {
-          id: `m-${newId}-1`,
-          label: "MOD 01",
-          title: "Introduction",
-          chapters: [1],
-          topics: []
-        }
-      ]
-    };
-    DATA.courses.push(newCourse);
-    
-    // Default the new course card to collapsed state
-    state.collapsedCourses.add(newId);
+    (DATA.courses || []).forEach((course) => {
+      (course.modules || []).forEach((mod) => {
+        DATA.moduleById[mod.id] = mod;
+        DATA.courseByModuleId[mod.id] = course;
+      });
+    });
   }
 
-  // Re-index data maps
-  reindexData();
+  // Helper for lookup
+  window.getCourseById = function(courseId) {
+    if (!DATA) return { course: null, connections: [] };
+    const course = DATA.courses.find((c) => c.id === courseId);
+    return { course, connections: DATA.connections || [] };
+  };
 
-  // Re-render board with updated dataset
-  renderBoard(DATA, state.collapsedCourses, state.positions);
-  
-  // Re-fit canvas layout & redraw SVG connection lines
-  requestAnimationFrame(() => {
-    document.querySelectorAll('.year-canvas').forEach((canvas) => fitCanvasToContent(canvas));
-    if (typeof drawConnections === 'function') drawConnections(DATA, state);
-  });
-};
+  // Saved course callback
+  window.onCourseSave = function (updatedCourse, updatedConnections) {
+    const existingIndex = DATA.courses.findIndex((c) => c.id === updatedCourse.id);
 
-/**
- * Re-indexes lookup tables when courses are added or modified.
- */
-function reindexData() {
-  DATA.moduleById = {};
-  DATA.courseByModuleId = {};
+    if (existingIndex >= 0) {
+      DATA.courses[existingIndex] = updatedCourse;
+    } else {
+      DATA.courses.push(updatedCourse);
+    }
 
-  DATA.courses.forEach((course) => {
-    course.modules.forEach((mod) => {
-      DATA.moduleById[mod.id] = mod;
-      DATA.courseByModuleId[mod.id] = course;
+    if (Array.isArray(updatedConnections)) {
+      updatedConnections.forEach((newConn) => {
+        const connIdx = DATA.connections.findIndex((c) => c.id === newConn.id);
+        if (connIdx >= 0) {
+          DATA.connections[connIdx] = newConn;
+        } else {
+          DATA.connections.push(newConn);
+        }
+      });
+    }
+
+    reindexData();
+    renderBoard(DATA, state.collapsedCourses, state.positions);
+
+    requestAnimationFrame(() => {
+      document.querySelectorAll('.year-canvas').forEach((canvas) => fitCanvasToContent(canvas));
+      refreshVisuals();
     });
-  });
-}
+  };
 
   document.addEventListener('DOMContentLoaded', init);
 })();

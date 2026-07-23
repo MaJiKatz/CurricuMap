@@ -63,6 +63,7 @@ function renderCourseCard(course, isCollapsed) {
     <div class="head-meta">
       <span class="drag-handle" title="Drag anywhere in year box">✢</span>
       <div class="course-code">${escapeHtml(course.code)}</div>
+      <button type="button" class="btn-edit-course" title="Edit Course" onclick="event.stopPropagation(); if(window.openCourseEditor) window.openCourseEditor('${course.id}')">⚙️</button>
       <button type="button" class="collapse-btn" aria-label="Toggle expansion">
         ${isCollapsed ? '+' : '−'}
       </button>
@@ -74,7 +75,7 @@ function renderCourseCard(course, isCollapsed) {
   const list = document.createElement('div');
   list.className = 'module-list';
 
-  course.modules.forEach((mod) => {
+  (course.modules || []).forEach((mod) => {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'module-chip';

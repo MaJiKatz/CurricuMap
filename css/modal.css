@@ -1,0 +1,138 @@
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; width: 100vw; height: 100vh;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+}
+.modal-overlay.hidden { display: none; }
+
+.modal-container {
+  background: #1e222d; color: #e1e6ed;
+  width: 720px; max-width: 90vw; max-height: 85vh;
+  border-radius: 8px; border: 1px solid #333a4a;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+
+.modal-header {
+  padding: 16px 20px; display: flex; justify-content: space-between;
+  align-items: center; border-bottom: 1px solid #2a303f;
+}
+.close-btn { background: none; border: none; color: #8892b0; font-size: 24px; cursor: pointer; }
+
+.modal-tabs { display: flex; background: #161922; border-bottom: 1px solid #2a303f; }
+.tab-btn {
+  padding: 12px 20px; background: none; border: none;
+  color: #8892b0; cursor: pointer; font-weight: 600;
+}
+.tab-btn.active { color: #64ffda; border-bottom: 2px solid #64ffda; background: #1e222d; }
+
+.modal-body { padding: 20px; overflow-y: auto; flex: 1; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+.form-group { display: flex; flex-direction: column; }
+.form-group.full-width { grid-column: span 2; }
+.form-group label { font-size: 12px; color: #8892b0; margin-bottom: 4px; }
+.form-group input, .form-group select {
+  padding: 8px 12px; background: #111319; border: 1px solid #333a4a;
+  color: #fff; border-radius: 4px;
+}
+
+.manager-row {
+  display: flex; gap: 8px; align-items: center;
+  background: #161922; padding: 10px; border-radius: 4px; margin-bottom: 8px;
+}
+.manager-row input, .manager-row select {
+  background: #111319; border: 1px solid #333a4a; color: #fff; padding: 6px 10px; border-radius: 4px;
+}
+
+.modal-footer {
+  padding: 16px 20px; border-top: 1px solid #2a303f;
+  display: flex; justify-content: flex-end; gap: 10px;
+}
+.btn { padding: 8px 16px; border-radius: 4px; border: none; cursor: pointer; font-weight: 600; }
+
+.btn-secondary { background: #2a303f; color: #fff; margin-bottom: 12px; }
+.btn-cancel { background: transparent; color: #8892b0; }
+
+/* Custom Add Course Button */
+.btn-add-course {
+  background: white;
+  color: #000000;
+  border: 1px solid rgba(6, 6, 6, 0.4);
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.btn-add-course .btn-icon {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* Hover & Active States */
+.btn-add-course:hover {
+  background: white;
+  color: #0a192f;
+
+  box-shadow: 0 0 2px black;
+  
+}
+
+.btn-add-course:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+/* Card Action Header Container */
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* Edit Gear Icon Button */
+.edit-course-btn {
+  background: transparent;
+  border: none;
+  color: #8892b0;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: color 0.2s, background 0.2s, transform 0.2s;
+  line-height: 1;
+}
+
+.edit-course-btn:hover {
+  color: #64ffda;
+  background: rgba(100, 255, 218, 0.1);
+  transform: rotate(30deg); /* Smooth gear rotation effect */
+}
+
+/* Ensure drag handle and collapse buttons space nicely */
+.collapse-btn {
+  background: transparent;
+  border: none;
+  color: #8892b0;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.collapse-btn:hover {
+  color: #fff;
+}
+
