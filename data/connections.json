@@ -15,7 +15,7 @@
     "weak": {
       "label": "Weak Interaction",
       "analogy": "van der Waals",
-      "description": "Helpful background, low urgency — a distant echo, not a dependency.",
+      "description": "Enriching Connection — provides helpful context, but not a required prerequisite.",
       "lineStyle": "dotted"
     }
   },
