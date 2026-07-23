@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Curriculum Map — Chemistry</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <header class="app-header">
+    <div class="header-left">
+      <h1 class="app-title">Curriculum Map</h1>
+      <p class="app-subtitle">Chemistry · Pre-University&nbsp;→&nbsp;Year 3</p>
+    </div>
+
+    <div class="header-right">
+      <div class="tier-toggles" id="tierToggles" aria-label="Toggle connection tiers">
+        <!-- populated by js/render.js from connections.json legend -->
+      </div>
+      <button type="button" class="btn-primary" onclick="openCourseModal()">+ Add Course</button>
+      <div class="mode-toggle">
+        <button id="modeAllBtn" class="mode-btn is-active" data-mode="all">All connections</button>
+        <button id="modeFocusBtn" class="mode-btn" data-mode="focus">Focus on selection</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="board-wrap">
+    <svg id="connectionLayer" class="connection-layer" aria-hidden="true"></svg>
+    <div class="board" id="board">
+      <!-- year columns injected here -->
+    </div>
+  </main>
+
+  <aside class="detail-drawer" id="detailDrawer" aria-live="polite">
+    <div class="drawer-empty" id="drawerEmpty">
+      <p>Select a module to see its topics, objectives, and everything it connects to across the years.</p>
+    </div>
+    <div class="drawer-content" id="drawerContent" hidden></div>
+  </aside>
+
+  <footer class="legend-bar" id="legendBar">
+    <!-- populated by js/render.js from connections.json legend -->
+  </footer>
+
+  <script src="js/data-loader.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/connections.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

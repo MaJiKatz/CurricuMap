@@ -1,0 +1,500 @@
+/* ============================================================
+   TOKENS
+   Palette: cool "graph-paper" background, brass/teal/dusty-violet
+   accents mapped to bond strength (covalent / ionic / van der Waals).
+   Type: serif for course identity, mono for module/topic tags, Inter.
+   ============================================================ */
+:root {
+  --paper:        #F1F2EC;
+  --paper-line:   #DCDFD2;
+  --ink:          #20232A;
+  --ink-soft:     #565C55;
+  --ink-muted:    #8C928A;
+  --card:         #FCFCF9;
+  --card-border:  #D8DACE;
+
+  /* Connection Tier Colors - Punchier & Brighter */
+  --strong:       #d97706;   /* vibrant amber/brass */
+  --strong-soft:  #fef3c7;
+  --related:      #0d9488;   /* rich teal */
+  --related-soft: #ccfbf1;
+  --weak:         #7c3aed;   /* bright violet */
+  --weak-soft:    #ede9fe;
+  --collapsed:    #64748b;   /* slate grey for collapsed courses */
+
+  --font-display: 'Source Serif 4', Georgia, serif;
+  --font-mono:    'IBM Plex Mono', ui-monospace, monospace;
+  --font-body:    'Inter', system-ui, sans-serif;
+
+  --radius:       4px;
+  --radius-lg:    10px;
+  --header-h:     84px;
+  --footer-h:     52px;
+  --drawer-w:     360px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; 
+  padding: 0;
+  height: 100%;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  overflow: hidden;
+}
+
+/* Faint graph-paper grid */
+body {
+  background-image:
+    linear-gradient(var(--paper-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--paper-line) 1px, transparent 1px);
+  background-size: 28px 28px;
+  background-attachment: fixed;
+  display: flex;
+  flex-direction: column;
+}
+
+button { font-family: inherit; cursor: pointer; }
+
+/* ============================================================
+   HEADER
+   ============================================================ */
+.app-header {
+  height: var(--header-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px;
+  border-bottom: 1px solid var(--card-border);
+  background: rgba(252, 252, 249, 0.92);
+  backdrop-filter: blur(8px);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.app-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.5rem;
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+.app-subtitle {
+  margin: 2px 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+
+.tier-toggles {
+  display: flex;
+  gap: 10px;
+}
+
+.tier-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 5px 9px;
+  border-radius: var(--radius);
+  border: 1px solid var(--card-border);
+  background: var(--card);
+  color: var(--ink-soft);
+  user-select: none;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.tier-toggle input { accent-color: currentColor; }
+.tier-toggle.tier-strong { color: var(--strong); border-color: var(--strong); }
+.tier-toggle.tier-related { color: var(--related); border-color: var(--related); }
+.tier-toggle.tier-weak { color: var(--weak); border-color: var(--weak); }
+.tier-toggle.is-off { opacity: 0.35; }
+
+.mode-toggle { 
+  display: flex; 
+  border: 1px solid var(--card-border); 
+  border-radius: var(--radius); 
+  overflow: hidden; 
+}
+
+.mode-btn {
+  border: none;
+  background: var(--card);
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 8px 12px;
+}
+
+.mode-btn.is-active { background: var(--ink); color: var(--paper); }
+
+/* ============================================================
+   BOARD & CANVASES (Prevents Drawer Overlap)
+   ============================================================ */
+.board-wrap {
+  position: relative;
+  /* Reserve space so the board doesn't slide under the drawer */
+  width: calc(100vw - var(--drawer-w));
+  height: calc(100vh - var(--header-h) - var(--footer-h));
+  overflow: auto;
+  box-sizing: border-box;
+}
+
+.connection-layer {
+  position: absolute;
+  top: 0; 
+  left: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* SVG Line enhancements */
+.connection-layer line {
+  stroke-linecap: round;
+  transition: stroke 0.15s ease, opacity 0.15s ease;
+  filter: drop-shadow(0px 1px 1px rgba(0,0,0,0.08));
+}
+
+.board {
+  position: relative;
+  z-index: 6;
+  display: flex;
+  align-items: flex-start;
+  gap: 32px;
+  padding: 32px 80px 100px 40px; /* Generous right padding for far-right dragging */
+  width: max-content;
+  min-width: 100%;
+}
+
+/* Dynamic Expandable & Shrinkable Year Box */
+.year-box {
+  display: flex;
+  flex-direction: column;
+  background: rgba(252, 252, 249, 0.65);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  min-width: 480px;
+  align-self: flex-start;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+}
+
+.year-box-header {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink);
+  padding: 12px 18px;
+  border-bottom: 2px solid var(--ink);
+  background: var(--card);
+  border-top-left-radius: var(--radius-lg);
+  border-top-right-radius: var(--radius-lg);
+}
+
+.year-canvas {
+  position: relative;
+  min-width: 480px;
+  min-height: 550px;
+  overflow: visible;
+}
+
+/* ============================================================
+   FREE-FORM COURSE CARDS & MODULE CHIPS
+   ============================================================ */
+.course-card {
+  position: absolute;
+  width: 230px;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  padding: 12px;
+  touch-action: none;
+  user-select: none;
+  z-index: 2;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.04);
+}
+
+.course-card.is-dragging {
+  z-index: 10;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.16);
+  cursor: grabbing;
+}
+
+.course-card-head {
+  margin-bottom: 10px;
+  cursor: grab;
+}
+
+.head-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.drag-handle {
+  cursor: grab;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  user-select: none;
+  margin-right: 6px;
+}
+
+.course-code {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  flex: 1;
+}
+
+.collapse-btn {
+  background: transparent;
+  border: none;
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 700;
+  padding: 0 6px;
+  cursor: pointer;
+  line-height: 1;
+  border-radius: var(--radius);
+}
+
+.collapse-btn:hover {
+  background: var(--paper-line);
+  color: var(--ink);
+}
+
+.course-name {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 2px 0 0;
+  line-height: 1.25;
+}
+
+/* Module List */
+.module-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.course-card.is-collapsed .module-list {
+  display: none;
+}
+
+.course-card.is-collapsed {
+  padding-bottom: 12px;
+}
+
+.module-chip {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--paper);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 7px 9px;
+  font-size: 0.78rem;
+  line-height: 1.25;
+  color: var(--ink);
+  transition: border-color .12s ease, background .12s ease;
+}
+
+.module-chip .m-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.63rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 2px;
+}
+
+.module-chip:hover { border-color: var(--ink); }
+
+.module-chip.is-selected {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+.module-chip.is-selected .m-label { color: var(--paper); opacity: 0.8; }
+.module-chip.is-dimmed { opacity: 0.35; }
+.module-chip.is-linked { border-color: var(--ink); border-width: 2px; }
+
+/* ============================================================
+   RIGHT DETAIL DRAWER
+   ============================================================ */
+.detail-drawer {
+  position: fixed;
+  top: var(--header-h);
+  right: 0;
+  bottom: var(--footer-h);
+  width: var(--drawer-w);
+  background: var(--card);
+  border-left: 1px solid var(--card-border);
+  overflow-y: auto;
+  z-index: 30;
+  padding: 22px 24px 36px;
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.03);
+}
+
+.drawer-empty p {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+
+.drawer-course-code {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.drawer-title {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 4px 0 16px;
+}
+
+.drawer-section-label {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+  border-bottom: 1px solid var(--card-border);
+  padding-bottom: 4px;
+  margin: 20px 0 10px;
+}
+
+.topic-item {
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--card-border);
+}
+
+.topic-item:last-child { border-bottom: none; }
+.topic-title { font-size: 0.88rem; font-weight: 600; }
+
+.topic-objective {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  margin-top: 4px;
+  line-height: 1.45;
+}
+
+.link-item {
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+  border: 1px solid var(--card-border);
+  background: var(--paper);
+  cursor: pointer;
+}
+
+.link-item:hover { border-color: var(--ink); }
+
+.link-tier-badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border-radius: 2px;
+  margin-bottom: 6px;
+}
+
+.link-tier-badge.tier-strong { background: var(--strong-soft); color: var(--strong); }
+.link-tier-badge.tier-related { background: var(--related-soft); color: var(--related); }
+.link-tier-badge.tier-weak { background: var(--weak-soft); color: var(--weak); }
+.link-course { font-size: 0.82rem; font-weight: 600; }
+.link-note { font-size: 0.75rem; color: var(--ink-soft); margin-top: 4px; line-height: 1.35; }
+
+/* ============================================================
+   LEGEND (FOOTER)
+   ============================================================ */
+.legend-bar {
+  height: var(--footer-h);
+  border-top: 1px solid var(--card-border);
+  background: rgba(252, 252, 249, 0.95);
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 0 28px;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+}
+
+.legend-entry { display: flex; align-items: center; gap: 8px; }
+.legend-swatch { width: 32px; height: 10px; flex-shrink: 0; }
+
+.legend-swatch.strong {
+  background: var(--strong);
+  height: 3.5px;
+  border-radius: 2px;
+}
+
+.legend-swatch.related {
+  background: var(--related);
+  height: 2.5px;
+  border-radius: 2px;
+}
+
+.legend-swatch.weak {
+  background-image: linear-gradient(90deg, var(--weak) 60%, transparent 40%);
+  background-size: 8px 2.5px;
+  height: 2.5px;
+}
+
+/* ============================================================
+   ACCESSIBILITY & RESPONSIVE
+   ============================================================ */
+button:focus-visible, .module-chip:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+@media (max-width: 860px) {
+  :root { --drawer-w: 100%; }
+  .board-wrap { width: 100vw; height: calc(100vh - var(--header-h) - var(--footer-h) - 46vh); }
+  .detail-drawer { top: auto; height: 46vh; border-left: none; border-top: 1px solid var(--card-border); }
+  .app-header { flex-direction: column; height: auto; padding: 12px 16px; gap: 10px; align-items: flex-start; }
+  .header-right { flex-wrap: wrap; gap: 10px; }
+}

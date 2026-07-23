@@ -1,0 +1,67 @@
+{
+  "legend": {
+    "strong": {
+      "label": "Strong Connection",
+      "analogy": "Covalent",
+      "description": "Direct prerequisite — the later topic assumes real fluency here.",
+      "lineStyle": "solid-thick"
+    },
+    "related": {
+      "label": "Related Topic",
+      "analogy": "Ionic",
+      "description": "Meaningful conceptual overlap, but not a hard prerequisite.",
+      "lineStyle": "solid-thin"
+    },
+    "weak": {
+      "label": "Weak Interaction",
+      "analogy": "van der Waals",
+      "description": "Helpful background, low urgency — a distant echo, not a dependency.",
+      "lineStyle": "dotted"
+    }
+  },
+  "connections": [
+    { "id": "c1",  "from": "chem1010-m3", "to": "chem1050-m1", "level": "strong",  "note": "Atomic view of matter underpins electron configurations and the quantum model." },
+    { "id": "c2",  "from": "chem1010-m4", "to": "chem1051-m2", "level": "strong",  "note": "Molarity/solution concentration is the direct foundation for solution chemistry." },
+    { "id": "c3",  "from": "chem1010-m4", "to": "chem1050-m3", "level": "related", "note": "Early exposure to chemical bonds feeds into formal Lewis theory." },
+    { "id": "c4",  "from": "chem1010-m1", "to": "chem2100-m1", "level": "weak",    "note": "Math fundamentals resurface in analytical statistics, but are assumed mastered by then." },
+    { "id": "c5",  "from": "chem1010-m2", "to": "chem2100-m1", "level": "weak",    "note": "Measurement/units habits carry into experimental error and statistics." },
+
+    { "id": "c6",  "from": "chem1050-m1", "to": "chem2302-m1", "level": "strong",  "note": "First exposure to quantum ideas is formalized in Quantum I." },
+    { "id": "c7",  "from": "chem1050-m1", "to": "chem2302-m5", "level": "strong",  "note": "Electron configuration rules get their rigorous QM derivation here." },
+    { "id": "c8",  "from": "chem1050-m2", "to": "chem2210-m3", "level": "related", "note": "Periodic trends are revisited and deepened in Inorganic I." },
+    { "id": "c9",  "from": "chem1050-m3", "to": "chem2210-m2", "level": "strong",  "note": "Lewis theory is the springboard for MO theory and symmetry-based bonding." },
+    { "id": "c10", "from": "chem1050-m4", "to": "chem2400-m1", "level": "related", "note": "VSEPR shapes matter again for conformations/stereochemistry." },
+    { "id": "c11", "from": "chem1050-m6", "to": "chem2400-m1", "level": "related", "note": "Intro nomenclature and functional groups are reviewed before Organic I builds on them." },
+
+    { "id": "c12", "from": "chem1051-m1", "to": "chem2301-m1", "level": "strong",  "note": "Ideal gas law is extended to real-gas behaviour and van der Waals corrections." },
+    { "id": "c13", "from": "chem1051-m1", "to": "chem2302-m3", "level": "weak",    "note": "Kinetic theory intuition echoes faintly in particle-in-a-box/QM systems." },
+    { "id": "c14", "from": "chem1051-m3", "to": "chem2301-m6", "level": "strong",  "note": "Kinetics is retaught with mechanisms, steady-state approximation, and Arrhenius depth." },
+    { "id": "c15", "from": "chem1051-m4", "to": "chem2301-m5", "level": "strong",  "note": "Equilibrium constant concepts extend directly into Le Chatelier/Van't Hoff." },
+    { "id": "c16", "from": "chem1051-m5", "to": "chem2100-m4", "level": "strong",  "note": "Acid-base fundamentals are prerequisite for polyprotic/analytical acid-base equilibria." },
+    { "id": "c17", "from": "chem1051-m5", "to": "chem2210-m3", "level": "strong",  "note": "Acid-base theory recurs through a structural/periodic lens in Inorganic I." },
+    { "id": "c18", "from": "chem1051-m5", "to": "chem2400-m1", "level": "related", "note": "Acid/base strength reasoning reappears for organic mechanism arguments." },
+    { "id": "c19", "from": "chem1051-m6", "to": "chem2100-m3", "level": "related", "note": "Titration/Ksp basics extend into precipitation titrations and gravimetric analysis." },
+    { "id": "c20", "from": "chem1051-m7", "to": "chem2301-m2", "level": "strong",  "note": "Gibbs energy module is prerequisite groundwork for the formal First Law treatment." },
+    { "id": "c21", "from": "chem1051-m7", "to": "chem2301-m3", "level": "strong",  "note": "Entropy/second-law concepts are rebuilt rigorously with the Carnot cycle and third law." },
+
+    { "id": "c22", "from": "chem2100-m1", "to": "chem3110-m1", "level": "strong",  "note": "The analytical process and error analysis underlie every separation technique that follows." },
+    { "id": "c23", "from": "chem2100-m6", "to": "chem3110-m2", "level": "strong",  "note": "Intro chromatography concepts are the direct basis for full GC theory." },
+    { "id": "c24", "from": "chem2100-m6", "to": "chem3110-m3", "level": "strong",  "note": "Same separations foundation carries into HPLC/SFC." },
+    { "id": "c25", "from": "chem2100-m2", "to": "chem3110-m6", "level": "strong",  "note": "Beer's law and atomic spectroscopy basics are extended into full instrumental treatment." },
+    { "id": "c26", "from": "chem2100-m2", "to": "chem3110-m7", "level": "related", "note": "Spectrophotometry intuition helps but mass spec is a largely new instrumental family." },
+    { "id": "c27", "from": "chem2100-m5", "to": "chem3110-m8", "level": "strong",  "note": "Potentiometry and electrode fundamentals are prerequisite for electroanalytical techniques." },
+
+    { "id": "c28", "from": "chem2210-m1", "to": "chem3211-m1", "level": "related", "note": "Foundational descriptive chemistry is assumed, then extended." },
+    { "id": "c29", "from": "chem2210-m4", "to": "chem3211-m2", "level": "strong",  "note": "Intro to coordination compounds is essential groundwork for a full course on them." },
+    { "id": "c30", "from": "chem2210-m2", "to": "chem3211-m3", "level": "strong",  "note": "Molecular symmetry is directly reused for point groups in Inorganic II." },
+    { "id": "c31", "from": "chem2210-m2", "to": "chem3211-m4", "level": "strong",  "note": "MO theory is the backbone of the advanced bonding unit." },
+    { "id": "c32", "from": "chem2301-m6", "to": "chem3211-m7", "level": "related", "note": "General kinetics tools are applied to inorganic reaction mechanisms." },
+
+    { "id": "c33", "from": "chem2400-m1", "to": "chem2401-m2", "level": "strong",  "note": "Structure/stereochemistry fundamentals are required to interpret structural elucidation data." },
+    { "id": "c34", "from": "chem2400-m2", "to": "chem2401-m3", "level": "related", "note": "Alkene reactivity patterns inform carbonyl/aromatic reaction mechanisms." },
+    { "id": "c35", "from": "chem2400-m3", "to": "chem2401-m1", "level": "related", "note": "Substitution/elimination products are the ones you'll confirm with spectroscopy." },
+    { "id": "c36", "from": "chem2400-m1", "to": "chem2210-m2", "level": "weak",    "note": "Organic bonding concepts loosely echo symmetry/MO ideas but aren't emphasized there." },
+
+    { "id": "c37", "from": "chem2302-m2", "to": "chem2100-m2", "level": "weak",    "note": "Operator/wavefunction formalism is background context, not required, for spectrophotometry." }
+  ]
+}
