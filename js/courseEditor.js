@@ -9,16 +9,36 @@ let editingConnections = [];
 /**
  * Global handler triggered by clicking the gear icon or Add Course button.
  */
-function openCourseEditor(courseId = null) {
+/**
+ * Global handler triggered by clicking the gear/pencil icon or Add Course button.
+ * Accepts either a Course ID (e.g. 'chem1010') or a Module ID (e.g. 'chem1010-m1').
+ */
+function openCourseEditor(targetId = null) {
   let course = null;
   let connections = [];
 
-  if (courseId) {
+  if (targetId && window.DATA) {
+    let courseId = targetId;
+
+    // 1. If targetId belongs to a module, resolve it to the parent Course ID
+    if (window.DATA.courseByModuleId && window.DATA.courseByModuleId[targetId]) {
+      courseId = window.DATA.courseByModuleId[targetId].id;
+    } else {
+      // Fallback check if passed ID is inside a course's module list
+      const matchedCourse = window.DATA.courses.find((c) =>
+        (c.modules || []).some((m) => m.id === targetId)
+      );
+      if (matchedCourse) {
+        courseId = matchedCourse.id;
+      }
+    }
+
+    // 2. Retrieve Course & Connections Data
     if (typeof window.getCourseById === 'function') {
       const res = window.getCourseById(courseId);
       course = res.course;
       connections = res.connections;
-    } else if (window.DATA && window.DATA.courses) {
+    } else {
       course = window.DATA.courses.find((c) => c.id === courseId);
       connections = window.DATA.connections || [];
     }

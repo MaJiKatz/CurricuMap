@@ -172,7 +172,9 @@ function renderDrawer(data, moduleId) {
   content.innerHTML = `
     <div class="drawer-header-actions">
       <span class="drawer-course-code">${escapeHtml(course.code)} · ${escapeHtml(mod.label)} ${chaptersText ? `(${chaptersText})` : ''}</span>
-      <button type="button" class="btn-edit-course" onclick="openCourseModal('${course.id}')">✏️ Edit Course</button>
+      <button class="btn-edit-course" onclick="window.openCourseEditor('${mod.id}')" title="Edit Course">
+        ✏️
+      </button>
     </div>
     <h2 class="drawer-title">${escapeHtml(mod.title)}</h2>
     ${textbookText}
