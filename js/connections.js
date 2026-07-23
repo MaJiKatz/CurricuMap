@@ -25,14 +25,6 @@ function resizeConnectionLayer() {
   svg.style.height = h + 'px';
 }
 
-function getElementCenter(el, wrapEl, wrapRect) {
-  const r = el.getBoundingClientRect();
-  return {
-    x: r.left - wrapRect.left + wrapEl.scrollLeft + r.width / 2,
-    y: r.top - wrapRect.top + wrapEl.scrollTop + r.height / 2,
-  };
-}
-
 function resolveAnchorNode(moduleId) {
   const chip = document.querySelector(`.module-chip[data-module-id="${cssEscape(moduleId)}"]`);
   if (!chip) return null;
@@ -43,6 +35,52 @@ function resolveAnchorNode(moduleId) {
   }
 
   return { el: chip, isCollapsed: false };
+}
+
+/**
+ * Calculates optimal connection points adjusted for canvas/board scroll offsets.
+ */
+function getAnchorPoints(rectA, rectB, wrapEl, wrapRect, xThreshold = 40) {
+  const centerA = { x: rectA.left + rectA.width / 2, y: rectA.top + rectA.height / 2 };
+  const centerB = { x: rectB.left + rectB.width / 2, y: rectB.top + rectB.height / 2 };
+
+  const dx = centerB.x - centerA.x;
+  const dy = centerB.y - centerA.y;
+
+  let pointA = { x: centerA.x, y: centerA.y };
+  let pointB = { x: centerB.x, y: centerB.y };
+
+  // 1. Top / Bottom connection for vertical alignment within threshold
+  if (Math.abs(dx) <= xThreshold) {
+    if (dy > 0) {
+      pointA = { x: centerA.x, y: rectA.bottom };
+      pointB = { x: centerB.x, y: rectB.top };
+    } else {
+      pointA = { x: centerA.x, y: rectA.top };
+      pointB = { x: centerB.x, y: rectB.bottom };
+    }
+  } 
+  // 2. Left / Right connection for horizontal alignment
+  else {
+    if (dx > 0) {
+      pointA = { x: rectA.right, y: centerA.y };
+      pointB = { x: rectB.left, y: centerB.y };
+    } else {
+      pointA = { x: rectA.left, y: centerA.y };
+      pointB = { x: rectB.right, y: centerB.y };
+    }
+  }
+
+  // Convert client viewport coordinates to wrap canvas scroll coordinates
+  const toCanvasCoords = (pt) => ({
+    x: pt.x - wrapRect.left + wrapEl.scrollLeft,
+    y: pt.y - wrapRect.top + wrapEl.scrollTop
+  });
+
+  return {
+    p1: toCanvasCoords(pointA),
+    p2: toCanvasCoords(pointB)
+  };
 }
 
 function drawConnections(data, viewState) {
@@ -72,8 +110,11 @@ function drawConnections(data, viewState) {
     const isCollapsedLine = fromAnchor.isCollapsed || toAnchor.isCollapsed;
     const isDimmed = selectedModuleId && conn.from !== selectedModuleId && conn.to !== selectedModuleId && mode === 'all';
 
-    const p1 = getElementCenter(fromAnchor.el, wrap, wrapRect);
-    const p2 = getElementCenter(toAnchor.el, wrap, wrapRect);
+    const rectA = fromAnchor.el.getBoundingClientRect();
+    const rectB = toAnchor.el.getBoundingClientRect();
+
+    // Pass your pixel threshold for top/bottom detection (e.g., 50px)
+    const { p1, p2 } = getAnchorPoints(rectA, rectB, wrap, wrapRect, 50);
 
     drawLine(svg, p1, p2, conn.level, isCollapsedLine, isDimmed);
   });
@@ -83,7 +124,6 @@ function drawLine(svg, p1, p2, level, isCollapsedLine, isDimmed) {
   const group = document.createElementNS(SVG_NS, 'g');
   group.setAttribute('opacity', isDimmed ? '0.15' : '0.85');
 
-  // Non-specific neutral line for collapsed courses
   const color = isCollapsedLine ? '#8892b0' : (TIER_COLOR[level] || '#999');
 
   const line = document.createElementNS(SVG_NS, 'line');
@@ -92,7 +132,8 @@ function drawLine(svg, p1, p2, level, isCollapsedLine, isDimmed) {
   line.setAttribute('x2', p2.x);
   line.setAttribute('y2', p2.y);
   line.setAttribute('stroke', color);
-line.setAttribute('stroke-width', isCollapsedLine ? '2' : (level === 'strong' ? '3.5' : '2.5'));  line.setAttribute('stroke-linecap', 'round');
+  line.setAttribute('stroke-width', isCollapsedLine ? '2' : (level === 'strong' ? '3.5' : '2.5'));
+  line.setAttribute('stroke-linecap', 'round');
 
   if (isCollapsedLine) {
     line.setAttribute('stroke-dasharray', '4,4');
