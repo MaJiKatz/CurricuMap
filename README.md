@@ -78,7 +78,7 @@ already the vocabulary this map's audience thinks in:
 |---|---|---|---|
 | **Strong Connection** | Covalent | Direct prerequisite — real fluency assumed | thick double stroke |
 | **Related Topic** | Ionic | Meaningful overlap, not a hard dependency | single solid stroke |
-| **Weak Interaction** | van der Waals | Helpful background, low urgency | dotted |
+| **Weak Interaction** | van der Waals | Helpful background, low urgency | solid stroke |
 
 If "Weak Interaction" doesn't stick, other options in the same spirit:
 "Background Context," "Peripheral Overlap," "Enrichment Only." It's a
@@ -111,4 +111,4 @@ one-line edit in `connections.json`'s `legend` block.
   unrelated ones once you've selected a module); "Focus on selection" mode
   only draws lines touching the selected module and dims everything else.
 - The tier checkboxes in the header show/hide each bond tier independently.
-- Click to drag a module within a course or to another course.
+- Click to drag a module within a course or to another course. (added July 24)
