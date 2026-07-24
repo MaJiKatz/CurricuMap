@@ -249,3 +249,22 @@ body.connect-mode-active .module-chip:hover {
 .btn-delete-course:hover {
   color: #ef4444; /* Subtle warning red on hover */
 }
+
+/* --- Drag and Drop Visuals --- */
+.module-chip.is-dragging-chip {
+  opacity: 0.4;
+  border: 1px dashed #94a3b8;
+  transform: scale(0.98);
+}
+
+.module-chip.drag-over-top {
+  border-top: 3px solid #3b82f6;
+  border-top-left-radius: 2px;
+  border-top-right-radius: 2px;
+}
+
+.module-chip.drag-over-bottom {
+  border-bottom: 3px solid #3b82f6;
+  border-bottom-left-radius: 2px;
+  border-bottom-right-radius: 2px;
+}

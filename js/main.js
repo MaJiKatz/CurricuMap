@@ -218,6 +218,102 @@ import { initStorageUI } from './storage.js';
       }
     });
 
+    // --- MODULE DRAG & DROP (Between Courses & Reordering) ---
+  board.addEventListener('dragover', (e) => {
+    const targetCard = e.target.closest('.course-card');
+    if (targetCard) {
+      e.preventDefault(); // Required to allow a drop
+      e.dataTransfer.dropEffect = 'move';
+
+      // 1. Clear previous drop indicators
+      document.querySelectorAll('.module-chip.drag-over-top, .module-chip.drag-over-bottom').forEach(el => {
+        el.classList.remove('drag-over-top', 'drag-over-bottom');
+      });
+
+      // 2. Find if hovering over a specific module and draw the target line
+      const targetChip = e.target.closest('.module-chip');
+      if (targetChip && !targetChip.classList.contains('is-dragging-chip')) {
+         const rect = targetChip.getBoundingClientRect();
+         const midPoint = rect.top + rect.height / 2;
+         if (e.clientY < midPoint) {
+           targetChip.classList.add('drag-over-top');
+         } else {
+           targetChip.classList.add('drag-over-bottom');
+         }
+      }
+    }
+  });
+
+  board.addEventListener('dragleave', (e) => {
+     const targetChip = e.target.closest('.module-chip');
+     if (targetChip) {
+        targetChip.classList.remove('drag-over-top', 'drag-over-bottom');
+     }
+  });
+
+  board.addEventListener('drop', (e) => {
+    const targetCard = e.target.closest('.course-card');
+    if (!targetCard) return;
+
+    e.preventDefault();
+    
+    // Clean up all visual indicator classes
+    document.querySelectorAll('.drag-over-top, .drag-over-bottom').forEach(el => {
+        el.classList.remove('drag-over-top', 'drag-over-bottom');
+    });
+
+    const targetCourseId = targetCard.dataset.courseId;
+    const dropChip = e.target.closest('.module-chip');
+    const rect = dropChip ? dropChip.getBoundingClientRect() : null;
+    const insertAfter = dropChip ? (e.clientY > rect.top + rect.height / 2) : false;
+
+    try {
+      const rawData = e.dataTransfer.getData('text/plain');
+      if (!rawData) return;
+      
+      const { moduleId, fromCourseId } = JSON.parse(rawData);
+      if (!moduleId || !targetCourseId) return; 
+
+      // 1. Locate source and target courses
+      const sourceCourse = DATA.courses.find((c) => c.id === fromCourseId);
+      const targetCourse = DATA.courses.find((c) => c.id === targetCourseId);
+      if (!sourceCourse || !targetCourse) return;
+
+      // 2. Find and extract module (works even if source == target)
+      const moduleIndex = (sourceCourse.modules || []).findIndex((m) => m.id === moduleId);
+      if (moduleIndex === -1) return;
+
+      const [movedModule] = sourceCourse.modules.splice(moduleIndex, 1);
+
+      // 3. Find insertion index and push to array
+      if (!targetCourse.modules) targetCourse.modules = [];
+      
+      if (dropChip && dropChip.dataset.moduleId !== moduleId) {
+         const dropIndex = targetCourse.modules.findIndex((m) => m.id === dropChip.dataset.moduleId);
+         if (dropIndex !== -1) {
+            const finalIndex = insertAfter ? dropIndex + 1 : dropIndex;
+            targetCourse.modules.splice(finalIndex, 0, movedModule);
+         } else {
+            targetCourse.modules.push(movedModule); // Fallback
+         }
+      } else {
+         // Dropped onto the card background, just add to the end
+         targetCourse.modules.push(movedModule);
+      }
+
+      // 4. Re-index & Refresh Board
+      reindexData();
+      renderBoard(DATA, state.collapsedCourses, state.positions);
+
+      requestAnimationFrame(() => {
+        document.querySelectorAll('.year-canvas').forEach((canvas) => fitCanvasToContent(canvas));
+        refreshVisuals();
+      });
+    } catch (err) {
+      console.error('Failed to move module:', err);
+    }
+  });
+
     // --- POINTER UP / STOP DRAG ---
     const stopDrag = (e) => {
       // 1. Finish Drawing Connection

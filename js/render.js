@@ -136,11 +136,32 @@ function renderCourseCard(course, isCollapsed) {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'module-chip';
+    chip.draggable = true; // <--- Enable native dragging
     chip.dataset.moduleId = mod.id;
+    chip.dataset.courseId = course.id; // <--- Store source course ID
     chip.innerHTML = `
       <span class="m-label">${escapeHtml(mod.label)}</span>
       <span class="m-title">${escapeHtml(mod.title)}</span>
     `;
+
+    // Attach HTML5 drag data
+    // Attach HTML5 drag data
+    chip.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', JSON.stringify({
+        moduleId: mod.id,
+        fromCourseId: course.id
+      }));
+      e.dataTransfer.effectAllowed = 'move';
+      
+      // Delay adding the class so the native drag ghost doesn't look transparent
+      setTimeout(() => chip.classList.add('is-dragging-chip'), 0); 
+    });
+
+    // Clean up drag visuals when letting go
+    chip.addEventListener('dragend', () => {
+      chip.classList.remove('is-dragging-chip');
+    });
+
     list.appendChild(chip);
   });
 
