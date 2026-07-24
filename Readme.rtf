@@ -1,0 +1,77 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2870
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fmodern\fcharset0 Courier;}
+{\colortbl;\red255\green255\blue255;\red0\green0\blue0;}
+{\*\expandedcolortbl;;\cssrgb\c0\c0\c0;}
+\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\deftab720
+\pard\pardeftab720\partightenfactor0
+
+\f0\fs26 \cf0 \expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 # CurriMap \uc0\u55356 \u57235 \
+\
+**CurriMap** is an interactive, browser-based visual curriculum planning and dependency mapping tool. Designed for educators, course coordinators, and academic advisors, it allows you to visualize degree pathways, map prerequisite connections, and manage course topics\'97all in a responsive, drag-and-drop workspace.\
+\
+---\
+\
+## \uc0\u10024  Features\
+\
+* \uc0\u55357 \u56826 \u65039  **Visual Canvas:** Organizes courses across academic years with native support for Year 0 (Pre-University).\
+* \uc0\u55357 \u56720 \u65039  **Drag-and-Drop:** Free-form card positioning with canvas auto-sizing and persistent position caching.\
+* \uc0\u55357 \u56599  **Dynamic Connections:** Interactive SVG rendering to link prerequisite courses, modules, and topics with custom connection levels (Strong, Related, Weak).\
+* \uc0\u55357 \u56541  **Course CRUD Editor:** Built-in modal to add, edit, or delete courses, modules, learning objectives, and textbook details.\
+* \uc0\u55357 \u56534  **Topic Drawer:** Slide-out inspection drawer for detailed module and objective breakdowns.\
+* \uc0\u55357 \u56510  **Local & File Storage:** Export curriculum data to JSON or save/restore state locally.\
+\
+---\
+\
+## \uc0\u55357 \u56960  Quick Start\
+\
+Because CurriMap is built using standard ES modules, it runs natively in any modern browser without heavy build steps or package managers.\
+\
+1. **Clone the repository:**\
+   ```bash\
+   git clone [https://github.com/your-username/currimap.git](https://github.com/your-username/currimap.git)\
+   cd currimap\
+Run locally:\
+Serve the root folder using any local HTTP server (required for ES Module support).\
+Using Python 3:\
+Bash\
+python3 -m http.server 8000\
+Using Node / npx:\
+Bash\
+npx serve .\
+Open in browser:\
+Navigate to http://localhost:8000.\
+\uc0\u55357 \u56513  Project Structure\
+Plaintext\
+\uc0\u9500 \u9472 \u9472  index.html          # Main application entry point\
+\uc0\u9500 \u9472 \u9472  css/\
+\uc0\u9474    \u9492 \u9472 \u9472  styles.css      # Core styles & dark theme modal CSS\
+\uc0\u9500 \u9472 \u9472  js/\
+\uc0\u9474    \u9500 \u9472 \u9472  main.js         # Core initialization & event orchestration\
+\uc0\u9474    \u9500 \u9472 \u9472  render.js       # Board, card, and drawer DOM rendering\
+\uc0\u9474    \u9500 \u9472 \u9472  courseEditor.js # Modal editor logic & data mutation\
+\uc0\u9474    \u9492 \u9472 \u9472  storage.js      # JSON import/export & LocalStorage helpers\
+\uc0\u9492 \u9472 \u9472  data/\
+    \uc0\u9492 \u9472 \u9472  curriculum.json # Default curriculum dataset / fallback template\
+\uc0\u55357 \u57056 \u65039  Data Format\
+CurriMap uses a standard JSON schema to represent courses and their prerequisite links:\
+JSON\
+\{\
+  "legend": \{\
+    "strong": \{ "label": "Strong Connection", "color": "#ef4444" \},\
+    "related": \{ "label": "Related Topic", "color": "#3b82f6" \},\
+    "weak": \{ "label": "Weak Connection", "color": "#10b981" \}\
+  \},\
+  "courses": [\
+    \{\
+      "id": "chem1010",\
+      "code": "CHEM 1010",\
+      "name": "Pre-University Chemistry",\
+      "year": 0,\
+      "yearLabel": "Pre-University",\
+      "modules": []\
+    \}\
+  ],\
+  "connections": []\
+\}}
