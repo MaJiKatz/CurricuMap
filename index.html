@@ -23,15 +23,30 @@
         <!-- populated by js/render.js from connections.json legend -->
       </div>
       <!-- Styled Add Course Button -->
-      <button id="addCourseBtn" class="btn btn-add-course" onclick="window.openCourseEditor(null)">
+      <button id="addCourseBtn" class="btn btn-secondary" onclick="window.openCourseEditor(null)">
         <span class="btn-icon">+</span>
         <span>Add Course</span>
       </button>
+
+      <!-- Inside <div class="header-right"> in index.html -->
+      <div class="connect-tools" style="display: flex; gap: 8px; align-items: center; border-color: black; border-width: 1px; border-style: solid; padding: 4px 8px; border-radius: 4px;">
+        
+        <button id="connectModeBtn" class="btn btn-secondary">
+          🔗 Connect Mode: OFF
+        </button>
+        
+        <!-- Connection Level Selector -->
+        <select id="connectionTypeSelect" class="btn btn-secondary" style="padding: 6px 10px;" title="Select Connection Type">
+          <option value="strong">Strong</option>
+          <option value="related" selected>Related</option>
+          <option value="weak"> Weak</option>
+        </select>
+      </div>
       <!-- Toolbar Export/Import Controls -->
         <div class="toolbar-actions">
           <!-- Export Button -->
           <button id="exportBtn" class="btn btn-secondary">
-            ⬇️ Save Workspace (JSON)
+            ⬇️ Save Workspace
           </button>
 
           <!-- Hidden File Input for Upload -->
@@ -39,7 +54,7 @@
           
           <!-- Import Button -->
           <button id="importBtn" class="btn btn-secondary">
-            ⬆️ Load Workspace (JSON)
+            ⬆️ Load Workspace
           </button>
         </div>
     </div>

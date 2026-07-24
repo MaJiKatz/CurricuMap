@@ -3,6 +3,25 @@
    DOM rendering without inline topic nodes on the map.
    ============================================================ */
 
+  // Helper to format textbook string cleanly
+  function formatTextbook(tb) {
+    if (!tb) return 'None listed';
+    if (typeof tb === 'string') return tb; // Handles simple string legacy data
+    
+    // Handles object format: { title, author, edition }
+    const parts = [];
+    if (tb.title) parts.push(`${tb.title}`);
+    if (tb.author) parts.push(`by ${tb.author}`);
+    if (tb.edition) parts.push(`(${tb.edition} ed.)`);
+
+    return parts.length > 0 ? parts.join(' ') : 'None listed';
+  }
+
+  // In your drawer or card HTML template, replace:
+  // ${course.textbook}
+  // WITH:
+  // ${formatTextbook(course.textbook)}
+
 function renderBoard(data, collapsedCourses = new Set(), positions = {}) {
   const board = document.getElementById('board');
   board.innerHTML = '';
@@ -142,7 +161,7 @@ function renderDrawer(data, moduleId) {
   content.hidden = false;
 
   const chaptersText = mod.chapters ? `Ch. ${mod.chapters.join(', ')}` : '';
-  const textbookText = course.textbook ? `<div class="drawer-textbook">📖 <strong>Textbook:</strong> ${escapeHtml(course.textbook)}</div>` : '';
+  const textbookText = formatTextbook(course.textbook) ? `<div class="drawer-textbook">📖 <strong>Textbook:</strong> ${escapeHtml(formatTextbook(course.textbook))}</div>` : '';
 
   const topicsHtml = mod.topics && mod.topics.length
     ? mod.topics.map((t) => {

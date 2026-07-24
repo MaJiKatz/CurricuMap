@@ -132,13 +132,13 @@ function drawLine(svg, p1, p2, level, isCollapsedLine, isDimmed) {
   line.setAttribute('x2', p2.x);
   line.setAttribute('y2', p2.y);
   line.setAttribute('stroke', color);
-  line.setAttribute('stroke-width', isCollapsedLine ? '2' : (level === 'strong' ? '3.5' : '2.5'));
+  line.setAttribute('stroke-width', isCollapsedLine ? '2' : (level === 'strong' ? '3.5' : '3.5'));
   line.setAttribute('stroke-linecap', 'round');
 
   if (isCollapsedLine) {
     line.setAttribute('stroke-dasharray', '4,4');
   } else if (level === 'weak') {
-    line.setAttribute('stroke-dasharray', '2,4');
+    line.setAttribute('stroke-width', '3.5');
   }
 
   group.appendChild(line);
