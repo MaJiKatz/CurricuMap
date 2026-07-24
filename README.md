@@ -102,6 +102,7 @@ one-line edit in `connections.json`'s `legend` block.
 - **Fill in real learning objectives**: `objectives` is already an array per
   topic — swap the placeholder for the actual outcomes as you write them.
 
+
 ## Interaction model
 
 - Click a module to open its topics + connections in the right-hand panel.
@@ -110,3 +111,4 @@ one-line edit in `connections.json`'s `legend` block.
   unrelated ones once you've selected a module); "Focus on selection" mode
   only draws lines touching the selected module and dims everything else.
 - The tier checkboxes in the header show/hide each bond tier independently.
+- Click to drag a module within a course or to another course.
