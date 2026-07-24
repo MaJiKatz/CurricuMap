@@ -6,19 +6,32 @@
    ============================================================ */
 
 async function loadCurriculumData() {
-  const [curriculumRes, connectionsRes] = await Promise.all([
-    fetch('data/curriculum.json'),
-    fetch('data/connections.json'),
-  ]);
+  const defaultEmptyData = {
+    legend: {
+      strong: { label: 'Strong Connection', color: '#ef4444', description: 'Core prerequisite' },
+      related: { label: 'Related Topic', color: '#3b82f6', description: 'Shared concepts' },
+      weak: { label: 'Weak Connection', color: '#10b981', description: 'Minor overlap' }
+    },
+    courses: [],
+    connections: []
+  };
 
-  if (!curriculumRes.ok || !connectionsRes.ok) {
-    throw new Error('Failed to load curriculum data files.');
+  try {
+    const res = await fetch('./data/curriculum.json');
+    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+    const data = await res.json();
+    
+    // Ensure critical arrays exist
+    data.courses = data.courses || [];
+    data.connections = data.connections || [];
+    data.legend = data.legend || defaultEmptyData.legend;
+    
+    return data;
+  } catch (err) {
+    console.warn('Could not load curriculum.json, initializing empty board:', err);
+    // Return empty fallback instead of crashing the UI
+    return defaultEmptyData;
   }
-
-  const curriculum = await curriculumRes.json();
-  const connectionData = await connectionsRes.json();
-
-  return buildLookups(curriculum, connectionData);
 }
 
 function buildLookups(curriculum, connectionData) {

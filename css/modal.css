@@ -146,3 +146,106 @@ body.connect-mode-active .course-card:hover,
 body.connect-mode-active .module-chip:hover {
   outline: 2px solid #3b82f6;
 }
+
+/* Nested items inside Module Rows */
+.module-row-container {
+  background: var(--surface-2, #1e293b);
+  border: 1px solid var(--border-color, #334155);
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.module-header-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.nested-section {
+  margin-top: 10px;
+  padding-left: 16px;
+  border-left: 2px solid var(--accent-dim, #3b82f6);
+}
+
+.nested-section h5 {
+  margin: 4px 0 6px 0;
+  font-size: 1rem;
+  color: var(--text-muted, #94a3b8);
+  text-transform: uppercase;
+}
+
+.nested-item-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+  align-items: center;
+}
+
+/* Add this rule to enlarge the input text and placeholder text */
+.nested-item-row input[type="text"],
+.nested-item-row input {
+  font-size: 0.95rem; /* Adjust to 1rem or 16px if you want it even larger */
+  padding: 6px 10px;  /* Gives the text some breathing room inside the box */
+}
+
+.btn-sm {
+  padding: 2px 8px;
+  font-size: 0.8rem;
+  border-radius: 4px;
+}
+
+/* Sets all text inputs, textareas, and select dropdowns inside the course modal to 1rem */
+#courseModal input[type="text"],
+#courseModal input[type="number"],
+#courseModal textarea,
+#courseModal select {
+  font-size: 1rem;
+  padding: 8px 10px; /* Optional: adds a little vertical padding so 1rem text doesn't feel cramped */
+}
+
+/* Dark background with white text for all inputs & selects in the course modal */
+#courseModal input[type="text"],
+#courseModal input[type="number"],
+#courseModal textarea,
+#courseModal select {
+  font-size: 1rem;
+  padding: 8px 10px;
+  background-color: #1a1d24; /* Or match your dark theme hex, e.g., #111827 or #0b0f19 */
+  color: #ffffff;
+  border: 1px solid #2d3748;
+  border-radius: 4px;
+}
+
+/* Ensure placeholder text stays crisp but slightly muted */
+#courseModal input::placeholder,
+#courseModal textarea::placeholder {
+  color: #a0aec0;
+}
+
+/* Ensure focus states stay clean and legible */
+#courseModal input[type="text"]:focus,
+#courseModal input[type="number"]:focus,
+#courseModal select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  background-color: #1a1d24;
+  color: #ffffff;
+}
+
+.btn-delete-course {
+  background: transparent;
+  border: none;
+  color: #a0aec0;
+  font-size: 1.2rem;
+  font-weight: bold;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  transition: color 0.15s ease;
+}
+
+.btn-delete-course:hover {
+  color: #ef4444; /* Subtle warning red on hover */
+}

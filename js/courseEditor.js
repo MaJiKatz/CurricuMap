@@ -1,5 +1,7 @@
 /* ============================================================
    js/courseEditor.js
+   Handles course modal interactions, module management, nested
+   topics/objectives editing, and connections.
    ============================================================ */
 
 let currentCourse = null;
@@ -7,11 +9,8 @@ let editingModules = [];
 let editingConnections = [];
 
 /**
- * Global handler triggered by clicking the gear icon or Add Course button.
- */
-/**
- * Global handler triggered by clicking the gear/pencil icon or Add Course button.
- * Accepts either a Course ID (e.g. 'chem1010') or a Module ID (e.g. 'chem1010-m1').
+ * Global handler triggered by clicking gear/pencil icon or Add Course button.
+ * Accepts either a Course ID or a Module ID.
  */
 function openCourseEditor(targetId = null) {
   let course = null;
@@ -20,11 +19,9 @@ function openCourseEditor(targetId = null) {
   if (targetId && window.DATA) {
     let courseId = targetId;
 
-    // 1. If targetId belongs to a module, resolve it to the parent Course ID
     if (window.DATA.courseByModuleId && window.DATA.courseByModuleId[targetId]) {
       courseId = window.DATA.courseByModuleId[targetId].id;
     } else {
-      // Fallback check if passed ID is inside a course's module list
       const matchedCourse = window.DATA.courses.find((c) =>
         (c.modules || []).some((m) => m.id === targetId)
       );
@@ -33,7 +30,6 @@ function openCourseEditor(targetId = null) {
       }
     }
 
-    // 2. Retrieve Course & Connections Data
     if (typeof window.getCourseById === 'function') {
       const res = window.getCourseById(courseId);
       course = res.course;
@@ -59,7 +55,10 @@ function openCourseModal(courseData = null, connectionsData = []) {
     textbook: {}
   };
 
-  editingModules = courseData && courseData.modules ? [...courseData.modules] : [];
+  // Deep clone modules to safely edit nested array attributes
+  editingModules = courseData && courseData.modules 
+    ? JSON.parse(JSON.stringify(courseData.modules)) 
+    : [];
 
   const moduleIds = editingModules.map((m) => m.id);
   editingConnections = Array.isArray(connectionsData)
@@ -72,15 +71,21 @@ function openCourseModal(courseData = null, connectionsData = []) {
       )
     : [];
 
-  // Populate form fields
   const titleEl = document.getElementById('modalTitle');
   if (titleEl) titleEl.textContent = courseData ? 'Edit Course' : 'Add Course';
+
+  // Safely evaluate courseYear so numeric 0 is preserved
+  const courseYear = (currentCourse.year !== undefined && currentCourse.year !== null) 
+    ? currentCourse.year 
+    : 1;
 
   document.getElementById('courseId').value = currentCourse.id || '';
   document.getElementById('courseCode').value = currentCourse.code || '';
   document.getElementById('courseName').value = currentCourse.name || '';
-  document.getElementById('courseYear').value = currentCourse.year || 1;
-  document.getElementById('courseYearLabel').value = currentCourse.yearLabel || `Year ${currentCourse.year || 1}`;
+  
+  // FIX: Assign courseYear directly instead of using || 1
+  document.getElementById('courseYear').value = courseYear;
+  document.getElementById('courseYearLabel').value = currentCourse.yearLabel || (courseYear === 0 ? 'Pre-University' : `Year ${courseYear}`);
 
   const tb = currentCourse.textbook || {};
   document.getElementById('tbTitle').value = typeof tb === 'string' ? tb : tb.title || '';
@@ -123,16 +128,79 @@ function renderModulesList() {
 
   container.innerHTML = '';
 
-  editingModules.forEach((mod, idx) => {
-    const row = document.createElement('div');
-    row.className = 'manager-row';
-    row.innerHTML = `
-      <input type="text" placeholder="ID" value="${mod.id || ''}" style="width: 100px;" onchange="editingModules[${idx}].id = this.value">
-      <input type="text" placeholder="Label" value="${mod.label || ''}" style="width: 100px;" onchange="editingModules[${idx}].label = this.value">
-      <input type="text" placeholder="Module Title" value="${mod.title || ''}" style="flex: 1;" onchange="editingModules[${idx}].title = this.value">
-      <button type="button" class="btn btn-cancel" onclick="removeModuleRow(${idx})">&times;</button>
+  editingModules.forEach((mod, modIdx) => {
+    if (!Array.isArray(mod.topics)) mod.topics = [];
+    if (!Array.isArray(mod.objectives)) mod.objectives = [];
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'module-row-container';
+
+    // Module Header Info
+    let html = `
+      <div class="module-header-row">
+        <input type="text" placeholder="ID" value="${mod.id || ''}" style="width: 100px;" onchange="editingModules[${modIdx}].id = this.value">
+        <input type="text" placeholder="Label" value="${mod.label || ''}" style="width: 100px;" onchange="editingModules[${modIdx}].label = this.value">
+        <input type="text" placeholder="Module Title" value="${mod.title || ''}" style="flex: 1;" onchange="editingModules[${modIdx}].title = this.value">
+        <button type="button" class="btn btn-cancel" onclick="removeModuleRow(${modIdx})">&times;</button>
+      </div>
     `;
-    container.appendChild(row);
+
+    // Nested Topics Editor Section
+    html += `
+      <div class="nested-section">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h5>Topics</h5>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="addTopicRow(${modIdx})">+ Add Topic</button>
+        </div>
+        <div id="topics-${modIdx}">
+    `;
+
+    mod.topics.forEach((topic, tIdx) => {
+      const topicVal = typeof topic === 'object' ? (topic.title || topic.name || topic.description || '') : topic;
+
+      html += `
+        <div class="nested-item-row">
+          <input type="text" 
+                 placeholder="Topic description..." 
+                 value="${topicVal || ''}" 
+                 style="flex: 1;" 
+                 onchange="editingModules[${modIdx}].topics[${tIdx}] = this.value">
+          <button type="button" class="btn btn-cancel btn-sm" onclick="removeTopicRow(${modIdx}, ${tIdx})">&times;</button>
+        </div>
+      `;
+    });
+
+    html += `</div></div>`;
+
+    // Nested Objectives Editor Section
+    html += `
+      <div class="nested-section">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h5>Learning Objectives</h5>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="addObjectiveRow(${modIdx})">+ Add Objective</button>
+        </div>
+        <div id="objectives-${modIdx}">
+    `;
+
+    mod.objectives.forEach((obj, oIdx) => {
+      const objVal = typeof obj === 'object' ? (obj.title || obj.statement || obj.description || '') : obj;
+
+      html += `
+        <div class="nested-item-row">
+          <input type="text" 
+                 placeholder="Objective description..." 
+                 value="${objVal || ''}" 
+                 style="flex: 1;" 
+                 onchange="editingModules[${modIdx}].objectives[${oIdx}] = this.value">
+          <button type="button" class="btn btn-cancel btn-sm" onclick="removeObjectiveRow(${modIdx}, ${oIdx})">&times;</button>
+        </div>
+      `;
+    });
+
+    html += `</div></div>`;
+
+    wrapper.innerHTML = html;
+    container.appendChild(wrapper);
   });
 }
 
@@ -142,13 +210,38 @@ function addModuleRow() {
     id: `${courseId}-m${editingModules.length + 1}`,
     label: `MOD 0${editingModules.length + 1}`,
     title: 'New Module',
-    topics: []
+    topics: [],
+    objectives: []
   });
   renderModulesList();
 }
 
 function removeModuleRow(index) {
   editingModules.splice(index, 1);
+  renderModulesList();
+}
+
+// Helpers for Topics
+function addTopicRow(modIndex) {
+  if (!editingModules[modIndex].topics) editingModules[modIndex].topics = [];
+  editingModules[modIndex].topics.push('');
+  renderModulesList();
+}
+
+function removeTopicRow(modIndex, topicIndex) {
+  editingModules[modIndex].topics.splice(topicIndex, 1);
+  renderModulesList();
+}
+
+// Helpers for Objectives
+function addObjectiveRow(modIndex) {
+  if (!editingModules[modIndex].objectives) editingModules[modIndex].objectives = [];
+  editingModules[modIndex].objectives.push('');
+  renderModulesList();
+}
+
+function removeObjectiveRow(modIndex, objIndex) {
+  editingModules[modIndex].objectives.splice(objIndex, 1);
   renderModulesList();
 }
 
@@ -195,19 +288,33 @@ function removeConnectionRow(index) {
 }
 
 function saveCourseData() {
-  const yearVal = parseInt(document.getElementById('courseYear').value, 10) || 1;
+  // Allow year 0 explicitly; only fall back to 1 if it's NaN or empty
+  const rawYear = document.getElementById('courseYear').value;
+  const yearVal = rawYear !== '' && !isNaN(rawYear) ? parseInt(rawYear, 10) : 1;
+
+  // Clean empty topic/objective strings before saving
+  const cleanedModules = editingModules.map((mod) => ({
+    ...mod,
+    topics: (mod.topics || [])
+      .map((t) => (typeof t === 'object' ? (t.title || t.name || t.description || '') : t))
+      .filter((t) => typeof t === 'string' && t.trim() !== ''),
+    objectives: (mod.objectives || [])
+      .map((o) => (typeof o === 'object' ? (o.title || o.statement || o.description || '') : o))
+      .filter((o) => typeof o === 'string' && o.trim() !== '')
+  }));
+
   const updatedCourse = {
     id: document.getElementById('courseId').value || `course-${Date.now()}`,
     code: document.getElementById('courseCode').value || 'NEW 100',
     name: document.getElementById('courseName').value || 'New Course',
     year: yearVal,
-    yearLabel: document.getElementById('courseYearLabel').value || `Year ${yearVal}`,
+    yearLabel: document.getElementById('courseYearLabel').value || (yearVal === 0 ? 'Pre-University' : `Year ${yearVal}`),
     textbook: {
       title: document.getElementById('tbTitle').value,
       author: document.getElementById('tbAuthor').value,
       edition: document.getElementById('tbEdition').value
     },
-    modules: editingModules
+    modules: cleanedModules
   };
 
   if (typeof window.onCourseSave === 'function') {
@@ -217,13 +324,17 @@ function saveCourseData() {
   closeCourseModal();
 }
 
-// Assign explicitly to window
+// Assign explicitly to window scope
 window.openCourseEditor = openCourseEditor;
 window.openCourseModal = openCourseModal;
 window.closeCourseModal = closeCourseModal;
 window.switchTab = switchTab;
 window.addModuleRow = addModuleRow;
 window.removeModuleRow = removeModuleRow;
+window.addTopicRow = addTopicRow;
+window.removeTopicRow = removeTopicRow;
+window.addObjectiveRow = addObjectiveRow;
+window.removeObjectiveRow = removeObjectiveRow;
 window.addConnectionRow = addConnectionRow;
 window.removeConnectionRow = removeConnectionRow;
 window.saveCourseData = saveCourseData;

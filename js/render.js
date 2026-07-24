@@ -3,28 +3,52 @@
    DOM rendering without inline topic nodes on the map.
    ============================================================ */
 
-  // Helper to format textbook string cleanly
-  function formatTextbook(tb) {
-    if (!tb) return 'None listed';
-    if (typeof tb === 'string') return tb; // Handles simple string legacy data
-    
-    // Handles object format: { title, author, edition }
-    const parts = [];
-    if (tb.title) parts.push(`${tb.title}`);
-    if (tb.author) parts.push(`by ${tb.author}`);
-    if (tb.edition) parts.push(`(${tb.edition} ed.)`);
+/**
+ * Helper to safely extract and render topic text whether stored 
+ * as a string or an object.
+ */
+function formatTopic(topic) {
+  if (!topic) return '';
+  if (typeof topic === 'string') return topic;
+  return topic.title || topic.name || topic.description || JSON.stringify(topic);
+}
 
-    return parts.length > 0 ? parts.join(' ') : 'None listed';
-  }
+/**
+ * Helper to format textbook string or object cleanly.
+ */
+function formatTextbook(tb) {
+  if (!tb) return 'None listed';
+  if (typeof tb === 'string') return tb;
+  
+  const parts = [];
+  if (tb.title) parts.push(`${tb.title}`);
+  if (tb.author) parts.push(`by ${tb.author}`);
+  if (tb.edition) parts.push(`(${tb.edition} ed.)`);
 
-  // In your drawer or card HTML template, replace:
-  // ${course.textbook}
-  // WITH:
-  // ${formatTextbook(course.textbook)}
+  return parts.length > 0 ? parts.join(' ') : 'None listed';
+}
 
+/**
+ * Renders the primary year boxes and course cards with positioning fallback.
+ */
 function renderBoard(data, collapsedCourses = new Set(), positions = {}) {
   const board = document.getElementById('board');
+  if (!board) return;
   board.innerHTML = '';
+
+  // Handle empty state when starting with no courses
+  if (!data || !data.courses || data.courses.length === 0) {
+    board.innerHTML = `
+      <div class="empty-board-message" style="text-align: center; padding: 60px 20px; color: #a0aec0;">
+        <h2>No courses found</h2>
+        <p>Get started by building your first course.</p>
+        <button class="btn btn-primary" onclick="window.openCourseEditor()" style="margin-top: 15px; padding: 10px 20px; font-size: 1rem;">
+          + Add First Course
+        </button>
+      </div>
+    `;
+    return;
+  }
 
   const years = groupCoursesByYear(data.courses);
 
@@ -35,7 +59,7 @@ function renderBoard(data, collapsedCourses = new Set(), positions = {}) {
 
     const header = document.createElement('div');
     header.className = 'year-box-header';
-    header.textContent = yearLabel;
+    header.textContent = yearLabel || `Year ${year}`;
     yearBox.appendChild(header);
 
     const canvas = document.createElement('div');
@@ -62,12 +86,25 @@ function renderBoard(data, collapsedCourses = new Set(), positions = {}) {
 
 function groupCoursesByYear(courses) {
   const map = new Map();
+
   courses.forEach((course) => {
-    if (!map.has(course.year)) {
-      map.set(course.year, { year: course.year, yearLabel: course.yearLabel, courses: [] });
+    // Parse year accurately without defaulting 0 to 1
+    const rawYear = course.year;
+    const yr = (rawYear !== undefined && rawYear !== null && !isNaN(rawYear)) ? Number(rawYear) : 1;
+
+    // Use explicit fallback for yearLabel based on numeric yr
+    const yrLabel = course.yearLabel || (yr === 0 ? 'Pre-University' : `Year ${yr}`);
+    
+    // Key strictly by numeric year so year 0 and year 1 NEVER mix
+    const key = `year-${yr}`;
+
+    if (!map.has(key)) {
+      map.set(key, { year: yr, yearLabel: yrLabel, courses: [] });
     }
-    map.get(course.year).courses.push(course);
+    map.get(key).courses.push(course);
   });
+
+  // Sort sequentially: Year 0 (Pre-Uni), Year 1, Year 2, etc.
   return Array.from(map.values()).sort((a, b) => a.year - b.year);
 }
 
@@ -83,6 +120,7 @@ function renderCourseCard(course, isCollapsed) {
       <span class="drag-handle" title="Drag anywhere in year box">✢</span>
       <div class="course-code">${escapeHtml(course.code)}</div>
       <button type="button" class="btn-edit-course" title="Edit Course" onclick="event.stopPropagation(); if(window.openCourseEditor) window.openCourseEditor('${course.id}')">⚙️</button>
+      <button type="button" class="btn-delete-course" title="Delete Course" onclick="event.stopPropagation(); if(window.deleteCourse) window.deleteCourse('${course.id}')">&times;</button>
       <button type="button" class="collapse-btn" aria-label="Toggle expansion">
         ${isCollapsed ? '+' : '−'}
       </button>
@@ -112,7 +150,7 @@ function renderCourseCard(course, isCollapsed) {
 
 function renderTierToggles(legend, activeTiers) {
   const container = document.getElementById('tierToggles');
-  if (!container) return;
+  if (!container || !legend) return;
   container.innerHTML = '';
 
   Object.entries(legend).forEach(([tierKey, tier]) => {
@@ -128,7 +166,7 @@ function renderTierToggles(legend, activeTiers) {
 
 function renderLegendBar(legend) {
   const bar = document.getElementById('legendBar');
-  if (!bar) return;
+  if (!bar || !legend) return;
   bar.innerHTML = '';
 
   Object.entries(legend).forEach(([tierKey, tier]) => {
@@ -147,28 +185,38 @@ function renderDrawer(data, moduleId) {
   const content = document.getElementById('drawerContent');
   if (!empty || !content) return;
 
-  if (!moduleId) {
+  if (!moduleId || !data) {
     empty.hidden = false;
     content.hidden = true;
     return;
   }
 
-  const mod = data.moduleById[moduleId];
-  const course = data.courseByModuleId[moduleId];
-  if (!mod || !course) return;
+  const mod = data.moduleById ? data.moduleById[moduleId] : null;
+  const course = data.courseByModuleId ? data.courseByModuleId[moduleId] : null;
+  if (!mod || !course) {
+    empty.hidden = false;
+    content.hidden = true;
+    return;
+  }
 
   empty.hidden = true;
   content.hidden = false;
 
   const chaptersText = mod.chapters ? `Ch. ${mod.chapters.join(', ')}` : '';
-  const textbookText = formatTextbook(course.textbook) ? `<div class="drawer-textbook">📖 <strong>Textbook:</strong> ${escapeHtml(formatTextbook(course.textbook))}</div>` : '';
+  const formattedTb = formatTextbook(course.textbook);
+  const textbookText = formattedTb && formattedTb !== 'None listed' 
+    ? `<div class="drawer-textbook">📖 <strong>Textbook:</strong> ${escapeHtml(formattedTb)}</div>` 
+    : '';
 
   const topicsHtml = mod.topics && mod.topics.length
     ? mod.topics.map((t) => {
+        if (typeof t === 'string') {
+          return `<div class="topic-item"><div class="topic-title-row"><span class="topic-title">${escapeHtml(t)}</span></div></div>`;
+        }
         const sectionBadge = t.section ? `<span class="section-tag">Sec. ${escapeHtml(t.section)}</span>` : '';
         const objectivesHtml = t.objectives && t.objectives.length
           ? t.objectives.map((obj) => {
-              const objText = typeof obj === 'string' ? obj : obj.text;
+              const objText = typeof obj === 'string' ? obj : (obj.text || obj.statement || obj.title);
               const questions = obj.recommendedQuestions && obj.recommendedQuestions.length
                 ? `<div class="obj-questions">💡 <em>Questions:</em> ${escapeHtml(obj.recommendedQuestions.join(', '))}</div>`
                 : '';
@@ -179,7 +227,7 @@ function renderDrawer(data, moduleId) {
         return `
           <div class="topic-item">
             <div class="topic-title-row">
-              <span class="topic-title">${escapeHtml(t.title)}</span>
+              <span class="topic-title">${escapeHtml(formatTopic(t))}</span>
               ${sectionBadge}
             </div>
             ${objectivesHtml}
