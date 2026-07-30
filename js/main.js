@@ -6,6 +6,14 @@
 
 import { initStorageUI } from './storage.js';
 
+// Default schedule configuration made globally accessible
+window.defaultScheduleConfig = {
+  weeksInSemester: 12,       // e.g., 10, 12, 14, 15, or 16 weeks
+  meetingsPerWeek: 3,         // 2 or 3 lectures per week
+  minutesPerMeeting: 50,      // 50 min (3x/wk) or 90 min (2x/wk)
+  startWeekDay: 'Monday'      // optional anchor
+};
+
 (function () {
   let DATA = null;
 
@@ -130,13 +138,10 @@ import { initStorageUI } from './storage.js';
 
     // --- BOARD POINTER DOWN (Handles both Card Dragging & Connect Drawing) ---
     board.addEventListener('pointerdown', (e) => {
-      // 0. ABSOLUTE BUTTON DRAG GUARD
-      // Ignore dragging if clicking any interactive button or control
       if (e.target.closest('button, .collapse-btn, .btn-edit-course, .edit-course-btn, .btn-delete-course, .btn-calendar')) {
         return;
       }
 
-      // A. CONNECT MODE DRAWING START
       if (isConnectMode) {
         const node = e.target.closest('.module-chip, .course-card');
         if (!node) return;
@@ -167,7 +172,6 @@ import { initStorageUI } from './storage.js';
         return;
       }
 
-      // B. STANDARD COURSE CARD DRAGGING
       const handle = e.target.closest('.drag-handle, .course-card-head');
       if (!handle) return;
       
@@ -189,9 +193,7 @@ import { initStorageUI } from './storage.js';
       card.setPointerCapture(e.pointerId);
     });
 
-    // --- POINTER MOVE (Handles both Card Dragging & Line Drawing) ---
     document.addEventListener('pointermove', (e) => {
-      // Handle Line Drawing Preview
       if (isConnectMode && connectingSource && tempLine) {
         const boardRect = board.getBoundingClientRect();
         const currentX = e.clientX - boardRect.left;
@@ -202,7 +204,6 @@ import { initStorageUI } from './storage.js';
         return;
       }
 
-      // Handle Card Dragging
       if (draggingState) {
         const { card, canvas, offsetX, offsetY, courseId } = draggingState;
         const canvasRect = canvas.getBoundingClientRect();
@@ -223,7 +224,6 @@ import { initStorageUI } from './storage.js';
       }
     });
 
-    // --- MODULE DRAG & DROP (Between Courses & Reordering) ---
     board.addEventListener('dragover', (e) => {
       const targetCard = e.target.closest('.course-card');
       if (targetCard) {
@@ -311,7 +311,6 @@ import { initStorageUI } from './storage.js';
       }
     });
 
-    // --- POINTER UP / STOP DRAG ---
     const stopDrag = (e) => {
       if (isConnectMode && connectingSource) {
         if (tempLine) {
@@ -359,11 +358,9 @@ import { initStorageUI } from './storage.js';
     board.addEventListener('pointerup', stopDrag);
     board.addEventListener('pointercancel', stopDrag);
 
-    // --- BOARD CLICK INTERACTIONS ---
     board.addEventListener('click', (e) => {
       if (isConnectMode) return;
 
-      // 1. Gear / Edit Button Clicked
       const editBtn = e.target.closest('.btn-edit-course, .edit-course-btn');
       if (editBtn) {
         e.stopPropagation();
@@ -376,7 +373,6 @@ import { initStorageUI } from './storage.js';
         return;
       }
 
-      // 2. Calendar Button Clicked
       const calBtn = e.target.closest('.btn-calendar');
       if (calBtn) {
         e.stopPropagation();
@@ -391,7 +387,6 @@ import { initStorageUI } from './storage.js';
         return;
       }
 
-      // 3. Delete Button Clicked
       const deleteBtn = e.target.closest('.btn-delete-course');
       if (deleteBtn) {
         e.stopPropagation();
@@ -403,7 +398,6 @@ import { initStorageUI } from './storage.js';
         return;
       }
 
-      // 4. Collapse (+) / (-) Button Clicked
       const collapseBtn = e.target.closest('.collapse-btn');
       if (collapseBtn) {
         e.stopPropagation();
@@ -426,7 +420,6 @@ import { initStorageUI } from './storage.js';
         return;
       }
 
-      // 5. Module Chip Clicked
       const chip = e.target.closest('.module-chip');
       if (chip) {
         const id = chip.dataset.moduleId;
@@ -436,7 +429,6 @@ import { initStorageUI } from './storage.js';
       }
     });
 
-    // --- TIER TOGGLES ---
     const tierToggles = document.getElementById('tierToggles');
     if (tierToggles) {
       tierToggles.addEventListener('change', (e) => {

@@ -103,6 +103,29 @@
             </div>
           </div>
 
+          <h3>Schedule Configuration</h3>
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="weeksInSemester">Semester Duration</label>
+              <select id="weeksInSemester">
+                <option value="10">10 Weeks (Quarter/Term)</option>
+                <option value="12" selected>12 Weeks (Standard)</option>
+                <option value="14">14 Weeks</option>
+                <option value="15">15 Weeks</option>
+                <option value="16">16 Weeks</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="weeklyFormat">Weekly Format</label>
+              <select id="weeklyFormat" onchange="typeof handleFormatChange === 'function' && handleFormatChange(this.value)">
+                <option value="3x50" selected>3 Lectures / week (50 mins each)</option>
+                <option value="2x90">2 Lectures / week (~90 mins each)</option>
+                <option value="1x180">1 Seminar / week (3 hours)</option>
+              </select>
+            </div>
+          </div>
+
           <h3>Textbook Information</h3>
           <div class="form-grid">
             <div class="form-group full-width">
