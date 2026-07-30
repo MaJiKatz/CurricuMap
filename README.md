@@ -13,20 +13,60 @@ python3 -m http.server 8000
 (It needs to be served, not opened via `file://`, because the JS fetches the
 JSON data files.)
 
-## How it's organized
+Here is a breakdown of what you can add to your `README.md` to document the new dynamic schedule configuration feature.
+
+You can append this section under **Features** or **The data model** (or add it near the bottom of your README file):
+
+---
+
+```markdown
+## Dynamic Schedule & Calendar Configuration (added July 2026)
+
+Courses can now be configured with flexible semester durations and weekly meeting formats. This updates the course capacity and calendar grid views dynamically without forcing fixed 36-lecture assumptions.
+
+### Configurable Settings
+- **Semester Duration**: Supports 10, 12, 14, 15, or 16-week terms.
+- **Weekly Format Modes**:
+  - **3x/week** (50 mins per lecture — e.g., MWF style)
+  - **2x/week** (~90 mins per lecture — e.g., TTh style)
+  - **1x/week** (3-hour block / seminar style)
+
+### Data Structure & Usage
+A default configuration is initialized globally in `js/main.js` and managed per course:
+
+```javascript
+const defaultScheduleConfig = {
+  weeksInSemester: 12,
+  meetingsPerWeek: 3,
+  minutesPerMeeting: 50,
+  startWeekDay: 'Monday'
+};
 
 ```
+
+* **Course Editor Modal (`index.html`)**: Features dropdown controls under the *General Info* tab to select semester duration and weekly layout.
+* **Calendar Layout Engine (`js/calendarView.js`)**: `calculateCalendarLayout()` dynamically calculates total lecture slots ($\text{Weeks} \times \text{Meetings/Week}$) and formats the calendar grid depending on the selected mode.
+
+```
+
+---
+
+### How it's organized
+
+If you want to keep your project structure file tree in the README up to date, you can also update the `js/` section in the file structure diagram like this:
+
+```markdown
 curriculum-map/
-  index.html
-  css/style.css
+  ...
   js/
-    data-loader.js   fetches & indexes the JSON
-    render.js        pure DOM-building functions
-    connections.js   SVG line drawing
-    main.js          state + event wiring
-  data/
-    curriculum.json    courses -> modules -> topics -> objectives
-    connections.json   the cross-year links + the tier legend
+    data-loader.js     fetches & indexes the JSON
+    render.js          pure DOM-building functions
+    connections.js     SVG line drawing
+    courseEditor.js    modal logic for editing course properties & schedule settings
+    calendarView.js    dynamic calendar grid calculation & rendering logic
+    main.js            state + event wiring & global schedule defaults
+  ...
+
 ```
 
 ## The data model
@@ -112,3 +152,25 @@ one-line edit in `connections.json`'s `legend` block.
   only draws lines touching the selected module and dims everything else.
 - The tier checkboxes in the header show/hide each bond tier independently.
 - Click to drag a module within a course or to another course. (added July 24)
+
+## Dynamic Schedule & Calendar Configuration (added July 2026)
+
+Courses can now be configured with flexible semester durations and weekly meeting formats. This updates the course capacity and calendar grid views dynamically without forcing fixed 36-lecture assumptions.
+
+### Configurable Settings
+- **Semester Duration**: Supports 10, 12, 14, 15, or 16-week terms.
+- **Weekly Format Modes**:
+  - **3x/week** (50 mins per lecture — e.g., MWF style)
+  - **2x/week** (~90 mins per lecture — e.g., TTh style)
+  - **1x/week** (3-hour block / seminar style)
+
+### Data Structure & Usage
+A default configuration is initialized globally in `js/main.js` and managed per course:
+
+```javascript
+const defaultScheduleConfig = {
+  weeksInSemester: 12,
+  meetingsPerWeek: 3,
+  minutesPerMeeting: 50,
+  startWeekDay: 'Monday'
+};
