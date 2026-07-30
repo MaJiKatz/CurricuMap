@@ -130,6 +130,12 @@ import { initStorageUI } from './storage.js';
 
     // --- BOARD POINTER DOWN (Handles both Card Dragging & Connect Drawing) ---
     board.addEventListener('pointerdown', (e) => {
+      // 0. ABSOLUTE BUTTON DRAG GUARD
+      // Ignore dragging if clicking any interactive button or control
+      if (e.target.closest('button, .collapse-btn, .btn-edit-course, .edit-course-btn, .btn-delete-course, .btn-calendar')) {
+        return;
+      }
+
       // A. CONNECT MODE DRAWING START
       if (isConnectMode) {
         const node = e.target.closest('.module-chip, .course-card');
@@ -163,9 +169,8 @@ import { initStorageUI } from './storage.js';
 
       // B. STANDARD COURSE CARD DRAGGING
       const handle = e.target.closest('.drag-handle, .course-card-head');
-      // FIX: Ignore click events on delete button as well so dragging isn't triggered
-      if (!handle || e.target.closest('.collapse-btn, .btn-edit-course, .edit-course-btn, .btn-delete-course')) return;
-
+      if (!handle) return;
+      
       const card = handle.closest('.course-card');
       const canvas = card.closest('.year-canvas');
       if (!card || !canvas) return;
@@ -219,104 +224,95 @@ import { initStorageUI } from './storage.js';
     });
 
     // --- MODULE DRAG & DROP (Between Courses & Reordering) ---
-  board.addEventListener('dragover', (e) => {
-    const targetCard = e.target.closest('.course-card');
-    if (targetCard) {
-      e.preventDefault(); // Required to allow a drop
-      e.dataTransfer.dropEffect = 'move';
+    board.addEventListener('dragover', (e) => {
+      const targetCard = e.target.closest('.course-card');
+      if (targetCard) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
 
-      // 1. Clear previous drop indicators
-      document.querySelectorAll('.module-chip.drag-over-top, .module-chip.drag-over-bottom').forEach(el => {
-        el.classList.remove('drag-over-top', 'drag-over-bottom');
-      });
+        document.querySelectorAll('.module-chip.drag-over-top, .module-chip.drag-over-bottom').forEach(el => {
+          el.classList.remove('drag-over-top', 'drag-over-bottom');
+        });
 
-      // 2. Find if hovering over a specific module and draw the target line
-      const targetChip = e.target.closest('.module-chip');
-      if (targetChip && !targetChip.classList.contains('is-dragging-chip')) {
-         const rect = targetChip.getBoundingClientRect();
-         const midPoint = rect.top + rect.height / 2;
-         if (e.clientY < midPoint) {
-           targetChip.classList.add('drag-over-top');
-         } else {
-           targetChip.classList.add('drag-over-bottom');
-         }
+        const targetChip = e.target.closest('.module-chip');
+        if (targetChip && !targetChip.classList.contains('is-dragging-chip')) {
+           const rect = targetChip.getBoundingClientRect();
+           const midPoint = rect.top + rect.height / 2;
+           if (e.clientY < midPoint) {
+             targetChip.classList.add('drag-over-top');
+           } else {
+             targetChip.classList.add('drag-over-bottom');
+           }
+        }
       }
-    }
-  });
-
-  board.addEventListener('dragleave', (e) => {
-     const targetChip = e.target.closest('.module-chip');
-     if (targetChip) {
-        targetChip.classList.remove('drag-over-top', 'drag-over-bottom');
-     }
-  });
-
-  board.addEventListener('drop', (e) => {
-    const targetCard = e.target.closest('.course-card');
-    if (!targetCard) return;
-
-    e.preventDefault();
-    
-    // Clean up all visual indicator classes
-    document.querySelectorAll('.drag-over-top, .drag-over-bottom').forEach(el => {
-        el.classList.remove('drag-over-top', 'drag-over-bottom');
     });
 
-    const targetCourseId = targetCard.dataset.courseId;
-    const dropChip = e.target.closest('.module-chip');
-    const rect = dropChip ? dropChip.getBoundingClientRect() : null;
-    const insertAfter = dropChip ? (e.clientY > rect.top + rect.height / 2) : false;
+    board.addEventListener('dragleave', (e) => {
+       const targetChip = e.target.closest('.module-chip');
+       if (targetChip) {
+          targetChip.classList.remove('drag-over-top', 'drag-over-bottom');
+       }
+    });
 
-    try {
-      const rawData = e.dataTransfer.getData('text/plain');
-      if (!rawData) return;
+    board.addEventListener('drop', (e) => {
+      const targetCard = e.target.closest('.course-card');
+      if (!targetCard) return;
+
+      e.preventDefault();
       
-      const { moduleId, fromCourseId } = JSON.parse(rawData);
-      if (!moduleId || !targetCourseId) return; 
-
-      // 1. Locate source and target courses
-      const sourceCourse = DATA.courses.find((c) => c.id === fromCourseId);
-      const targetCourse = DATA.courses.find((c) => c.id === targetCourseId);
-      if (!sourceCourse || !targetCourse) return;
-
-      // 2. Find and extract module (works even if source == target)
-      const moduleIndex = (sourceCourse.modules || []).findIndex((m) => m.id === moduleId);
-      if (moduleIndex === -1) return;
-
-      const [movedModule] = sourceCourse.modules.splice(moduleIndex, 1);
-
-      // 3. Find insertion index and push to array
-      if (!targetCourse.modules) targetCourse.modules = [];
-      
-      if (dropChip && dropChip.dataset.moduleId !== moduleId) {
-         const dropIndex = targetCourse.modules.findIndex((m) => m.id === dropChip.dataset.moduleId);
-         if (dropIndex !== -1) {
-            const finalIndex = insertAfter ? dropIndex + 1 : dropIndex;
-            targetCourse.modules.splice(finalIndex, 0, movedModule);
-         } else {
-            targetCourse.modules.push(movedModule); // Fallback
-         }
-      } else {
-         // Dropped onto the card background, just add to the end
-         targetCourse.modules.push(movedModule);
-      }
-
-      // 4. Re-index & Refresh Board
-      reindexData();
-      renderBoard(DATA, state.collapsedCourses, state.positions);
-
-      requestAnimationFrame(() => {
-        document.querySelectorAll('.year-canvas').forEach((canvas) => fitCanvasToContent(canvas));
-        refreshVisuals();
+      document.querySelectorAll('.drag-over-top, .drag-over-bottom').forEach(el => {
+          el.classList.remove('drag-over-top', 'drag-over-bottom');
       });
-    } catch (err) {
-      console.error('Failed to move module:', err);
-    }
-  });
+
+      const targetCourseId = targetCard.dataset.courseId;
+      const dropChip = e.target.closest('.module-chip');
+      const rect = dropChip ? dropChip.getBoundingClientRect() : null;
+      const insertAfter = dropChip ? (e.clientY > rect.top + rect.height / 2) : false;
+
+      try {
+        const rawData = e.dataTransfer.getData('text/plain');
+        if (!rawData) return;
+        
+        const { moduleId, fromCourseId } = JSON.parse(rawData);
+        if (!moduleId || !targetCourseId) return; 
+
+        const sourceCourse = DATA.courses.find((c) => c.id === fromCourseId);
+        const targetCourse = DATA.courses.find((c) => c.id === targetCourseId);
+        if (!sourceCourse || !targetCourse) return;
+
+        const moduleIndex = (sourceCourse.modules || []).findIndex((m) => m.id === moduleId);
+        if (moduleIndex === -1) return;
+
+        const [movedModule] = sourceCourse.modules.splice(moduleIndex, 1);
+
+        if (!targetCourse.modules) targetCourse.modules = [];
+        
+        if (dropChip && dropChip.dataset.moduleId !== moduleId) {
+           const dropIndex = targetCourse.modules.findIndex((m) => m.id === dropChip.dataset.moduleId);
+           if (dropIndex !== -1) {
+              const finalIndex = insertAfter ? dropIndex + 1 : dropIndex;
+              targetCourse.modules.splice(finalIndex, 0, movedModule);
+           } else {
+              targetCourse.modules.push(movedModule);
+           }
+        } else {
+           targetCourse.modules.push(movedModule);
+        }
+
+        reindexData();
+        renderBoard(DATA, state.collapsedCourses, state.positions);
+
+        requestAnimationFrame(() => {
+          document.querySelectorAll('.year-canvas').forEach((canvas) => fitCanvasToContent(canvas));
+          refreshVisuals();
+        });
+      } catch (err) {
+        console.error('Failed to move module:', err);
+      }
+    });
 
     // --- POINTER UP / STOP DRAG ---
     const stopDrag = (e) => {
-      // 1. Finish Drawing Connection
       if (isConnectMode && connectingSource) {
         if (tempLine) {
           tempLine.remove();
@@ -352,7 +348,6 @@ import { initStorageUI } from './storage.js';
         return;
       }
 
-      // 2. Finish Dragging Card
       if (draggingState) {
         fitCanvasToContent(draggingState.canvas);
         draggingState.card.classList.remove('is-dragging');
@@ -368,21 +363,39 @@ import { initStorageUI } from './storage.js';
     board.addEventListener('click', (e) => {
       if (isConnectMode) return;
 
-      // Gear Button Clicked
+      // 1. Gear / Edit Button Clicked
       const editBtn = e.target.closest('.btn-edit-course, .edit-course-btn');
       if (editBtn) {
         e.stopPropagation();
+        e.preventDefault();
         const card = editBtn.closest('.course-card');
-        if (card && card.dataset.courseId && typeof window.openCourseEditor === 'function') {
-          window.openCourseEditor(card.dataset.courseId);
+        const courseId = card ? card.dataset.courseId : null;
+        if (courseId && typeof window.openCourseEditor === 'function') {
+          window.openCourseEditor(courseId);
         }
         return;
       }
 
-      // Delete Button Clicked (Delegated Backup Handler)
+      // 2. Calendar Button Clicked
+      const calBtn = e.target.closest('.btn-calendar');
+      if (calBtn) {
+        e.stopPropagation();
+        e.preventDefault();
+        const card = calBtn.closest('.course-card');
+        if (card && card.dataset.courseId) {
+          const course = DATA.courses.find((c) => c.id === card.dataset.courseId);
+          if (course && typeof window.openCalendarModal === 'function') {
+            window.openCalendarModal(course);
+          }
+        }
+        return;
+      }
+
+      // 3. Delete Button Clicked
       const deleteBtn = e.target.closest('.btn-delete-course');
       if (deleteBtn) {
         e.stopPropagation();
+        e.preventDefault();
         const card = deleteBtn.closest('.course-card');
         if (card && card.dataset.courseId && typeof window.deleteCourse === 'function') {
           window.deleteCourse(card.dataset.courseId);
@@ -390,7 +403,7 @@ import { initStorageUI } from './storage.js';
         return;
       }
 
-      // Collapse (+) / (-) Button Clicked
+      // 4. Collapse (+) / (-) Button Clicked
       const collapseBtn = e.target.closest('.collapse-btn');
       if (collapseBtn) {
         e.stopPropagation();
@@ -413,7 +426,7 @@ import { initStorageUI } from './storage.js';
         return;
       }
 
-      // Module Chip Clicked
+      // 5. Module Chip Clicked
       const chip = e.target.closest('.module-chip');
       if (chip) {
         const id = chip.dataset.moduleId;
@@ -443,7 +456,6 @@ import { initStorageUI } from './storage.js';
     });
   }
 
-  // Explicitly assign deleteCourse globally
   window.deleteCourse = function (courseId) {
     if (!DATA || !DATA.courses) return;
 
@@ -453,25 +465,20 @@ import { initStorageUI } from './storage.js';
     const confirmMsg = `Are you sure you want to delete "${courseToDelete.code} - ${courseToDelete.name}"?`;
     if (!confirm(confirmMsg)) return;
 
-    // 1. Gather all module IDs belonging to this course
     const moduleIds = (courseToDelete.modules || []).map((m) => m.id);
     const targetIds = new Set([courseId, ...moduleIds]);
 
-    // 2. Filter out the course
     DATA.courses = DATA.courses.filter((c) => c.id !== courseId);
 
-    // 3. Remove connections involving this course or its modules
     if (Array.isArray(DATA.connections)) {
       DATA.connections = DATA.connections.filter(
         (conn) => !targetIds.has(conn.from) && !targetIds.has(conn.to)
       );
     }
 
-    // 4. Remove stored state
     if (state.positions) delete state.positions[courseId];
     if (state.collapsedCourses) state.collapsedCourses.delete(courseId);
 
-    // 5. Re-index and re-render
     reindexData();
     renderBoard(DATA, state.collapsedCourses, state.positions);
 
@@ -499,14 +506,12 @@ import { initStorageUI } from './storage.js';
     });
   }
 
-  // Helper for lookup
   window.getCourseById = function(courseId) {
     if (!DATA) return { course: null, connections: [] };
     const course = DATA.courses.find((c) => c.id === courseId);
     return { course, connections: DATA.connections || [] };
   };
 
-  // Saved course callback
   window.onCourseSave = function (updatedCourse, updatedConnections) {
     const existingIndex = DATA.courses.findIndex((c) => c.id === updatedCourse.id);
 

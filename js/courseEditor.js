@@ -19,10 +19,11 @@ function openCourseEditor(targetId = null) {
   if (targetId && window.DATA) {
     let courseId = targetId;
 
+    // Check if passed targetId is actually a module ID and resolve parent course ID
     if (window.DATA.courseByModuleId && window.DATA.courseByModuleId[targetId]) {
       courseId = window.DATA.courseByModuleId[targetId].id;
     } else {
-      const matchedCourse = window.DATA.courses.find((c) =>
+      const matchedCourse = (window.DATA.courses || []).find((c) =>
         (c.modules || []).some((m) => m.id === targetId)
       );
       if (matchedCourse) {
@@ -35,7 +36,7 @@ function openCourseEditor(targetId = null) {
       course = res.course;
       connections = res.connections;
     } else {
-      course = window.DATA.courses.find((c) => c.id === courseId);
+      course = (window.DATA.courses || []).find((c) => c.id === courseId);
       connections = window.DATA.connections || [];
     }
   } else if (window.DATA) {
@@ -79,18 +80,30 @@ function openCourseModal(courseData = null, connectionsData = []) {
     ? currentCourse.year 
     : 1;
 
-  document.getElementById('courseId').value = currentCourse.id || '';
-  document.getElementById('courseCode').value = currentCourse.code || '';
-  document.getElementById('courseName').value = currentCourse.name || '';
+  const idInput = document.getElementById('courseId');
+  if (idInput) idInput.value = currentCourse.id || '';
+
+  const codeInput = document.getElementById('courseCode');
+  if (codeInput) codeInput.value = currentCourse.code || '';
+
+  const nameInput = document.getElementById('courseName');
+  if (nameInput) nameInput.value = currentCourse.name || '';
   
-  // FIX: Assign courseYear directly instead of using || 1
-  document.getElementById('courseYear').value = courseYear;
-  document.getElementById('courseYearLabel').value = currentCourse.yearLabel || (courseYear === 0 ? 'Pre-University' : `Year ${courseYear}`);
+  const yearInput = document.getElementById('courseYear');
+  if (yearInput) yearInput.value = courseYear;
+
+  const yearLabelInput = document.getElementById('courseYearLabel');
+  if (yearLabelInput) yearLabelInput.value = currentCourse.yearLabel || (courseYear === 0 ? 'Pre-University' : `Year ${courseYear}`);
 
   const tb = currentCourse.textbook || {};
-  document.getElementById('tbTitle').value = typeof tb === 'string' ? tb : tb.title || '';
-  document.getElementById('tbAuthor').value = tb.author || '';
-  document.getElementById('tbEdition').value = tb.edition || '';
+  const tbTitle = document.getElementById('tbTitle');
+  if (tbTitle) tbTitle.value = typeof tb === 'string' ? tb : tb.title || '';
+
+  const tbAuthor = document.getElementById('tbAuthor');
+  if (tbAuthor) tbAuthor.value = tb.author || '';
+
+  const tbEdition = document.getElementById('tbEdition');
+  if (tbEdition) tbEdition.value = tb.edition || '';
 
   renderModulesList();
   renderConnectionsList();
@@ -109,8 +122,8 @@ function switchTab(tabName) {
   document.querySelectorAll('.tab-btn').forEach((btn) => btn.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach((content) => content.classList.remove('active'));
 
-  const activeBtn = document.querySelectorAll('.tab-btn');
-  activeBtn.forEach((btn) => {
+  const activeBtns = document.querySelectorAll('.tab-btn');
+  activeBtns.forEach((btn) => {
     if (btn.getAttribute('onclick') && btn.getAttribute('onclick').includes(tabName)) {
       btn.classList.add('active');
     }
@@ -141,6 +154,7 @@ function renderModulesList() {
         <input type="text" placeholder="ID" value="${mod.id || ''}" style="width: 100px;" onchange="editingModules[${modIdx}].id = this.value">
         <input type="text" placeholder="Label" value="${mod.label || ''}" style="width: 100px;" onchange="editingModules[${modIdx}].label = this.value">
         <input type="text" placeholder="Module Title" value="${mod.title || ''}" style="flex: 1;" onchange="editingModules[${modIdx}].title = this.value">
+        <input type="number" class="mod-lectures-input" min="1" max="20" placeholder="Lectures (e.g., 3)" value="${mod.lectureCount || 1}" onchange="editingModules[${modIdx}].lectureCount = parseInt(this.value, 10) || 1" />
         <button type="button" class="btn btn-cancel" onclick="removeModuleRow(${modIdx})">&times;</button>
       </div>
     `;
@@ -205,11 +219,14 @@ function renderModulesList() {
 }
 
 function addModuleRow() {
-  const courseId = document.getElementById('courseId').value || 'course';
+  const courseIdEl = document.getElementById('courseId');
+  const courseId = (courseIdEl && courseIdEl.value) ? courseIdEl.value : 'course';
+  
   editingModules.push({
     id: `${courseId}-m${editingModules.length + 1}`,
     label: `MOD 0${editingModules.length + 1}`,
     title: 'New Module',
+    lectureCount: 3,
     topics: [],
     objectives: []
   });
@@ -272,9 +289,10 @@ function renderConnectionsList() {
 }
 
 function addConnectionRow() {
+  const courseIdEl = document.getElementById('courseId');
   editingConnections.push({
     id: `c${Date.now().toString().slice(-4)}`,
-    from: document.getElementById('courseId').value || '',
+    from: (courseIdEl && courseIdEl.value) ? courseIdEl.value : '',
     to: '',
     level: 'strong',
     note: ''
@@ -288,8 +306,8 @@ function removeConnectionRow(index) {
 }
 
 function saveCourseData() {
-  // Allow year 0 explicitly; only fall back to 1 if it's NaN or empty
-  const rawYear = document.getElementById('courseYear').value;
+  const yearEl = document.getElementById('courseYear');
+  const rawYear = yearEl ? yearEl.value : '';
   const yearVal = rawYear !== '' && !isNaN(rawYear) ? parseInt(rawYear, 10) : 1;
 
   // Clean empty topic/objective strings before saving
@@ -303,16 +321,24 @@ function saveCourseData() {
       .filter((o) => typeof o === 'string' && o.trim() !== '')
   }));
 
+  const courseIdEl = document.getElementById('courseId');
+  const courseCodeEl = document.getElementById('courseCode');
+  const courseNameEl = document.getElementById('courseName');
+  const courseYearLabelEl = document.getElementById('courseYearLabel');
+  const tbTitleEl = document.getElementById('tbTitle');
+  const tbAuthorEl = document.getElementById('tbAuthor');
+  const tbEditionEl = document.getElementById('tbEdition');
+
   const updatedCourse = {
-    id: document.getElementById('courseId').value || `course-${Date.now()}`,
-    code: document.getElementById('courseCode').value || 'NEW 100',
-    name: document.getElementById('courseName').value || 'New Course',
+    id: (courseIdEl && courseIdEl.value) ? courseIdEl.value : `course-${Date.now()}`,
+    code: (courseCodeEl && courseCodeEl.value) ? courseCodeEl.value : 'NEW 100',
+    name: (courseNameEl && courseNameEl.value) ? courseNameEl.value : 'New Course',
     year: yearVal,
-    yearLabel: document.getElementById('courseYearLabel').value || (yearVal === 0 ? 'Pre-University' : `Year ${yearVal}`),
+    yearLabel: (courseYearLabelEl && courseYearLabelEl.value) ? courseYearLabelEl.value : (yearVal === 0 ? 'Pre-University' : `Year ${yearVal}`),
     textbook: {
-      title: document.getElementById('tbTitle').value,
-      author: document.getElementById('tbAuthor').value,
-      edition: document.getElementById('tbEdition').value
+      title: tbTitleEl ? tbTitleEl.value : '',
+      author: tbAuthorEl ? tbAuthorEl.value : '',
+      edition: tbEditionEl ? tbEditionEl.value : ''
     },
     modules: cleanedModules
   };

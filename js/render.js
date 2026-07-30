@@ -42,7 +42,7 @@ function renderBoard(data, collapsedCourses = new Set(), positions = {}) {
       <div class="empty-board-message" style="text-align: center; padding: 60px 20px; color: #a0aec0;">
         <h2>No courses found</h2>
         <p>Get started by building your first course.</p>
-        <button class="btn btn-primary" onclick="window.openCourseEditor()" style="margin-top: 15px; padding: 10px 20px; font-size: 1rem;">
+        <button class="btn btn-primary" onclick="if(window.openCourseEditor) window.openCourseEditor()" style="margin-top: 15px; padding: 10px 20px; font-size: 1rem;">
           + Add First Course
         </button>
       </div>
@@ -67,7 +67,6 @@ function renderBoard(data, collapsedCourses = new Set(), positions = {}) {
     canvas.dataset.year = year;
 
     courses.forEach((course, index) => {
-      // Default initial layout spacing optimized for collapsed card height (~70px)
       const pos = positions[course.id] || {
         x: 20 + (index % 2) * 230,
         y: 20 + Math.floor(index / 2) * 90,
@@ -88,14 +87,9 @@ function groupCoursesByYear(courses) {
   const map = new Map();
 
   courses.forEach((course) => {
-    // Parse year accurately without defaulting 0 to 1
     const rawYear = course.year;
     const yr = (rawYear !== undefined && rawYear !== null && !isNaN(rawYear)) ? Number(rawYear) : 1;
-
-    // Use explicit fallback for yearLabel based on numeric yr
     const yrLabel = course.yearLabel || (yr === 0 ? 'Pre-University' : `Year ${yr}`);
-    
-    // Key strictly by numeric year so year 0 and year 1 NEVER mix
     const key = `year-${yr}`;
 
     if (!map.has(key)) {
@@ -104,7 +98,6 @@ function groupCoursesByYear(courses) {
     map.get(key).courses.push(course);
   });
 
-  // Sort sequentially: Year 0 (Pre-Uni), Year 1, Year 2, etc.
   return Array.from(map.values()).sort((a, b) => a.year - b.year);
 }
 
@@ -115,20 +108,97 @@ function renderCourseCard(course, isCollapsed) {
 
   const head = document.createElement('div');
   head.className = 'course-card-head';
-  head.innerHTML = `
-    <div class="head-meta">
-      <span class="drag-handle" title="Drag anywhere in year box">✢</span>
-      <div class="course-code">${escapeHtml(course.code)}</div>
-      <button type="button" class="btn-edit-course" title="Edit Course" onclick="event.stopPropagation(); if(window.openCourseEditor) window.openCourseEditor('${course.id}')">⚙️</button>
-      <button type="button" class="btn-delete-course" title="Delete Course" onclick="event.stopPropagation(); if(window.deleteCourse) window.deleteCourse('${course.id}')">&times;</button>
-      <button type="button" class="collapse-btn" aria-label="Toggle expansion">
-        ${isCollapsed ? '+' : '−'}
-      </button>
-    </div>
-    <h3 class="course-name">${escapeHtml(course.name)}</h3>
-  `;
+  
+  // 1. Header meta container
+  const headMeta = document.createElement('div');
+  headMeta.className = 'head-meta';
+  
+  const dragHandle = document.createElement('span');
+  dragHandle.className = 'drag-handle';
+  dragHandle.title = 'Drag anywhere in year box';
+  dragHandle.textContent = '✢';
+  headMeta.appendChild(dragHandle);
+
+  const courseCode = document.createElement('div');
+  courseCode.className = 'course-code';
+  courseCode.textContent = course.code;
+  headMeta.appendChild(courseCode);
+
+  // --- Gear / Edit Button ---
+  const editBtn = document.createElement('button');
+  editBtn.type = 'button';
+  editBtn.className = 'edit-course-btn btn-edit-course';
+  editBtn.title = 'Edit Course';
+  editBtn.innerHTML = '⚙️';
+  editBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+  editBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+  editBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (typeof window.openCourseEditor === 'function') {
+      window.openCourseEditor(course.id);
+    }
+  });
+  headMeta.appendChild(editBtn);
+
+  // 2. Calendar Button
+  const calBtn = document.createElement('button');
+  calBtn.type = 'button';
+  calBtn.className = 'icon-btn cal-btn btn-calendar';
+  calBtn.title = 'View Term Calendar';
+  calBtn.style.background = 'none';
+  calBtn.style.border = 'none';
+  calBtn.style.cursor = 'pointer';
+  calBtn.style.padding = '0 2px';
+  calBtn.innerHTML = '📅';
+  calBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+  calBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (typeof window.openCalendarModal === 'function') {
+      window.openCalendarModal(course);
+    }
+  });
+  headMeta.appendChild(calBtn);
+
+  // 3. Delete & Collapse Controls
+  const actionControls = document.createElement('div');
+  actionControls.style.display = 'inline-flex';
+  actionControls.style.gap = '4px';
+  actionControls.style.alignItems = 'center';
+
+  const deleteBtn = document.createElement('button');
+  deleteBtn.type = 'button';
+  deleteBtn.className = 'btn-delete-course';
+  deleteBtn.title = 'Delete Course';
+  deleteBtn.innerHTML = '&times;';
+  deleteBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+  deleteBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (typeof window.deleteCourse === 'function') {
+      window.deleteCourse(course.id);
+    }
+  });
+  actionControls.appendChild(deleteBtn);
+
+  const collapseBtn = document.createElement('button');
+  collapseBtn.type = 'button';
+  collapseBtn.className = 'collapse-btn';
+  collapseBtn.setAttribute('aria-label', 'Toggle expansion');
+  collapseBtn.textContent = isCollapsed ? '+' : '−';
+  actionControls.appendChild(collapseBtn);
+
+  headMeta.appendChild(actionControls);
+  head.appendChild(headMeta);
+  
+  const courseTitle = document.createElement('h3');
+  courseTitle.className = 'course-name';
+  courseTitle.textContent = course.name;
+  head.appendChild(courseTitle);
+
   card.appendChild(head);
 
+  // 4. Module List
   const list = document.createElement('div');
   list.className = 'module-list';
 
@@ -136,28 +206,23 @@ function renderCourseCard(course, isCollapsed) {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'module-chip';
-    chip.draggable = true; // <--- Enable native dragging
+    chip.draggable = true;
     chip.dataset.moduleId = mod.id;
-    chip.dataset.courseId = course.id; // <--- Store source course ID
+    chip.dataset.courseId = course.id;
     chip.innerHTML = `
       <span class="m-label">${escapeHtml(mod.label)}</span>
       <span class="m-title">${escapeHtml(mod.title)}</span>
     `;
 
-    // Attach HTML5 drag data
-    // Attach HTML5 drag data
     chip.addEventListener('dragstart', (e) => {
       e.dataTransfer.setData('text/plain', JSON.stringify({
         moduleId: mod.id,
         fromCourseId: course.id
       }));
       e.dataTransfer.effectAllowed = 'move';
-      
-      // Delay adding the class so the native drag ghost doesn't look transparent
       setTimeout(() => chip.classList.add('is-dragging-chip'), 0); 
     });
 
-    // Clean up drag visuals when letting go
     chip.addEventListener('dragend', () => {
       chip.classList.remove('is-dragging-chip');
     });
@@ -167,6 +232,81 @@ function renderCourseCard(course, isCollapsed) {
 
   card.appendChild(list);
   return card;
+}
+
+/**
+ * Opens the calendar modal displaying course modules across weeks.
+ */
+function openCalendarModal(course) {
+  let modal = document.getElementById('calendar-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'calendar-modal';
+    document.body.appendChild(modal);
+  }
+
+  const lecturesPerWeek = 3;
+  const totalWeeks = 12;
+
+  // Flatten modules into lecture slots
+  const lectureStream = [];
+  (course.modules || []).forEach((mod) => {
+    const count = parseInt(mod.lectureCount, 10) || 1;
+    for (let i = 1; i <= count; i++) {
+      lectureStream.push({
+        label: mod.label || 'MOD',
+        title: mod.title || 'Untitled Module',
+        index: i,
+        total: count
+      });
+    }
+  });
+
+  // Render Week Grid
+  let weeksHTML = '';
+  let currentIdx = 0;
+
+  for (let w = 1; w <= totalWeeks; w++) {
+    let weekLecturesHTML = '';
+    for (let l = 0; l < lecturesPerWeek; l++) {
+      if (currentIdx < lectureStream.length) {
+        const item = lectureStream[currentIdx];
+        weekLecturesHTML += `
+          <div class="cal-lecture-item">
+            <span class="cal-lec-tag">${escapeHtml(item.label)} (${item.index}/${item.total})</span>
+            <div class="cal-lec-title">${escapeHtml(item.title)}</div>
+          </div>
+        `;
+        currentIdx++;
+      }
+    }
+
+    weeksHTML += `
+      <div class="cal-week-card">
+        <div class="cal-week-header">Week ${w}</div>
+        <div class="cal-week-body">
+          ${weekLecturesHTML || '<div class="cal-empty">No lectures</div>'}
+        </div>
+      </div>
+    `;
+  }
+
+  modal.innerHTML = `
+    <div class="calendar-modal-card">
+      <div class="modal-header">
+        <h2>📅 ${escapeHtml(course.code)}: ${escapeHtml(course.name)} Timeline</h2>
+        <button type="button" class="close-modal-btn" onclick="const m = document.getElementById('calendar-modal'); m.classList.remove('active'); m.classList.add('hidden');">&times;</button>
+      </div>
+      <div class="modal-body" style="overflow-y: auto;">
+        <div class="calendar-grid">
+          ${weeksHTML}
+        </div>
+      </div>
+    </div>
+  `;
+
+  modal.classList.remove('hidden');
+  modal.classList.add('active');
 }
 
 function renderTierToggles(legend, activeTiers) {
@@ -260,7 +400,7 @@ function renderDrawer(data, moduleId) {
   content.innerHTML = `
     <div class="drawer-header-actions">
       <span class="drawer-course-code">${escapeHtml(course.code)} · ${escapeHtml(mod.label)} ${chaptersText ? `(${chaptersText})` : ''}</span>
-      <button class="btn-edit-course" onclick="window.openCourseEditor('${mod.id}')" title="Edit Course">
+      <button class="btn-edit-course" onclick="if(window.openCourseEditor) window.openCourseEditor('${mod.id}')" title="Edit Course">
         ✏️
       </button>
     </div>
@@ -276,7 +416,9 @@ function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// Explicit Window assignments
 window.renderBoard = renderBoard;
 window.renderTierToggles = renderTierToggles;
 window.renderLegendBar = renderLegendBar;
 window.renderDrawer = renderDrawer;
+window.openCalendarModal = openCalendarModal;

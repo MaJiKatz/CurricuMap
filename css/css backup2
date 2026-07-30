@@ -1,0 +1,786 @@
+/* ============================================================
+   css/style.css - Complete Curriculum Map Styling
+   ============================================================ */
+
+:root {
+  --bg-main: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-header: #f1f5f9;
+  --border-color: #cbd5e1;
+  --text-primary: #0f172a;
+  --text-muted: #64748b;
+
+  --strong-color: #dc2626;
+  --strong-bg: #fee2e2;
+  --strong-border: #fca5a5;
+
+  --related-color: #2563eb;
+  --related-bg: #dbeafe;
+  --related-border: #93c5fd;
+
+  --weak-color: #059669;
+  --weak-bg: #d1fae5;
+  --weak-border: #6ee7b7;
+
+  --primary-accent: #2563eb;
+  --primary-hover: #1d4ed8;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ============================================================
+   Header Bar
+   ============================================================ */
+.app-header {
+  background: var(--bg-header);
+  color: var(--text-primary);
+  padding: 8px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 20;
+  position: relative;
+  border-bottom: 1px solid var(--border-color);
+  height: 52px;
+}
+
+.app-title {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.app-subtitle {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.header-right {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+/* ============================================================
+   Connection Toggles (Header)
+   ============================================================ */
+#tierToggles, .tier-toggles-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tier-toggle, 
+#tierToggles label, 
+.tier-toggles-container label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.tier-toggle input[type="checkbox"],
+#tierToggles input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: currentColor;
+}
+
+/* Strong Connection Pill */
+.tier-toggle[data-tier="strong"], 
+#tierToggles label:nth-child(1),
+.tier-toggle:has(input[value="strong"]) {
+  background-color: var(--strong-bg) !important;
+  color: var(--strong-color) !important;
+  border: 1px solid var(--strong-border) !important;
+}
+
+/* Related / Medium Connection Pill */
+.tier-toggle[data-tier="related"], 
+#tierToggles label:nth-child(2),
+.tier-toggle:has(input[value="related"]),
+.tier-toggle:has(input[value="medium"]) {
+  background-color: var(--related-bg) !important;
+  color: var(--related-color) !important;
+  border: 1px solid var(--related-border) !important;
+}
+
+/* Weak Connection Pill */
+.tier-toggle[data-tier="weak"], 
+#tierToggles label:nth-child(3),
+.tier-toggle:has(input[value="weak"]) {
+  background-color: var(--weak-bg) !important;
+  color: var(--weak-color) !important;
+  border: 1px solid var(--weak-border) !important;
+}
+
+.tier-toggle.is-off {
+  opacity: 0.45;
+  filter: grayscale(100%);
+  background-color: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #64748b !important;
+}
+
+/* ============================================================
+   Toolbar Buttons (Save / Load / Actions)
+   ============================================================ */
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn {
+  background: #ffffff;
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 0.825rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn:hover {
+  background: #f1f5f9;
+}
+
+.btn-primary {
+  background: var(--primary-accent);
+  color: #ffffff;
+  border-color: var(--primary-accent);
+}
+
+.btn-primary:hover {
+  background: var(--primary-hover);
+}
+
+.btn-secondary {
+  background: #ffffff;
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover {
+  background: #f1f5f9;
+}
+
+.btn-cancel {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
+.btn-cancel:hover {
+  background: #e2e8f0;
+}
+
+.btn-sm {
+  padding: 4px 8px;
+  font-size: 0.75rem;
+}
+
+/* ============================================================
+   Board Layout & Grid Background
+   ============================================================ */
+.board-wrap {
+  position: relative;
+  flex: 1;
+  overflow: auto;
+  background-color: #e2e8f0;
+  background-image: radial-gradient(#94a3b8 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.board {
+  display: flex;
+  gap: 24px;
+  padding: 24px;
+  min-width: max-content;
+  position: relative;
+  z-index: 1;
+}
+
+/* ============================================================
+   SVG Connection Overlay & Colored Lines
+   ============================================================ */
+svg.connection-layer,
+.connection-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+  overflow: visible;
+}
+
+/* All Path Baseline Styles */
+.connection-layer path,
+.connection-line,
+.conn-path,
+path[class*="conn"],
+path[class*="line"],
+path[data-tier] {
+  fill: none !important;
+  stroke-width: 3px !important;
+  stroke-opacity: 1 !important;
+  display: inline !important;
+  visibility: visible !important;
+}
+
+/* Strong Connections (Red Solid) */
+path.strong,
+path[data-tier="strong"],
+.connection-line.strong,
+.conn-path.strong {
+  stroke: var(--strong-color) !important;
+  stroke-dasharray: none !important;
+}
+
+/* Related / Medium Connections (Blue Dashed) */
+path.related,
+path.medium,
+path[data-tier="related"],
+path[data-tier="medium"],
+.connection-line.related,
+.connection-line.medium,
+.conn-path.related,
+.conn-path.medium {
+  stroke: var(--related-color) !important;
+  stroke-dasharray: 6 4 !important;
+}
+
+/* Weak Connections (Green Dotted) */
+path.weak,
+path[data-tier="weak"],
+.connection-line.weak,
+.conn-path.weak {
+  stroke: var(--weak-color) !important;
+  stroke-dasharray: 2 4 !important;
+}
+
+/* SVG Marker Arrowhead Colors */
+marker#arrow-strong path,
+marker[id*="strong"] path {
+  fill: var(--strong-color) !important;
+}
+
+marker#arrow-related path,
+marker#arrow-medium path,
+marker[id*="related"] path,
+marker[id*="medium"] path {
+  fill: var(--related-color) !important;
+}
+
+marker#arrow-weak path,
+marker[id*="weak"] path {
+  fill: var(--weak-color) !important;
+}
+
+/* ============================================================
+   Year Columns & Canvases
+   ============================================================ */
+.year-box {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.year-box-header {
+  background: #e2e8f0;
+  padding: 10px 14px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  border-bottom: 1px solid #cbd5e1;
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+}
+
+.year-canvas {
+  position: relative;
+  min-width: 480px;
+  min-height: 550px;
+  background: #f8fafc;
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
+}
+
+/* ============================================================
+   Course Cards & Module Chips
+   ============================================================ */
+.course-card {
+  position: absolute;
+  width: 220px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  transition: box-shadow 0.15s ease;
+  user-select: none;
+  z-index: 3;
+}
+
+.course-card.is-dragging {
+  box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+  z-index: 100 !important;
+}
+
+.course-card-head {
+  padding: 10px;
+  border-bottom: 1px solid var(--border-color);
+  background: #fafafa;
+  border-top-left-radius: 6px;
+  border-top-right-radius: 6px;
+  cursor: grab;
+}
+
+.course-card-head:active {
+  cursor: grabbing;
+}
+
+.head-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.drag-handle {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  cursor: grab;
+}
+
+.course-code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--primary-accent);
+}
+
+.edit-course-btn, .btn-calendar, .btn-delete-course, .collapse-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 2px 4px;
+  border-radius: 3px;
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+.edit-course-btn:hover, .btn-calendar:hover, .btn-delete-course:hover, .collapse-btn:hover {
+  background: #e2e8f0;
+  color: var(--text-primary);
+}
+
+.course-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.module-list {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.course-card.is-collapsed .module-list {
+  display: none;
+}
+
+.module-chip {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 6px 8px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  transition: background-color 0.15s ease;
+}
+
+.module-chip:hover {
+  background: #e2e8f0;
+}
+
+.module-chip.is-dragging-chip {
+  opacity: 0.4;
+}
+
+.module-chip.drag-over-top {
+  border-top: 3px solid var(--primary-accent);
+}
+
+.module-chip.drag-over-bottom {
+  border-bottom: 3px solid var(--primary-accent);
+}
+
+.m-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.m-title {
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+/* ============================================================
+   Detail Drawer / Aside
+   ============================================================ */
+.detail-drawer, aside.detail-drawer {
+  width: 320px;
+  background: #fff;
+  border-left: 1px solid var(--border-color);
+  padding: 20px;
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  margin-top: 52px;
+  padding-top: 16px;
+  z-index: 10;
+  overflow-y: auto;
+  box-shadow: -2px 0 8px rgba(0,0,0,0.05);
+}
+
+.drawer-empty {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  text-align: center;
+  margin-top: 40px;
+}
+
+.drawer-header-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.drawer-course-code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--primary-accent);
+}
+
+.drawer-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.drawer-section-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-top: 16px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 4px;
+}
+
+.topic-item {
+  margin-bottom: 10px;
+}
+
+.topic-title-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.topic-objective {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  padding-left: 8px;
+}
+
+/* ============================================================
+   Horizontal Color-Coded Footer Legend
+   ============================================================ */
+.legend-bar {
+  background: #ffffff;
+  border-top: 1px solid var(--border-color);
+  padding: 8px 24px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 20px;
+  font-size: 0.825rem;
+  font-weight: 500;
+  z-index: 20;
+}
+
+.legend-entry, .legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.legend-entry.strong, .legend-item.strong {
+  background-color: var(--strong-bg);
+  color: var(--strong-color);
+  border: 1px solid var(--strong-border);
+}
+
+.legend-entry.related, .legend-entry.medium, .legend-item.related, .legend-item.medium {
+  background-color: var(--related-bg);
+  color: var(--related-color);
+  border: 1px solid var(--related-border);
+}
+
+.legend-entry.weak, .legend-item.weak {
+  background-color: var(--weak-bg);
+  color: var(--weak-color);
+  border: 1px solid var(--weak-border);
+}
+
+.legend-line {
+  display: inline-block;
+  width: 24px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.legend-line.strong {
+  background-color: var(--strong-color);
+}
+
+.legend-line.related, .legend-line.medium {
+  background-color: var(--related-color);
+}
+
+.legend-line.weak {
+  background-color: var(--weak-color);
+}
+
+/* ============================================================
+   Modals
+   ============================================================ */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-overlay.hidden {
+  display: none !important;
+}
+
+.modal-container {
+  background: #fff;
+  border-radius: 8px;
+  width: 650px;
+  max-width: 90%;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+}
+
+.modal-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.close-btn, .close-modal-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.modal-tabs {
+  display: flex;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 10px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-weight: 500;
+  font-size: 0.875rem;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.tab-btn.active {
+  border-bottom-color: var(--primary-accent);
+  color: var(--primary-accent);
+  background: #fff;
+}
+
+.modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.form-group.full-width {
+  grid-column: span 2;
+}
+
+.form-group label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.form-group input, .form-group select {
+  padding: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 0.875rem;
+}
+
+.modal-footer {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+/* Calendar Modal */
+.calendar-modal-card {
+  background: #ffffff;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 920px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 16px;
+  padding: 12px 0;
+}
+
+.cal-week-card {
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: #f8fafc;
+  overflow: hidden;
+}
+
+.cal-week-header {
+  background: var(--primary-accent);
+  color: #ffffff;
+  font-weight: 600;
+  padding: 8px 12px;
+  font-size: 0.875rem;
+}
+
+.cal-week-body {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cal-lecture-item {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+
+.cal-lec-tag {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--primary-accent);
+  display: block;
+}
+
+.cal-lec-title {
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}

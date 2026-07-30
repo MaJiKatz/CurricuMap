@@ -1,270 +1,283 @@
+/* ==========================================
+   Course Modal Styles & Fixes
+   ========================================== */
+
+/* Modal Overlay & Animation */
 .modal-overlay {
   position: fixed;
-  top: 0; left: 0; width: 100vw; height: 100vh;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex; align-items: center; justify-content: center;
-  z-index: 1000;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 0.2s ease;
 }
-.modal-overlay.hidden { display: none; }
 
+/* Hidden State Fix */
+.modal-overlay.hidden,
+#courseModal.hidden {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Modal Container */
 .modal-container {
-  background: #1e222d; color: #e1e6ed;
-  width: 720px; max-width: 90vw; max-height: 85vh;
-  border-radius: 8px; border: 1px solid #333a4a;
-  display: flex; flex-direction: column; overflow: hidden;
+  background: #1e2430;
+  border: 1px solid #2a303f;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 650px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  color: #e2e8f0;
+  overflow: hidden;
 }
 
+/* Header */
 .modal-header {
-  padding: 16px 20px; display: flex; justify-content: space-between;
-  align-items: center; border-bottom: 1px solid #2a303f;
-}
-.close-btn { background: none; border: none; color: #8892b0; font-size: 24px; cursor: pointer; }
-
-.modal-tabs { display: flex; background: #161922; border-bottom: 1px solid #2a303f; }
-.tab-btn {
-  padding: 12px 20px; background: none; border: none;
-  color: #8892b0; cursor: pointer; font-weight: 600;
-}
-.tab-btn.active { color: #64ffda; border-bottom: 2px solid #64ffda; background: #1e222d; }
-
-.modal-body { padding: 20px; overflow-y: auto; flex: 1; }
-.tab-content { display: none; }
-.tab-content.active { display: block; }
-
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
-.form-group { display: flex; flex-direction: column; }
-.form-group.full-width { grid-column: span 2; }
-.form-group label { font-size: 12px; color: #8892b0; margin-bottom: 4px; }
-.form-group input, .form-group select {
-  padding: 8px 12px; background: #111319; border: 1px solid #333a4a;
-  color: #fff; border-radius: 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #2a303f;
 }
 
-.manager-row {
-  display: flex; gap: 8px; align-items: center;
-  background: #161922; padding: 10px; border-radius: 4px; margin-bottom: 8px;
-}
-.manager-row input, .manager-row select {
-  background: #111319; border: 1px solid #333a4a; color: #fff; padding: 6px 10px; border-radius: 4px;
-}
-
-.modal-footer {
-  padding: 16px 20px; border-top: 1px solid #2a303f;
-  display: flex; justify-content: flex-end; gap: 10px;
-}
-.btn { padding: 8px 16px; border-radius: 4px; border: none; cursor: pointer; font-weight: 600; }
-
-.btn-secondary { background: rgb(217, 217, 217); color: black; margin-top: 10px ;margin-bottom: 12px; }
-.btn-cancel { background: transparent; color: #8892b0; }
-
-/* Custom Add Course Button */
-.btn-add-course {
-  background: white;
-  color: #000000;
-  border: 1px solid rgba(6, 6, 6, 0.4);
-  padding: 8px 16px;
-  border-radius: 6px;
+.modal-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
   font-weight: 600;
-  font-size: 13px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease-in-out;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  color: #f8fafc;
 }
 
-.btn-add-course .btn-icon {
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 1;
-}
-
-/* Hover & Active States */
-.btn-add-course:hover {
-  background: white;
-  color: #0a192f;
-
-  box-shadow: 0 0 2px black;
-  
-}
-
-.btn-add-course:active {
-  transform: translateY(0);
-  box-shadow: none;
-}
-
-/* Card Action Header Container */
-.card-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
-}
-
-/* Edit Gear Icon Button */
-.edit-course-btn {
+.modal-header .close-btn {
   background: transparent;
   border: none;
-  color: #8892b0;
-  font-size: 13px;
+  color: #94a3b8;
+  font-size: 1.5rem;
   cursor: pointer;
-  padding: 2px 4px;
-  border-radius: 4px;
-  transition: color 0.2s, background 0.2s, transform 0.2s;
   line-height: 1;
-}
-
-.edit-course-btn:hover {
-  color: #64ffda;
-  background: rgba(100, 255, 218, 0.1);
-  transform: rotate(30deg); /* Smooth gear rotation effect */
-}
-
-/* Ensure drag handle and collapse buttons space nicely */
-.collapse-btn {
-  background: transparent;
-  border: none;
-  color: #8892b0;
-  font-size: 14px;
-  font-weight: bold;
-  cursor: pointer;
-  padding: 2px 4px;
-}
-
-.collapse-btn:hover {
-  color: #fff;
-}
-
-/* Styling when Connect Mode is Active */
-body.connect-mode-active .module-chip,
-body.connect-mode-active .course-card {
-  cursor: crosshair !important;
-}
-
-body.connect-mode-active .course-card:hover,
-body.connect-mode-active .module-chip:hover {
-  outline: 2px solid #3b82f6;
-}
-
-/* Nested items inside Module Rows */
-.module-row-container {
-  background: var(--surface-2, #1e293b);
-  border: 1px solid var(--border-color, #334155);
-  border-radius: 6px;
-  padding: 12px;
-  margin-bottom: 12px;
-}
-
-.module-header-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.nested-section {
-  margin-top: 10px;
-  padding-left: 16px;
-  border-left: 2px solid var(--accent-dim, #3b82f6);
-}
-
-.nested-section h5 {
-  margin: 4px 0 6px 0;
-  font-size: 1rem;
-  color: var(--text-muted, #94a3b8);
-  text-transform: uppercase;
-}
-
-.nested-item-row {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 6px;
-  align-items: center;
-}
-
-/* Add this rule to enlarge the input text and placeholder text */
-.nested-item-row input[type="text"],
-.nested-item-row input {
-  font-size: 0.95rem; /* Adjust to 1rem or 16px if you want it even larger */
-  padding: 6px 10px;  /* Gives the text some breathing room inside the box */
-}
-
-.btn-sm {
-  padding: 2px 8px;
-  font-size: 0.8rem;
-  border-radius: 4px;
-}
-
-/* Sets all text inputs, textareas, and select dropdowns inside the course modal to 1rem */
-#courseModal input[type="text"],
-#courseModal input[type="number"],
-#courseModal textarea,
-#courseModal select {
-  font-size: 1rem;
-  padding: 8px 10px; /* Optional: adds a little vertical padding so 1rem text doesn't feel cramped */
-}
-
-/* Dark background with white text for all inputs & selects in the course modal */
-#courseModal input[type="text"],
-#courseModal input[type="number"],
-#courseModal textarea,
-#courseModal select {
-  font-size: 1rem;
-  padding: 8px 10px;
-  background-color: #1a1d24; /* Or match your dark theme hex, e.g., #111827 or #0b0f19 */
-  color: #ffffff;
-  border: 1px solid #2d3748;
-  border-radius: 4px;
-}
-
-/* Ensure placeholder text stays crisp but slightly muted */
-#courseModal input::placeholder,
-#courseModal textarea::placeholder {
-  color: #a0aec0;
-}
-
-/* Ensure focus states stay clean and legible */
-#courseModal input[type="text"]:focus,
-#courseModal input[type="number"]:focus,
-#courseModal select:focus {
-  outline: none;
-  border-color: #3b82f6;
-  background-color: #1a1d24;
-  color: #ffffff;
-}
-
-.btn-delete-course {
-  background: transparent;
-  border: none;
-  color: #a0aec0;
-  font-size: 1.2rem;
-  font-weight: bold;
-  cursor: pointer;
-  padding: 0 4px;
-  line-height: 1;
+  padding: 0;
   transition: color 0.15s ease;
 }
 
-.btn-delete-course:hover {
-  color: #ef4444; /* Subtle warning red on hover */
+.modal-header .close-btn:hover {
+  color: #f8fafc;
 }
 
-/* --- Drag and Drop Visuals --- */
-.module-chip.is-dragging-chip {
-  opacity: 0.4;
-  border: 1px dashed #94a3b8;
-  transform: scale(0.98);
+/* Navigation Tabs */
+.modal-tabs {
+  display: flex;
+  background: #161a23;
+  border-bottom: 1px solid #2a303f;
+  padding: 0 16px;
 }
 
-.module-chip.drag-over-top {
-  border-top: 3px solid #3b82f6;
-  border-top-left-radius: 2px;
-  border-top-right-radius: 2px;
+.tab-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  padding: 12px 16px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s ease;
 }
 
-.module-chip.drag-over-bottom {
-  border-bottom: 3px solid #3b82f6;
-  border-bottom-left-radius: 2px;
-  border-bottom-right-radius: 2px;
+.tab-btn:hover {
+  color: #e2e8f0;
+}
+
+.tab-btn.active {
+  color: #38bdf8;
+  border-bottom-color: #38bdf8;
+}
+
+/* Modal Body & Tab Content */
+.modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+/* Form Controls & Layout */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-group.full-width {
+  grid-column: span 2;
+}
+
+.form-group label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: #f8fafc;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  border-color: #38bdf8;
+}
+
+.modal-body h5 {
+  margin: 0 0 12px 0;
+  color: #cbd5e1;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+/* Dynamic Lists (Modules & Connections) */
+#moduleList,
+#connectionList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.list-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: #161a23;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #2a303f;
+}
+
+.list-row input,
+.list-row select {
+  background: #0f172a;
+  border: 1px solid #334155;
+  color: #f8fafc;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  flex: 1;
+}
+
+.btn-remove-row {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 4px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-remove-row:hover {
+  background: rgba(239, 68, 68, 0.3);
+}
+
+/* Modal Footer & Buttons */
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid #2a303f;
+  background: #161a23;
+}
+
+.btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: background 0.15s ease;
+}
+
+.btn-secondary {
+  background: #334155;
+  color: #f8fafc;
+}
+
+.btn-secondary:hover {
+  background: #475569;
+}
+
+.btn-cancel {
+  background: transparent;
+  color: #94a3b8;
+  border: 1px solid #334155;
+}
+
+.btn-cancel:hover {
+  background: #0f172a;
+  color: #f8fafc;
+}
+
+.btn-add-course {
+  background: #38bdf8;
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.btn-add-course:hover {
+  background: #0284c7;
+  color: #ffffff;
+}
+
+.edit-course-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: color 0.15s ease;
+}
+
+.edit-course-btn:hover {
+  color: #38bdf8;
 }
