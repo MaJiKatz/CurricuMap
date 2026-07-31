@@ -1,8 +1,9 @@
 /* ============================================================
    js/exportRtf.js
-   Generates and triggers a download for a core Course Outline in RTF format.
+   Generates and triggers RTF downloads for individual or all course outlines.
    ============================================================ */
 
+// --- 1. EXPORT SINGLE COURSE ---
 function downloadCourseOutlineRTF(courseId) {
   const { course, connections } = window.getCourseById(courseId);
   if (!course) {
@@ -10,20 +11,56 @@ function downloadCourseOutlineRTF(courseId) {
     return;
   }
 
-  // --- 1. RTF HEADER & STYLES ---
   let rtf = `{\\rtf1\\ansi\\ansicpg1252\\deff0\\deflang1033\n`;
   rtf += `{\\fonttbl{\\f0\\fswiss\\fprq2\\fcharset0 Arial;}}\n`;
   rtf += `{\\colortbl ;\\red15\\green23\\blue42;\\red100\\green116\\blue139;}\n`;
   rtf += `\\viewkind4\\uc1\\f0\\fs22\n\n`;
 
-  // --- HEADER: COURSE NAME & NUMBER (CENTERED ONLY) ---
+  rtf += buildCourseRtfContent(course, connections || []);
+
+  rtf += `}\n`; // Close RTF block
+
+  triggerRtfDownload(rtf, `${course.code.replace(/\s+/g, '_')}_Course_Outline.rtf`);
+}
+
+// --- 2. EXPORT ALL COURSES (PAGE BREAK SEPARATED) ---
+function downloadAllCourseOutlinesRTF() {
+  if (!window.DATA || !window.DATA.courses || window.DATA.courses.length === 0) {
+    alert("No course data found.");
+    return;
+  }
+
+  let rtf = `{\\rtf1\\ansi\\ansicpg1252\\deff0\\deflang1033\n`;
+  rtf += `{\\fonttbl{\\f0\\fswiss\\fprq2\\fcharset0 Arial;}}\n`;
+  rtf += `{\\colortbl ;\\red15\\green23\\blue42;\\red100\\green116\\blue139;}\n`;
+  rtf += `\\viewkind4\\uc1\\f0\\fs22\n\n`;
+
+  const connections = window.DATA.connections || [];
+
+  window.DATA.courses.forEach((course, index) => {
+    if (index > 0) {
+      rtf += `\\page\n`; // Insert hard page break between courses
+    }
+    rtf += buildCourseRtfContent(course, connections);
+  });
+
+  rtf += `}\n`; // Close master RTF block
+
+  triggerRtfDownload(rtf, `Complete_Curriculum_Outlines.rtf`);
+}
+
+// --- 3. HELPER: BUILD COURSE RTF STRING ---
+function buildCourseRtfContent(course, connections) {
+  let rtf = '';
+
+  // HEADER: COURSE NAME & NUMBER (CENTERED)
   rtf += `\\pard\\qc\\b\\fs36 ${escapeRtf(course.code)}: ${escapeRtf(course.name)}\\b0\\fs22\\par\n`;
   if (course.credits) {
     rtf += `\\pard\\qc\\cf2\\fs20 (${course.credits} Credits)\\cf1\\fs22\\par\n`;
   }
   rtf += `\\pard\\qj\\par\n\n`;
 
-  // --- SECTION 1. TEXTBOOK INFORMATION ---
+  // SECTION 1. TEXTBOOK INFORMATION
   rtf += `\\pard\\qj\\b\\fs28 1. Required Textbook & Course Materials\\b0\\fs22\\par\n`;
   rtf += `\\line\\par\n`;
   
@@ -37,7 +74,7 @@ function downloadCourseOutlineRTF(courseId) {
   }
   rtf += `\\pard\\qj\\par\n\n`;
 
-  // --- SECTION 2. COURSE CALENDAR / SCHEDULE & FORMAT ---
+  // SECTION 2. COURSE CALENDAR / SCHEDULE & FORMAT
   rtf += `\\pard\\qj\\b\\fs28 2. Course Schedule Overview\\b0\\fs22\\par\n`;
   
   const config = window.currentCourseConfig || window.defaultScheduleConfig || { weeksInSemester: 12, meetingsPerWeek: 3, minutesPerBlock: 50 };
@@ -64,20 +101,19 @@ function downloadCourseOutlineRTF(courseId) {
   }
   rtf += `\\pard\\qj\\par\n\n`;
 
-  // --- SECTION 3. MODULES, LEARNING OBJECTIVES & CURRICULUM CONNECTIONS ---
+  // SECTION 3. MODULES, LEARNING OBJECTIVES & CURRICULUM CONNECTIONS
   rtf += `\\pard\\qj\\b\\fs28 3. Course Modules & Learning Objectives\\b0\\fs22\\par\n`;
   rtf += `\\line\\par\n`;
 
   (course.modules || []).forEach((mod, idx) => {
     const modNum = idx + 1;
-    // Level 1 Indent (360 twips): Sub-section Module Header (e.g., 3.1 Module 1: ...)
     rtf += `\\pard\\qj\\li360\\b\\fs24 3.${modNum} Module ${modNum}: ${escapeRtf(mod.title || mod.label)}\\b0\\fs22\\par\n`;
     
     if (mod.chapter) {
       rtf += `\\pard\\qj\\li360\\cf2 Reading Reference: Chapter ${escapeRtf(mod.chapter)}\\cf1\\par\n`;
     }
 
-    // Level 2 Indent (720 twips): Learning Objectives
+    // Learning Objectives
     rtf += `\\pard\\qj\\li720\\b Learning Objectives:\\b0\\par\n`;
     if (mod.topics && mod.topics.length > 0) {
       mod.topics.forEach(topic => {
@@ -86,7 +122,6 @@ function downloadCourseOutlineRTF(courseId) {
           rtf += `\\pard\\qj\\li720\\\'95  ${escapeRtf(topicTitle)}\\par\n`;
         }
         
-        // Level 3 Indent (1080 twips): Sub-objectives
         if (topic.objectives && topic.objectives.length > 0) {
           topic.objectives.forEach(obj => {
             const objText = typeof obj === 'string' 
@@ -101,7 +136,7 @@ function downloadCourseOutlineRTF(courseId) {
       rtf += `\\pard\\qj\\li720\\\'95  ${escapeRtf(mod.description || 'Core topics and competencies for this unit.')}\\par\n`;
     }
 
-    // Level 2 Indent (720 twips): Curriculum Connections & Strengths
+    // Curriculum Connections
     const modConnections = (connections || []).filter(c => c.from === mod.id || c.to === mod.id);
     if (modConnections.length > 0) {
       rtf += `\\pard\\qj\\li720\\b Curriculum Connections:\\b0\\par\n`;
@@ -109,7 +144,6 @@ function downloadCourseOutlineRTF(courseId) {
       const buildsUpon = modConnections.filter(c => c.to === mod.id);
       const leadsTo = modConnections.filter(c => c.from === mod.id);
 
-      // Section: Builds Upon
       if (buildsUpon.length > 0) {
         rtf += `\\pard\\qj\\li1080\\b\\cf2 Prior Foundations (Builds Upon):\\b0\\cf1\\par\n`;
         buildsUpon.forEach(conn => {
@@ -117,18 +151,13 @@ function downloadCourseOutlineRTF(courseId) {
           const strengthTerm = getPedagogicalStrength(conn);
           
           rtf += `\\pard\\qj\\li1440\\cf2 - `;
-          if (strengthTerm) {
-            rtf += `\\b [${escapeRtf(strengthTerm)}]\\b0  `;
-          }
+          if (strengthTerm) rtf += `\\b [${escapeRtf(strengthTerm)}]\\b0  `;
           rtf += `${escapeRtf(details.courseCode)} (${escapeRtf(details.moduleTitle)})`;
-          if (conn.note) {
-            rtf += ` -- ${escapeRtf(conn.note)}`;
-          }
+          if (conn.note) rtf += ` -- ${escapeRtf(conn.note)}`;
           rtf += `\\cf1\\par\n`;
         });
       }
 
-      // Section: Leads To
       if (leadsTo.length > 0) {
         rtf += `\\pard\\qj\\li1080\\b\\cf2 Target Applications (Leads To):\\b0\\cf1\\par\n`;
         leadsTo.forEach(conn => {
@@ -136,13 +165,9 @@ function downloadCourseOutlineRTF(courseId) {
           const strengthTerm = getPedagogicalStrength(conn);
           
           rtf += `\\pard\\qj\\li1440\\cf2 - `;
-          if (strengthTerm) {
-            rtf += `\\b [${escapeRtf(strengthTerm)}]\\b0  `;
-          }
+          if (strengthTerm) rtf += `\\b [${escapeRtf(strengthTerm)}]\\b0  `;
           rtf += `${escapeRtf(details.courseCode)} (${escapeRtf(details.moduleTitle)})`;
-          if (conn.note) {
-            rtf += ` -- ${escapeRtf(conn.note)}`;
-          }
+          if (conn.note) rtf += ` -- ${escapeRtf(conn.note)}`;
           rtf += `\\cf1\\par\n`;
         });
       }
@@ -151,21 +176,23 @@ function downloadCourseOutlineRTF(courseId) {
     rtf += `\\pard\\qj\\par\n`;
   });
 
-  rtf += `}\n`; // Close RTF block
+  return rtf;
+}
 
-  // --- TRIGGER BROWSER DOWNLOAD ---
-  const blob = new Blob([rtf], { type: 'application/rtf;charset=utf-8' });
+// --- UTILITY HELPERS ---
+
+function triggerRtfDownload(rtfContent, fileName) {
+  const blob = new Blob([rtfContent], { type: 'application/rtf;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${course.code.replace(/\s+/g, '_')}_Course_Outline.rtf`;
+  a.download = fileName;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
 
-// Maps connection weight/strength to pedagogical terminology
 function getPedagogicalStrength(conn) {
   const s = String(conn.strength || conn.weight || conn.level || '').toLowerCase();
   
@@ -180,7 +207,6 @@ function getPedagogicalStrength(conn) {
   return null;
 }
 
-// Helper: Safely escape RTF control characters and non-ASCII Unicode
 function escapeRtf(text) {
   if (!text) return '';
   return String(text)
@@ -190,7 +216,6 @@ function escapeRtf(text) {
     .replace(/[^\x00-\x7F]/g, char => `\\u${char.charCodeAt(0)}?`);
 }
 
-// Helper: Resolves connected Course and Module labels across window.DATA
 function findConnectionDetails(targetId) {
   if (!window.DATA || !window.DATA.courses) {
     return { courseCode: 'Connected Course', moduleTitle: targetId };
@@ -209,4 +234,6 @@ function findConnectionDetails(targetId) {
   return { courseCode: 'Related Topic', moduleTitle: targetId };
 }
 
+// --- GLOBAL BINDINGS ---
 window.downloadCourseOutlineRTF = downloadCourseOutlineRTF;
+window.downloadAllCourseOutlinesRTF = downloadAllCourseOutlinesRTF;
