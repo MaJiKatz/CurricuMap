@@ -60,6 +60,7 @@ curriculum-map/
   ...
   js/
     data-loader.js     fetches & indexes the JSON
+    exportRtf.js.      creates course outlines in RTF format
     render.js          pure DOM-building functions
     connections.js     SVG line drawing
     courseEditor.js    modal logic for editing course properties & schedule settings
@@ -174,3 +175,16 @@ const defaultScheduleConfig = {
   minutesPerMeeting: 50,
   startWeekDay: 'Monday'
 };
+
+## Exporting Course Outlines (RTF Format)
+
+Courses can be exported directly to Rich Text Format (`.rtf`), which can be opened natively in Microsoft Word, Google Docs, or Apple Pages for faculty customization.
+
+### Included Outline Sections
+1. **Header (Centered)**: Course Code, Course Title, and Credit Count.
+2. **Textbook & Required Materials**: Formatted listing for Title, Author, ISBN, or place-holders.
+3. **Course Schedule / Calendar**: Dynamic weekly breakdown calculated from active term configuration.
+4. **Modules & Learning Objectives**:
+   - Chapter reading assignments per module.
+   - Bulleted learning objectives and topics.
+   - **Curriculum Connections**: Sub-sections indicating prerequisite or forward-facing modules across other courses (including direction and contextual connection notes).

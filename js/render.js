@@ -161,6 +161,26 @@ function renderCourseCard(course, isCollapsed) {
   });
   headMeta.appendChild(calBtn);
 
+  // --- NEW: Download Outline (RTF) Button ---
+  const downloadBtn = document.createElement('button');
+  downloadBtn.type = 'button';
+  downloadBtn.className = 'icon-btn btn-download-outline';
+  downloadBtn.title = 'Download Course Outline (RTF)';
+  downloadBtn.style.background = 'none';
+  downloadBtn.style.border = 'none';
+  downloadBtn.style.cursor = 'pointer';
+  downloadBtn.style.padding = '0 2px';
+  downloadBtn.innerHTML = '📄';
+  downloadBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+  downloadBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (typeof window.downloadCourseOutlineRTF === 'function') {
+      window.downloadCourseOutlineRTF(course.id);
+    }
+  });
+  headMeta.appendChild(downloadBtn);
+
   // 3. Delete & Collapse Controls
   const actionControls = document.createElement('div');
   actionControls.style.display = 'inline-flex';

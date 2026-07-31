@@ -138,7 +138,8 @@ window.defaultScheduleConfig = {
 
     // --- BOARD POINTER DOWN (Handles both Card Dragging & Connect Drawing) ---
     board.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('button, .collapse-btn, .btn-edit-course, .edit-course-btn, .btn-delete-course, .btn-calendar')) {
+      
+      if (e.target.closest('button, .collapse-btn, .btn-edit-course, .edit-course-btn, .btn-delete-course, .btn-calendar, .btn-download-outline')) {
         return;
       }
 
@@ -359,6 +360,20 @@ window.defaultScheduleConfig = {
     board.addEventListener('pointercancel', stopDrag);
 
     board.addEventListener('click', (e) => {
+
+      const downloadBtn = e.target.closest('.btn-download-outline');
+      if (downloadBtn) {
+        e.stopPropagation();
+        e.preventDefault();
+        const card = downloadBtn.closest('.course-card');
+        if (card && card.dataset.courseId) {
+          if (typeof window.downloadCourseOutlineRTF === 'function') {
+            window.downloadCourseOutlineRTF(card.dataset.courseId);
+          }
+        }
+        return;
+      }
+
       if (isConnectMode) return;
 
       const editBtn = e.target.closest('.btn-edit-course, .edit-course-btn');
