@@ -1,17 +1,13 @@
 /* ============================================================
    js/courseEditor.js
-   Handles course modal interactions, module management, nested
-   topics/objectives editing, and connections.
+   Handles course modal interactions, module/midterm management, 
+   nested topics/objectives editing, and connections.
    ============================================================ */
 
 let currentCourse = null;
 let editingModules = [];
 let editingConnections = [];
 
-/**
- * Global handler triggered by clicking gear/pencil icon or Add Course button.
- * Accepts either a Course ID or a Module ID.
- */
 function openCourseEditor(targetId = null) {
   let course = null;
   let connections = [];
@@ -19,7 +15,6 @@ function openCourseEditor(targetId = null) {
   if (targetId && window.DATA) {
     let courseId = targetId;
 
-    // Check if passed targetId is actually a module ID and resolve parent course ID
     if (window.DATA.courseByModuleId && window.DATA.courseByModuleId[targetId]) {
       courseId = window.DATA.courseByModuleId[targetId].id;
     } else {
@@ -56,7 +51,6 @@ function openCourseModal(courseData = null, connectionsData = []) {
     textbook: {}
   };
 
-  // Deep clone modules to safely edit nested array attributes
   editingModules = courseData && courseData.modules 
     ? JSON.parse(JSON.stringify(courseData.modules)) 
     : [];
@@ -75,7 +69,6 @@ function openCourseModal(courseData = null, connectionsData = []) {
   const titleEl = document.getElementById('modalTitle');
   if (titleEl) titleEl.textContent = courseData ? 'Edit Course' : 'Add Course';
 
-  // Safely evaluate courseYear so numeric 0 is preserved
   const courseYear = (currentCourse.year !== undefined && currentCourse.year !== null) 
     ? currentCourse.year 
     : 1;
@@ -141,79 +134,95 @@ function renderModulesList() {
 
   container.innerHTML = '';
 
+  const availableModules = editingModules.filter(m => !m.isExam);
+
   editingModules.forEach((mod, modIdx) => {
-    if (!Array.isArray(mod.topics)) mod.topics = [];
-    if (!Array.isArray(mod.objectives)) mod.objectives = [];
-
     const wrapper = document.createElement('div');
-    wrapper.className = 'module-row-container';
+    wrapper.className = `module-row-container ${mod.isExam ? 'midterm-row-container' : ''}`;
 
-    // Module Header Info
-    let html = `
-      <div class="module-header-row">
-        <input type="text" placeholder="ID" value="${mod.id || ''}" style="width: 100px;" onchange="editingModules[${modIdx}].id = this.value">
-        <input type="text" placeholder="Label" value="${mod.label || ''}" style="width: 100px;" onchange="editingModules[${modIdx}].label = this.value">
-        <input type="text" placeholder="Module Title" value="${mod.title || ''}" style="flex: 1;" onchange="editingModules[${modIdx}].title = this.value">
-        <input type="number" class="mod-lectures-input" min="1" max="20" placeholder="Lectures (e.g., 3)" value="${mod.lectureCount || 1}" onchange="editingModules[${modIdx}].lectureCount = parseInt(this.value, 10) || 1" />
-        <button type="button" class="btn btn-cancel" onclick="removeModuleRow(${modIdx})">&times;</button>
-      </div>
-    `;
+    if (mod.isExam) {
+      // MIDTERM ROW
+      if (!Array.isArray(mod.coveredModuleIds)) mod.coveredModuleIds = [];
 
-    // Nested Topics Editor Section
-    html += `
-      <div class="nested-section">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <h5>Topics</h5>
-          <button type="button" class="btn btn-secondary btn-sm" onclick="addTopicRow(${modIdx})">+ Add Topic</button>
+      let optionsHtml = availableModules.map(m => {
+        const isChecked = mod.coveredModuleIds.includes(m.id);
+        return `
+          <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.85rem; background: #1e293b; padding: 2px 8px; border-radius: 4px; border: 1px solid #334155; color: #f1f5f9;">
+            <input type="checkbox" value="${m.id}" ${isChecked ? 'checked' : ''} onchange="toggleMidtermModule(${modIdx}, '${m.id}', this.checked)">
+            ${m.label || m.id}
+          </label>
+        `;
+      }).join(' ');
+
+      wrapper.innerHTML = `
+        <div class="module-header-row" style="background: rgba(107, 33, 168, 0.25); border-left: 4px solid #a855f7; padding: 6px;">
+          <span style="font-size:1.1rem;">📝</span>
+          <input type="text" placeholder="ID" value="${mod.id || ''}" style="width: 100px;" onchange="editingModules[${modIdx}].id = this.value">
+          <input type="text" placeholder="Label (e.g. EXAM 1)" value="${mod.label || ''}" style="width: 110px;" onchange="editingModules[${modIdx}].label = this.value">
+          <input type="text" placeholder="Midterm Title (e.g. Midterm Examination 1)" value="${mod.title || ''}" style="flex: 1;" onchange="editingModules[${modIdx}].title = this.value">
+          <input type="number" class="mod-lectures-input" min="1" max="5" placeholder="Slots" value="${mod.lectureCount || 1}" title="Calendar slots taken" onchange="editingModules[${modIdx}].lectureCount = parseInt(this.value, 10) || 1" />
+          <button type="button" class="btn btn-cancel" onclick="removeModuleRow(${modIdx})">&times;</button>
         </div>
-        <div id="topics-${modIdx}">
-    `;
-
-    mod.topics.forEach((topic, tIdx) => {
-      const topicVal = typeof topic === 'object' ? (topic.title || topic.name || topic.description || '') : topic;
-
-      html += `
-        <div class="nested-item-row">
-          <input type="text" 
-                 placeholder="Topic description..." 
-                 value="${topicVal || ''}" 
-                 style="flex: 1;" 
-                 onchange="editingModules[${modIdx}].topics[${tIdx}] = this.value">
-          <button type="button" class="btn btn-cancel btn-sm" onclick="removeTopicRow(${modIdx}, ${tIdx})">&times;</button>
+        <div class="nested-section" style="padding: 8px; background: rgba(0,0,0,0.2);">
+          <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 6px; color: #c084fc;">Modules Covered in this Midterm:</div>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+            ${optionsHtml || '<em style="font-size:0.8rem; color:#94a3b8;">Add standard modules first to assign them here.</em>'}
+          </div>
         </div>
       `;
-    });
+    } else {
+      // STANDARD MODULE ROW
+      if (!Array.isArray(mod.topics)) mod.topics = [];
+      if (!Array.isArray(mod.objectives)) mod.objectives = [];
 
-    html += `</div></div>`;
+      let html = `
+        <div class="module-header-row">
+          <input type="text" placeholder="ID" value="${mod.id || ''}" style="width: 100px;" onchange="editingModules[${modIdx}].id = this.value">
+          <input type="text" placeholder="Label" value="${mod.label || ''}" style="width: 100px;" onchange="editingModules[${modIdx}].label = this.value">
+          <input type="text" placeholder="Module Title" value="${mod.title || ''}" style="flex: 1;" onchange="editingModules[${modIdx}].title = this.value">
+          <input type="number" class="mod-lectures-input" min="1" max="20" placeholder="Lectures" value="${mod.lectureCount || 1}" onchange="editingModules[${modIdx}].lectureCount = parseInt(this.value, 10) || 1" />
+          <button type="button" class="btn btn-cancel" onclick="removeModuleRow(${modIdx})">&times;</button>
+        </div>
+        <div class="nested-section">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h5>Topics</h5>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="addTopicRow(${modIdx})">+ Add Topic</button>
+          </div>
+          <div id="topics-${modIdx}">
+      `;
 
-    // Nested Objectives Editor Section
-    html += `
-      <div class="nested-section">
+      mod.topics.forEach((topic, tIdx) => {
+        const topicVal = typeof topic === 'object' ? (topic.title || topic.name || topic.description || '') : topic;
+        html += `
+          <div class="nested-item-row">
+            <input type="text" placeholder="Topic description..." value="${topicVal || ''}" style="flex: 1;" onchange="editingModules[${modIdx}].topics[${tIdx}] = this.value">
+            <button type="button" class="btn btn-cancel btn-sm" onclick="removeTopicRow(${modIdx}, ${tIdx})">&times;</button>
+          </div>
+        `;
+      });
+
+      html += `</div></div><div class="nested-section">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <h5>Learning Objectives</h5>
           <button type="button" class="btn btn-secondary btn-sm" onclick="addObjectiveRow(${modIdx})">+ Add Objective</button>
         </div>
         <div id="objectives-${modIdx}">
-    `;
-
-    mod.objectives.forEach((obj, oIdx) => {
-      const objVal = typeof obj === 'object' ? (obj.title || obj.statement || obj.description || '') : obj;
-
-      html += `
-        <div class="nested-item-row">
-          <input type="text" 
-                 placeholder="Objective description..." 
-                 value="${objVal || ''}" 
-                 style="flex: 1;" 
-                 onchange="editingModules[${modIdx}].objectives[${oIdx}] = this.value">
-          <button type="button" class="btn btn-cancel btn-sm" onclick="removeObjectiveRow(${modIdx}, ${oIdx})">&times;</button>
-        </div>
       `;
-    });
 
-    html += `</div></div>`;
+      mod.objectives.forEach((obj, oIdx) => {
+        const objVal = typeof obj === 'object' ? (obj.title || obj.statement || obj.description || '') : obj;
+        html += `
+          <div class="nested-item-row">
+            <input type="text" placeholder="Objective description..." value="${objVal || ''}" style="flex: 1;" onchange="editingModules[${modIdx}].objectives[${oIdx}] = this.value">
+            <button type="button" class="btn btn-cancel btn-sm" onclick="removeObjectiveRow(${modIdx}, ${oIdx})">&times;</button>
+          </div>
+        `;
+      });
 
-    wrapper.innerHTML = html;
+      html += `</div></div>`;
+      wrapper.innerHTML = html;
+    }
+
     container.appendChild(wrapper);
   });
 }
@@ -228,9 +237,38 @@ function addModuleRow() {
     title: 'New Module',
     lectureCount: 3,
     topics: [],
-    objectives: []
+    objectives: [],
+    isExam: false
   });
   renderModulesList();
+}
+
+function addMidtermRow() {
+  const courseIdEl = document.getElementById('courseId');
+  const courseId = (courseIdEl && courseIdEl.value) ? courseIdEl.value : 'course';
+  
+  editingModules.push({
+    id: `${courseId}-midterm-${editingModules.length + 1}`,
+    label: `MIDTERM`,
+    title: 'Midterm Examination',
+    lectureCount: 1,
+    isExam: true,
+    coveredModuleIds: []
+  });
+  renderModulesList();
+}
+
+function toggleMidtermModule(midtermIdx, moduleId, isChecked) {
+  if (!editingModules[midtermIdx].coveredModuleIds) {
+    editingModules[midtermIdx].coveredModuleIds = [];
+  }
+  const set = new Set(editingModules[midtermIdx].coveredModuleIds);
+  if (isChecked) {
+    set.add(moduleId);
+  } else {
+    set.delete(moduleId);
+  }
+  editingModules[midtermIdx].coveredModuleIds = Array.from(set);
 }
 
 function removeModuleRow(index) {
@@ -238,7 +276,6 @@ function removeModuleRow(index) {
   renderModulesList();
 }
 
-// Helpers for Topics
 function addTopicRow(modIndex) {
   if (!editingModules[modIndex].topics) editingModules[modIndex].topics = [];
   editingModules[modIndex].topics.push('');
@@ -250,7 +287,6 @@ function removeTopicRow(modIndex, topicIndex) {
   renderModulesList();
 }
 
-// Helpers for Objectives
 function addObjectiveRow(modIndex) {
   if (!editingModules[modIndex].objectives) editingModules[modIndex].objectives = [];
   editingModules[modIndex].objectives.push('');
@@ -310,16 +346,27 @@ function saveCourseData() {
   const rawYear = yearEl ? yearEl.value : '';
   const yearVal = rawYear !== '' && !isNaN(rawYear) ? parseInt(rawYear, 10) : 1;
 
-  // Clean empty topic/objective strings before saving
-  const cleanedModules = editingModules.map((mod) => ({
-    ...mod,
-    topics: (mod.topics || [])
-      .map((t) => (typeof t === 'object' ? (t.title || t.name || t.description || '') : t))
-      .filter((t) => typeof t === 'string' && t.trim() !== ''),
-    objectives: (mod.objectives || [])
-      .map((o) => (typeof o === 'object' ? (o.title || o.statement || o.description || '') : o))
-      .filter((o) => typeof o === 'string' && o.trim() !== '')
-  }));
+  const cleanedModules = editingModules.map((mod) => {
+    if (mod.isExam) {
+      return {
+        id: mod.id,
+        label: mod.label || 'MIDTERM',
+        title: mod.title || 'Midterm Examination',
+        lectureCount: parseInt(mod.lectureCount, 10) || 1,
+        isExam: true,
+        coveredModuleIds: mod.coveredModuleIds || []
+      };
+    }
+    return {
+      ...mod,
+      topics: (mod.topics || [])
+        .map((t) => (typeof t === 'object' ? (t.title || t.name || t.description || '') : t))
+        .filter((t) => typeof t === 'string' && t.trim() !== ''),
+      objectives: (mod.objectives || [])
+        .map((o) => (typeof o === 'object' ? (o.title || o.statement || o.description || '') : o))
+        .filter((o) => typeof o === 'string' && o.trim() !== '')
+    };
+  });
 
   const courseIdEl = document.getElementById('courseId');
   const courseCodeEl = document.getElementById('courseCode');
@@ -350,12 +397,13 @@ function saveCourseData() {
   closeCourseModal();
 }
 
-// Assign explicitly to window scope
 window.openCourseEditor = openCourseEditor;
 window.openCourseModal = openCourseModal;
 window.closeCourseModal = closeCourseModal;
 window.switchTab = switchTab;
 window.addModuleRow = addModuleRow;
+window.addMidtermRow = addMidtermRow;
+window.toggleMidtermModule = toggleMidtermModule;
 window.removeModuleRow = removeModuleRow;
 window.addTopicRow = addTopicRow;
 window.removeTopicRow = removeTopicRow;

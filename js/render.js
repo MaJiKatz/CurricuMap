@@ -1,21 +1,14 @@
 /* ============================================================
    render.js
-   DOM rendering without inline topic nodes on the map.
+   DOM rendering for courses, modules, and midterms.
    ============================================================ */
 
-/**
- * Helper to safely extract and render topic text whether stored 
- * as a string or an object.
- */
 function formatTopic(topic) {
   if (!topic) return '';
   if (typeof topic === 'string') return topic;
   return topic.title || topic.name || topic.description || JSON.stringify(topic);
 }
 
-/**
- * Helper to format textbook string or object cleanly.
- */
 function formatTextbook(tb) {
   if (!tb) return 'None listed';
   if (typeof tb === 'string') return tb;
@@ -28,15 +21,11 @@ function formatTextbook(tb) {
   return parts.length > 0 ? parts.join(' ') : 'None listed';
 }
 
-/**
- * Renders the primary year boxes and course cards with positioning fallback.
- */
 function renderBoard(data, collapsedCourses = new Set(), positions = {}) {
   const board = document.getElementById('board');
   if (!board) return;
   board.innerHTML = '';
 
-  // Handle empty state when starting with no courses
   if (!data || !data.courses || data.courses.length === 0) {
     board.innerHTML = `
       <div class="empty-board-message" style="text-align: center; padding: 60px 20px; color: #a0aec0;">
@@ -109,7 +98,6 @@ function renderCourseCard(course, isCollapsed) {
   const head = document.createElement('div');
   head.className = 'course-card-head';
   
-  // 1. Header meta container
   const headMeta = document.createElement('div');
   headMeta.className = 'head-meta';
   
@@ -124,7 +112,6 @@ function renderCourseCard(course, isCollapsed) {
   courseCode.textContent = course.code;
   headMeta.appendChild(courseCode);
 
-  // --- Gear / Edit Button ---
   const editBtn = document.createElement('button');
   editBtn.type = 'button';
   editBtn.className = 'edit-course-btn btn-edit-course';
@@ -141,7 +128,6 @@ function renderCourseCard(course, isCollapsed) {
   });
   headMeta.appendChild(editBtn);
 
-  // 2. Calendar Button
   const calBtn = document.createElement('button');
   calBtn.type = 'button';
   calBtn.className = 'icon-btn cal-btn btn-calendar';
@@ -161,7 +147,6 @@ function renderCourseCard(course, isCollapsed) {
   });
   headMeta.appendChild(calBtn);
 
-  // --- NEW: Download Outline (RTF) Button ---
   const downloadBtn = document.createElement('button');
   downloadBtn.type = 'button';
   downloadBtn.className = 'icon-btn btn-download-outline';
@@ -181,7 +166,6 @@ function renderCourseCard(course, isCollapsed) {
   });
   headMeta.appendChild(downloadBtn);
 
-  // 3. Delete & Collapse Controls
   const actionControls = document.createElement('div');
   actionControls.style.display = 'inline-flex';
   actionControls.style.gap = '4px';
@@ -218,21 +202,31 @@ function renderCourseCard(course, isCollapsed) {
 
   card.appendChild(head);
 
-  // 4. Module List
+  // Module & Midterm List Rendering
   const list = document.createElement('div');
   list.className = 'module-list';
 
   (course.modules || []).forEach((mod) => {
     const chip = document.createElement('button');
     chip.type = 'button';
-    chip.className = 'module-chip';
+    chip.className = `module-chip ${mod.isExam ? 'midterm-chip' : ''}`;
     chip.draggable = true;
     chip.dataset.moduleId = mod.id;
     chip.dataset.courseId = course.id;
-    chip.innerHTML = `
-      <span class="m-label">${escapeHtml(mod.label)}</span>
-      <span class="m-title">${escapeHtml(mod.title)}</span>
-    `;
+
+    if (mod.isExam) {
+      chip.style.borderColor = '#a855f7';
+      chip.style.background = 'rgba(107, 33, 168, 0.35)';
+      chip.innerHTML = `
+        <span class="m-label" style="color: #e9d5ff; font-weight: 600;">📝 ${escapeHtml(mod.label)}</span>
+        <span class="m-title" style="font-weight: 600; color: #ffffff;">${escapeHtml(mod.title)}</span>
+      `;
+    } else {
+      chip.innerHTML = `
+        <span class="m-label">${escapeHtml(mod.label)}</span>
+        <span class="m-title">${escapeHtml(mod.title)}</span>
+      `;
+    }
 
     chip.addEventListener('dragstart', (e) => {
       e.dataTransfer.setData('text/plain', JSON.stringify({
@@ -254,9 +248,6 @@ function renderCourseCard(course, isCollapsed) {
   return card;
 }
 
-/**
- * Opens the calendar modal displaying course modules across weeks.
- */
 function openCalendarModal(course) {
   let modal = document.getElementById('calendar-modal');
   if (!modal) {
@@ -268,21 +259,20 @@ function openCalendarModal(course) {
   const lecturesPerWeek = 3;
   const totalWeeks = 12;
 
-  // Flatten modules into lecture slots
   const lectureStream = [];
   (course.modules || []).forEach((mod) => {
     const count = parseInt(mod.lectureCount, 10) || 1;
     for (let i = 1; i <= count; i++) {
       lectureStream.push({
-        label: mod.label || 'MOD',
-        title: mod.title || 'Untitled Module',
+        label: mod.label || (mod.isExam ? 'EXAM' : 'MOD'),
+        title: mod.title || 'Untitled',
         index: i,
-        total: count
+        total: count,
+        isExam: !!mod.isExam
       });
     }
   });
 
-  // Render Week Grid
   let weeksHTML = '';
   let currentIdx = 0;
 
@@ -291,9 +281,11 @@ function openCalendarModal(course) {
     for (let l = 0; l < lecturesPerWeek; l++) {
       if (currentIdx < lectureStream.length) {
         const item = lectureStream[currentIdx];
+        const isExamStyle = item.isExam ? 'background: rgba(107, 33, 168, 0.3); border-left: 3px solid #a855f7;' : '';
+        
         weekLecturesHTML += `
-          <div class="cal-lecture-item">
-            <span class="cal-lec-tag">${escapeHtml(item.label)} (${item.index}/${item.total})</span>
+          <div class="cal-lecture-item" style="${isExamStyle}">
+            <span class="cal-lec-tag" style="${item.isExam ? 'color: #d8b4fe;' : ''}">${escapeHtml(item.label)} (${item.index}/${item.total})</span>
             <div class="cal-lec-title">${escapeHtml(item.title)}</div>
           </div>
         `;
@@ -383,6 +375,36 @@ function renderDrawer(data, moduleId) {
   empty.hidden = true;
   content.hidden = false;
 
+  if (mod.isExam) {
+    // MIDTERM DRAWER VIEW
+    const coveredMods = (mod.coveredModuleIds || [])
+      .map(id => data.moduleById ? data.moduleById[id] : null)
+      .filter(Boolean);
+
+    const coveredHtml = coveredMods.length > 0
+      ? coveredMods.map(m => `
+          <div class="topic-item" style="border-left: 3px solid #a855f7; padding-left: 8px; margin-bottom: 8px;">
+            <strong>${escapeHtml(m.label)}:</strong> ${escapeHtml(m.title)}
+          </div>
+        `).join('')
+      : '<p class="topic-objective">No specific modules mapped to this exam yet.</p>';
+
+    content.innerHTML = `
+      <div class="drawer-header-actions">
+        <span class="drawer-course-code">${escapeHtml(course.code)} · 📝 ${escapeHtml(mod.label)}</span>
+        <button class="btn-edit-course" onclick="if(window.openCourseEditor) window.openCourseEditor('${mod.id}')" title="Edit Course">✏️</button>
+      </div>
+      <h2 class="drawer-title">${escapeHtml(mod.title)}</h2>
+      <div style="background: rgba(107, 33, 168, 0.25); border: 1px solid #a855f7; color: #f3e8ff; padding: 10px; border-radius: 6px; margin: 12px 0;">
+        ⏱️ <strong>Schedule Allocation:</strong> Takes ${mod.lectureCount || 1} lecture block(s) in term layout.
+      </div>
+      <div class="drawer-section-label">Scope & Covered Modules</div>
+      ${coveredHtml}
+    `;
+    return;
+  }
+
+  // STANDARD MODULE DRAWER VIEW
   const chaptersText = mod.chapters ? `Ch. ${mod.chapters.join(', ')}` : '';
   const formattedTb = formatTextbook(course.textbook);
   const textbookText = formattedTb && formattedTb !== 'None listed' 
@@ -420,9 +442,7 @@ function renderDrawer(data, moduleId) {
   content.innerHTML = `
     <div class="drawer-header-actions">
       <span class="drawer-course-code">${escapeHtml(course.code)} · ${escapeHtml(mod.label)} ${chaptersText ? `(${chaptersText})` : ''}</span>
-      <button class="btn-edit-course" onclick="if(window.openCourseEditor) window.openCourseEditor('${mod.id}')" title="Edit Course">
-        ✏️
-      </button>
+      <button class="btn-edit-course" onclick="if(window.openCourseEditor) window.openCourseEditor('${mod.id}')" title="Edit Course">✏️</button>
     </div>
     <h2 class="drawer-title">${escapeHtml(mod.title)}</h2>
     ${textbookText}
@@ -436,7 +456,6 @@ function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// Explicit Window assignments
 window.renderBoard = renderBoard;
 window.renderTierToggles = renderTierToggles;
 window.renderLegendBar = renderLegendBar;
