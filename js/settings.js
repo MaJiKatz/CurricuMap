@@ -2,13 +2,13 @@
    Global Application Settings Management
    ============================================================ */
 
-// Default Fallbacks (MUN Compliant)
+// Default Fallbacks
 window.DEFAULT_GLOBAL_SETTINGS = {
   gradingSystem: "Numeric Grade System (0-100%, pass mark 50%) in accordance with University Senate regulations.",
   missedWorkPolicy: "In accordance with University Regulations (Exemptions from Parts of the Evaluation), students unable to complete an evaluation due to acceptable cause must notify the instructor promptly. Where acceptable cause is established, an alternate evaluation or reweighting will be offered.",
-  academicIntegrity: "Students are expected to adhere strictly to Memorial University of Newfoundland's standards of academic honesty. Please refer to the entry on Academic Misconduct in the University Calendar for definitions, procedures, and penalties regarding plagiarism, cheating, and misrepresentation.",
-  accommodations: "Memorial University of Newfoundland is committed to accommodating students with disabilities. Students requiring academic accommodations are encouraged to register with Student Accessibility Services (SAS) and inform the instructor as early as possible in the semester.",
-  privacyAtipp: "Methods used for the notification of grades earned in all parts of the evaluation and for the return of graded evaluative instruments will adhere strictly to the Access to Information and Protection of Privacy Act (ATIPP) of the Government of Newfoundland and Labrador. Grades will only be posted or communicated via secure, University-approved channels (e.g., Brightspace or official university email)."
+  academicIntegrity: "Students are expected to adhere strictly to standards of academic honesty. Please refer to the entry on Academic Misconduct in the University Calendar for definitions, procedures, and penalties regarding plagiarism, cheating, and misrepresentation.",
+  accommodations: "The institution is committed to accommodating students with disabilities. Students requiring academic accommodations are encouraged to register with Student Accessibility Services (SAS) and inform the instructor as early as possible in the semester.",
+  privacyAtipp: "Methods used for the notification of grades earned in all parts of the evaluation and for the return of graded evaluative instruments will adhere strictly to the Access to Information and Protection of Privacy Act (ATIPP) of the local Government. Grades will only be posted or communicated via secure, University-approved channels (e.g., Brightspace or official university email)."
 };
 
 // Fetch current active settings (localStorage -> Fallbacks)

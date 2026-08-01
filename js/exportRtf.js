@@ -1,7 +1,6 @@
 /* ============================================================
    js/exportRtf.js
-   Generates and triggers RTF downloads for individual or all course outlines,
-   compliant with Memorial University of Newfoundland (MUN) syllabus regulations.
+   Generates and triggers RTF downloads for individual or all course outlines.
    Includes global institutional policy resolution and curriculum stats summaries.
    ============================================================ */
 
@@ -410,20 +409,20 @@ function buildCourseRtfContent(course, connections) {
   }
   rtf += `\\pard\\qj\\par\n\n`;
 
-  // SECTION 8. UNIVERSITY STATEMENTS & POLICIES (MUN COMPLIANT / INSTITUTIONAL SETTINGS)
+  // SECTION 8. UNIVERSITY STATEMENTS & POLICIES (INSTITUTIONAL SETTINGS)
   rtf += `\\pard\\qj\\b\\fs28 8. University Statements & Institutional Policies\\b0\\fs22\\par\n`;
   rtf += `\\line\\par\n`;
 
   // 8.1 Academic Integrity
-  const academicIntegrity = course.academicIntegrity || globalSettings.academicIntegrity || "Students are expected to adhere strictly to Memorial University of Newfoundland's standards of academic honesty. Please refer to the entry on Academic Misconduct in the University Calendar for definitions, procedures, and penalties regarding plagiarism, cheating, and misrepresentation.";
+  const academicIntegrity = course.academicIntegrity || globalSettings.academicIntegrity || "Students are expected to adhere strictly to standards of academic honesty. Please refer to the entry on Academic Misconduct in the University Calendar for definitions, procedures, and penalties regarding plagiarism, cheating, and misrepresentation.";
   rtf += `\\pard\\qj\\li360\\b 8.1 Academic Integrity:\\b0  ${escapeRtf(academicIntegrity)}\\par\n\n`;
 
   // 8.2 Student Accommodations
-  const accommodations = course.accommodations || globalSettings.accommodations || "Memorial University of Newfoundland is committed to accommodating students with disabilities. Students requiring academic accommodations are encouraged to register with Student Accessibility Services (SAS) and inform the instructor as early as possible in the semester.";
+  const accommodations = course.accommodations || globalSettings.accommodations || "The institution is committed to accommodating students with disabilities. Students requiring academic accommodations are encouraged to register with Student Accessibility Services (SAS) and inform the instructor as early as possible in the semester.";
   rtf += `\\pard\\qj\\li360\\b 8.2 Student Accommodations:\\b0  ${escapeRtf(accommodations)}\\par\n\n`;
 
   // 8.3 Student Privacy & ATIPP
-  const privacyAtipp = course.privacyAtipp || globalSettings.privacyAtipp || "Methods used for the notification of grades earned in all parts of the evaluation and for the return of graded evaluative instruments will adhere strictly to the Access to Information and Protection of Privacy Act (ATIPP) of the Government of Newfoundland and Labrador. Grades will only be posted or communicated via secure, University-approved channels (e.g., Brightspace or official university email).";
+  const privacyAtipp = course.privacyAtipp || globalSettings.privacyAtipp || "Methods used for the notification of grades earned in all parts of the evaluation and for the return of graded evaluative instruments will adhere strictly to the Access to Information and Protection of Privacy Act (ATIPP) of the local Government. Grades will only be posted or communicated via secure, University-approved channels (e.g., Brightspace or official university email).";
   rtf += `\\pard\\qj\\li360\\b 8.3 Student Privacy & Grade Notification (ATIPP):\\b0  ${escapeRtf(privacyAtipp)}\\par\n`;
   
   rtf += `\\pard\\qj\\par\n\n`;
