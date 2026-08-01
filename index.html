@@ -52,6 +52,14 @@
           ⬆️ Load Workspace
         </button>
 
+        <button onclick="openSettingsModal()" class="btn btn-secondary" title="Global Department & Institutional Policy Defaults">
+          ⚙️ Settings
+        </button>
+
+        <button onclick="openIntroModal()" class="btn btn-secondary" title="Quick How-To Guide">
+          ❓ Guide
+        </button>
+
         <button onclick="downloadAllCourseOutlinesRTF()" class="btn btn-outline-primary">
           📄 Download All Outlines (RTF)
         </button>
@@ -65,6 +73,35 @@
       <!-- year columns injected here -->
     </div>
   </main>
+
+  <!-- ONBOARDING / INTRO HOW-TO MODAL -->
+  <div id="introModal" class="modal-overlay hidden">
+    <div class="modal-container intro-modal-container">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <h2 id="introTitle">Welcome to Curriculum Map</h2>
+          <span id="introBadge" class="intro-step-badge">1 of 5</span>
+        </div>
+        <button class="close-btn" onclick="closeIntroModal()">&times;</button>
+      </div>
+
+      <div class="modal-body intro-modal-body">
+        <div id="introContent" class="intro-step-content">
+          <!-- Dynamically populated by introModal.js -->
+        </div>
+      </div>
+
+      <div class="modal-footer intro-modal-footer">
+        <div id="introDots" class="intro-dots">
+          <!-- Navigation dots populated by introModal.js -->
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button id="introPrevBtn" class="btn btn-secondary" onclick="prevIntroStep()">← Back</button>
+          <button id="introNextBtn" class="btn btn-primary" onclick="nextIntroStep()">Next →</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Course Editor Modal -->
   <div id="courseModal" class="modal-overlay hidden">
@@ -182,10 +219,63 @@
     <div class="modal-card calendar-modal-card">
       <div class="modal-header">
         <h2 id="calendar-modal-title">Course Calendar View</h2>
-        <button class="close-modal-btn" onclick="closeCalendarModal()">&times;</button>
+        <button class="close-btn" onclick="closeCalendarModal()">&times;</button>
       </div>
       <div id="calendar-grid" class="calendar-grid">
         <!-- Calendar weeks/lectures injected by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Global Institutional Settings Modal -->
+  <div id="settings-modal" class="modal-overlay hidden">
+    <div class="modal-container">
+      <div class="modal-header">
+        <h2>Department & Institutional Policy Defaults</h2>
+        <button class="close-btn" onclick="closeSettingsModal()">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 1rem; font-style: italic;">
+          These defaults auto-populate Sections 3.2, 3.3, and 8 across all exported RTF course outlines unless overridden within a specific course.
+        </p>
+
+        <div class="form-grid">
+          <!-- Section 3.2 -->
+          <div class="form-group full-width">
+            <label for="setting-gradingSystem">Section 3.2: Grading System</label>
+            <textarea id="setting-gradingSystem" rows="2" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 4px; padding: 8px; font-family: inherit; font-size: 0.9rem;"></textarea>
+          </div>
+
+          <!-- Section 3.3 -->
+          <div class="form-group full-width">
+            <label for="setting-missedWorkPolicy">Section 3.3: Alternate Evaluation & Missed Work Policy</label>
+            <textarea id="setting-missedWorkPolicy" rows="3" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 4px; padding: 8px; font-family: inherit; font-size: 0.9rem;"></textarea>
+          </div>
+
+          <!-- Section 8.1 -->
+          <div class="form-group full-width">
+            <label for="setting-academicIntegrity">Section 8.1: Academic Integrity Statement</label>
+            <textarea id="setting-academicIntegrity" rows="3" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 4px; padding: 8px; font-family: inherit; font-size: 0.9rem;"></textarea>
+          </div>
+
+          <!-- Section 8.2 -->
+          <div class="form-group full-width">
+            <label for="setting-accommodations">Section 8.2: Student Accommodations Statement</label>
+            <textarea id="setting-accommodations" rows="3" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 4px; padding: 8px; font-family: inherit; font-size: 0.9rem;"></textarea>
+          </div>
+
+          <!-- Section 8.3 -->
+          <div class="form-group full-width">
+            <label for="setting-privacyAtipp">Section 8.3: Student Privacy & ATIPP Statement</label>
+            <textarea id="setting-privacyAtipp" rows="3" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 4px; padding: 8px; font-family: inherit; font-size: 0.9rem;"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-cancel" onclick="closeSettingsModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveGlobalSettings()">Save Settings</button>
       </div>
     </div>
   </div>
@@ -207,6 +297,8 @@
   <script src="js/courseEditor.js"></script>
   <script src="js/calendarView.js"></script>
   <script src="js/exportRtf.js"></script>
+  <script src="js/settings.js"></script>
+  <script src="js/introModal.js"></script>
   <script type="module" src="js/main.js"></script>
 
 </body>

@@ -2,6 +2,7 @@
    js/exportRtf.js
    Generates and triggers RTF downloads for individual or all course outlines,
    compliant with Memorial University of Newfoundland (MUN) syllabus regulations.
+   Includes global institutional policy resolution and curriculum stats summaries.
    ============================================================ */
 
 // --- 1. EXPORT SINGLE COURSE ---
@@ -24,7 +25,7 @@ function downloadCourseOutlineRTF(courseId) {
   triggerRtfDownload(rtf, `${course.code.replace(/\s+/g, '_')}_Course_Outline.rtf`);
 }
 
-// --- 2. EXPORT ALL COURSES (WITH DEDICATED SUMMARY PAGE & PAGE BREAKS) ---
+// --- 2. EXPORT ALL COURSES (WITH DEDICATED SUMMARY PAGE & SECTION BREAKS) ---
 function downloadAllCourseOutlinesRTF() {
   if (!window.DATA || !window.DATA.courses || window.DATA.courses.length === 0) {
     alert("No course data found.");
@@ -40,7 +41,7 @@ function downloadAllCourseOutlinesRTF() {
   const courses = window.DATA.courses;
 
   // ==========================================
-  // PAGE 1: STANDALONE SUMMARY COVER PAGE
+  // PAGE 1: STANDALONE PROGRAM SUMMARY PAGE
   // ==========================================
   rtf += `\\pard\\qc\\b\\fs36 Program Curriculum & Workload Summary\\b0\\fs22\\par\n`;
   rtf += `\\line\\par\n\n`;
@@ -68,11 +69,11 @@ function downloadAllCourseOutlinesRTF() {
   rtf += `\\pard\\qj\\li360\\\'95  \\b Total Combined Contact Hours:\\b0  ${grandTotalHours} hrs\\par\n`;
   rtf += `\\pard\\qj\\par\n\n`;
 
-  rtf += `\\pard\\qj\\b\\fs28 Course-by-Course Stats\\b0\\fs22\\par\n`;
+  rtf += `\\pard\\qj\\b\\fs28 Course-by-Course Hours Breakdown\\b0\\fs22\\par\n`;
   rtf += `\\line\\par\n`;
   rtf += courseStatsListRtf;
 
-  // HARD PAGE BREAK & SECTION RESET TO KEEP SUMMARY EXCLUSIVELY ON PAGE 1
+  // HARD PAGE BREAK & SECTION RESET (ISOLATES SUMMARY TO PAGE 1)
   rtf += `\\sect\\page\\sectd\n\n`;
 
   // ==========================================
@@ -80,7 +81,7 @@ function downloadAllCourseOutlinesRTF() {
   // ==========================================
   courses.forEach((course, index) => {
     if (index > 0) {
-      rtf += `\\page\n`; // Insert hard page break between consecutive outlines
+      rtf += `\\page\n`; // Hard page break between consecutive outlines
     }
     rtf += buildCourseRtfContent(course, connections);
   });
@@ -90,7 +91,7 @@ function downloadAllCourseOutlinesRTF() {
   triggerRtfDownload(rtf, `Complete_Curriculum_Outlines.rtf`);
 }
 
-// --- 3. HELPER: CALCULATE COURSE HOURS & EVALUATION ---
+// --- 3. HELPER: CALCULATE COURSE HOURS & EVALUATION SCHEME ---
 function calculateCourseHoursAndStats(course) {
   let lectureCount = 0;
   let labHours = 0;
@@ -98,16 +99,16 @@ function calculateCourseHoursAndStats(course) {
   const midterms = [];
   const labs = [];
 
-  // Check if hours/schedule are explicitly provided on course root
+  // Check direct course root level lab hours
   if (course.labHours !== undefined) {
     labHours = parseFloat(course.labHours) || 0;
   }
 
-  // Iterate modules/evaluations to aggregate items and hours
+  // Iterate modules/evaluations to aggregate items and lab hours
   (course.modules || []).forEach((mod) => {
     if (mod.isExam) {
       const w = parseFloat(mod.weightPercent || mod.weight) || 0;
-      midterms.push({ title: mod.title || mod.label || 'Midterm Exam', weight: w, date: mod.date || mod.scheduledWeek });
+      midterms.push({ title: mod.title || mod.label || 'Midterm Examination', weight: w, date: mod.date || mod.scheduledWeek });
       definedWeightTotal += w;
     } else if (mod.isLab) {
       const w = parseFloat(mod.weightPercent || mod.weight) || 0;
@@ -121,13 +122,13 @@ function calculateCourseHoursAndStats(course) {
       }
       if (!course.labHours) labHours += modLabHours;
 
-      labs.push({ title: mod.title || mod.label || 'Practical / Laboratory Work', weight: w, hours: modLabHours });
+      labs.push({ title: mod.title || mod.label || 'Laboratory / Practical Work', weight: w, hours: modLabHours });
     } else {
       lectureCount += parseInt(mod.lectureCount || mod.lectures, 10) || 0;
     }
   });
 
-  // Default lecture hours calculation based on semester config if lectureCount not on modules
+  // Calculate lecture hours based on semester configuration if not explicitly counted
   const config = window.currentCourseConfig || window.defaultScheduleConfig || { weeksInSemester: 12, meetingsPerWeek: 3 };
   const meetingsPerWeek = config.meetingsPerWeek || config.lecturesPerWeek || 3;
   const weeksInSemester = config.weeksInSemester || 12;
@@ -135,7 +136,7 @@ function calculateCourseHoursAndStats(course) {
   const lectureHours = lectureCount > 0 ? lectureCount : (meetingsPerWeek * weeksInSemester);
   const totalHours = lectureHours + labHours;
 
-  // Check custom evaluation scheme if defined on course directly
+  // Check explicit evaluation array on course root if present
   const customEval = course.evaluationScheme || course.evaluation || course.gradingScheme;
   if (Array.isArray(customEval)) {
     let customDefinedWeight = 0;
@@ -151,7 +152,7 @@ function calculateCourseHoursAndStats(course) {
     }
   }
 
-  const finalExamWeight = Math.max(0, 100 - definedWeightTotal);
+  const finalExamWeight = Math.max(0, parseFloat((100 - definedWeightTotal).toFixed(2)));
 
   return {
     lectureHours,
@@ -168,6 +169,11 @@ function calculateCourseHoursAndStats(course) {
 function buildCourseRtfContent(course, connections) {
   let rtf = '';
   const stats = calculateCourseHoursAndStats(course);
+
+  // Fetch global settings fallback if available
+  const globalSettings = typeof window.getGlobalSettings === 'function' 
+    ? window.getGlobalSettings() 
+    : (window.DEFAULT_GLOBAL_SETTINGS || {});
 
   // HEADER: COURSE NAME & NUMBER (CENTERED)
   rtf += `\\pard\\qc\\b\\fs36 ${escapeRtf(course.code)}: ${escapeRtf(course.name)}\\b0\\fs22\\par\n`;
@@ -247,9 +253,8 @@ function buildCourseRtfContent(course, connections) {
   rtf += `\\pard\\qj\\b\\fs28 3. Method of Evaluation & Grading System\\b0\\fs22\\par\n`;
   rtf += `\\line\\par\n`;
 
-  // Allocation of Marks
+  // 3.1 Allocation of Marks
   rtf += `\\pard\\qj\\li360\\b 3.1 Allocation of Marks:\\b0\\par\n`;
-  
   const evalBreakdown = course.evaluationScheme || course.evaluation || course.gradingScheme;
   if (Array.isArray(evalBreakdown) && evalBreakdown.length > 0) {
     evalBreakdown.forEach(item => {
@@ -258,7 +263,7 @@ function buildCourseRtfContent(course, connections) {
       rtf += `\\par\n`;
     });
   } else {
-    // Dynamic breakdown generated from course modules & calculated remaining final exam
+    // Dynamically breakdown midterms, labs, and calculate remaining Final Exam
     if (stats.midterms.length > 0) {
       stats.midterms.forEach((m) => {
         rtf += `\\pard\\qj\\li720\\\'95  ${escapeRtf(m.title)}: ${m.weight}%`;
@@ -279,21 +284,17 @@ function buildCourseRtfContent(course, connections) {
       rtf += `\\pard\\qj\\li720\\\'95  Laboratory / Practical Work: 25% (${stats.labHours} Total Lab Hours)\\par\n`;
     }
 
-    // Final Exam rendered as calculated difference
     rtf += `\\pard\\qj\\li720\\\'95  Final Examination: ${stats.finalExamWeight}% (Scheduled by Registrar; calculated remaining balance)\\par\n`;
   }
 
-  // Grading System Statement
-  const gradingSys = course.gradingSystem || "Numeric Grade System (0-100%, pass mark 50%) in accordance with University Senate regulations.";
+  // 3.2 Grading System (Course Overrides OR Global Setting)
+  const gradingSys = course.gradingSystem || globalSettings.gradingSystem || "Numeric Grade System (0-100%, pass mark 50%) in accordance with University Senate regulations.";
   rtf += `\\pard\\qj\\li360\\b 3.2 Grading System:\\b0  ${escapeRtf(gradingSys)}\\par\n`;
 
-  // Alternate Evaluation / Missed Work
+  // 3.3 Alternate Evaluation & Missed Work Policy (Course Overrides OR Global Setting)
+  const missedWork = course.alternateEvaluationPolicy || course.missedWorkPolicy || globalSettings.missedWorkPolicy || "In accordance with University Regulations (Exemptions from Parts of the Evaluation), students unable to complete an evaluation due to acceptable cause must notify the instructor promptly. Where acceptable cause is established, an alternate evaluation or reweighting will be offered.";
   rtf += `\\pard\\qj\\li360\\b 3.3 Alternate Evaluation & Missed Work Policy:\\b0\\par\n`;
-  if (course.alternateEvaluationPolicy) {
-    rtf += `\\pard\\qj\\li720 ${escapeRtf(course.alternateEvaluationPolicy)}\\par\n`;
-  } else {
-    rtf += `\\pard\\qj\\li720 In accordance with University Regulations (Exemptions from Parts of the Evaluation), students unable to complete an evaluation due to acceptable cause must notify the instructor promptly. Where acceptable cause is established, an alternate evaluation or reweighting will be offered.\\par\n`;
-  }
+  rtf += `\\pard\\qj\\li720 ${escapeRtf(missedWork)}\\par\n`;
   rtf += `\\pard\\qj\\par\n\n`;
 
   // SECTION 4. COURSE MODULES, LEARNING OBJECTIVES & CONNECTIONS
@@ -409,18 +410,21 @@ function buildCourseRtfContent(course, connections) {
   }
   rtf += `\\pard\\qj\\par\n\n`;
 
-  // SECTION 8. UNIVERSITY STATEMENTS & POLICIES (MUN COMPLIANT)
+  // SECTION 8. UNIVERSITY STATEMENTS & POLICIES (MUN COMPLIANT / INSTITUTIONAL SETTINGS)
   rtf += `\\pard\\qj\\b\\fs28 8. University Statements & Institutional Policies\\b0\\fs22\\par\n`;
   rtf += `\\line\\par\n`;
 
-  // Academic Integrity Statement
-  rtf += `\\pard\\qj\\li360\\b 8.1 Academic Integrity:\\b0  Students are expected to adhere strictly to Memorial University of Newfoundland's standards of academic honesty. Please refer to the entry on \\i Academic Misconduct\\i0  in the University Calendar for definitions, procedures, and penalties regarding plagiarism, cheating, and misrepresentation.\\par\n\n`;
+  // 8.1 Academic Integrity
+  const academicIntegrity = course.academicIntegrity || globalSettings.academicIntegrity || "Students are expected to adhere strictly to Memorial University of Newfoundland's standards of academic honesty. Please refer to the entry on Academic Misconduct in the University Calendar for definitions, procedures, and penalties regarding plagiarism, cheating, and misrepresentation.";
+  rtf += `\\pard\\qj\\li360\\b 8.1 Academic Integrity:\\b0  ${escapeRtf(academicIntegrity)}\\par\n\n`;
 
-  // Accommodations Statement
-  rtf += `\\pard\\qj\\li360\\b 8.2 Student Accommodations:\\b0  Memorial University of Newfoundland is committed to accommodating students with disabilities. Students requiring academic accommodations are encouraged to register with Student Accessibility Services (SAS) and inform the instructor as early as possible in the semester.\\par\n\n`;
+  // 8.2 Student Accommodations
+  const accommodations = course.accommodations || globalSettings.accommodations || "Memorial University of Newfoundland is committed to accommodating students with disabilities. Students requiring academic accommodations are encouraged to register with Student Accessibility Services (SAS) and inform the instructor as early as possible in the semester.";
+  rtf += `\\pard\\qj\\li360\\b 8.2 Student Accommodations:\\b0  ${escapeRtf(accommodations)}\\par\n\n`;
 
-  // ATIPP Privacy Statement
-  rtf += `\\pard\\qj\\li360\\b 8.3 Student Privacy & Grade Notification (ATIPP):\\b0  Methods used for the notification of grades earned in all parts of the evaluation and for the return of graded evaluative instruments will adhere strictly to the Access to Information and Protection of Privacy Act (ATIPP) of the Government of Newfoundland and Labrador. Grades will only be posted or communicated via secure, University-approved channels (e.g., Brightspace or official university email).\\par\n`;
+  // 8.3 Student Privacy & ATIPP
+  const privacyAtipp = course.privacyAtipp || globalSettings.privacyAtipp || "Methods used for the notification of grades earned in all parts of the evaluation and for the return of graded evaluative instruments will adhere strictly to the Access to Information and Protection of Privacy Act (ATIPP) of the Government of Newfoundland and Labrador. Grades will only be posted or communicated via secure, University-approved channels (e.g., Brightspace or official university email).";
+  rtf += `\\pard\\qj\\li360\\b 8.3 Student Privacy & Grade Notification (ATIPP):\\b0  ${escapeRtf(privacyAtipp)}\\par\n`;
   
   rtf += `\\pard\\qj\\par\n\n`;
 

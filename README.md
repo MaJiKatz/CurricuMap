@@ -1,190 +1,116 @@
-# Curriculum Map
+# CurriMap 🎓
 
-A cross-year concept map for the chemistry program: courses → modules → topics,
-with connections between modules across any number of years, color- and
-line-style-coded by how strong the dependency is.
+**CurriMap** is an interactive, privacy-first, browser-based visual curriculum planning and dependency mapping tool. Designed for academic program heads, department chairs, and educators, it allows you to visualize degree pathways, map prerequisite connections, track accreditation metrics, and export complete, policy-compliant course syllabus packages—all in a zero-backend, browser-native workspace.
 
-Open `index.html` directly in a browser, or serve the folder locally:
+---
 
-```
+## ✨ Features
+
+* 🗺️ **Visual Canvas & Degree Mapping:** Organizes courses across chronological academic year columns with native support for pre-university years (Year 0) through upper years.
+* 🔗 **Dynamic Dependencies (Connect Mode):** Interactive SVG rendering to visually link prerequisite courses, modules, and granular learning objectives with customizable connection strengths (*Strong, Related, Weak*).
+* 📝 **Comprehensive Course & Schedule Editor:** Built-in modal to manage course codes, names, semester lengths (10–16 weeks), and flexible weekly lecture formats (e.g., 3x50m, 2x90m, 1x3h).
+* 🧪 **Labs, Midterms & Modules:** Dedicated tabbed editor to schedule unit topic modules, granular learning objectives, midterm evaluations, laboratory practical hours, and required textbook metadata.
+* 📅 **Course Calendar Matrix View:** Click the calendar icon on any course card to open an auto-generated, week-by-week timetable breaking down every lecture topic, exam, and lab session across the semester duration.
+* 📄 **Accreditation-Ready RTF Syllabus Export:** Instantly generate formatted Word/RTF course outlines for individual courses or export a single, program-wide document bundle complete with total contact hours and accreditation metrics.
+* ⚙️ **Global Institutional Policy Defaults:** Configure department-wide grading schemes, missed work policies, and academic integrity/accommodation statements once in global settings to auto-populate all exported syllabi.
+* ❓ **Interactive Onboarding Guide:** Integrated step-by-step modal guide walking new users through features, connection drawing, scheduling, and exports.
+* 🔒 **100% Private & Local Storage:** No server required and zero data collected. Everything runs locally in your browser. Save and load complete degree map states anytime using `.json` workspace files.
+* 🔍 **Slide-Out Detail Drawer:** Inspect module details, learning objectives, textbook references, and cross-course prerequisite links instantly.
+
+---
+
+## 🚀 Quick Start
+
+Because CurriMap is built using standard ES modules, it runs natively in any modern browser without heavy build steps, npm dependencies, or package managers.
+
+1. **Clone the repository:**
+   ```bash
+   git clone [https://github.com/your-username/currimap.git](https://github.com/your-username/currimap.git)
+   cd currimap
+Run locally:
+Serve the root folder using any local HTTP server (required for ES Module support).
+Using Python 3:
+Bash
 python3 -m http.server 8000
-```
+Using Node / npx:
+Bash
+npx serve .
+Open in browser:
+Navigate to http://localhost:8000.
+📂 Project Structure
+Plaintext
+currimap/
+├── index.html          # Main application interface & modal containers
+├── css/
+│   └── style.css       # Core design system, layout, and dark-theme overlay styles
+├── js/
+│   ├── main.js         # Core initialization & event orchestration
+│   ├── render.js       # Board, card, drawer, and legend DOM rendering
+│   ├── courseEditor.js # Course, module, lab, and exam editor logic
+│   ├── connections.js  # SVG line calculation & interactive Connect Mode
+│   ├── calendarView.js # Week-by-week course calendar matrix renderer
+│   ├── settings.js     # Institutional & department policy default state
+│   ├── exportRtf.js    # RTF syllabus generation & accreditation summary compiler
+│   ├── introModal.js   # Interactive onboarding guide & step-by-step tour
+│   └── data-loader.js  # Workspace save/load (JSON) & LocalStorage management
+└── data/
+    └── curriculum.json # Default curriculum dataset & fallback schema
+📊 Data Format
+CurriMap uses a clean, human-readable JSON schema to represent courses, schedule parameters, modules, labs, exams, and prerequisite links:
 
-(It needs to be served, not opened via `file://`, because the JS fetches the
-JSON data files.)
-
-Here is a breakdown of what you can add to your `README.md` to document the new dynamic schedule configuration feature.
-
-You can append this section under **Features** or **The data model** (or add it near the bottom of your README file):
-
----
-
-```markdown
-## Dynamic Schedule & Calendar Configuration (added July 2026)
-
-Courses can now be configured with flexible semester durations and weekly meeting formats. This updates the course capacity and calendar grid views dynamically without forcing fixed 36-lecture assumptions.
-
-### Configurable Settings
-- **Semester Duration**: Supports 10, 12, 14, 15, or 16-week terms.
-- **Weekly Format Modes**:
-  - **3x/week** (50 mins per lecture — e.g., MWF style)
-  - **2x/week** (~90 mins per lecture — e.g., TTh style)
-  - **1x/week** (3-hour block / seminar style)
-
-### Data Structure & Usage
-A default configuration is initialized globally in `js/main.js` and managed per course:
-
-```javascript
-const defaultScheduleConfig = {
-  weeksInSemester: 12,
-  meetingsPerWeek: 3,
-  minutesPerMeeting: 50,
-  startWeekDay: 'Monday'
-};
-
-```
-
-* **Course Editor Modal (`index.html`)**: Features dropdown controls under the *General Info* tab to select semester duration and weekly layout.
-* **Calendar Layout Engine (`js/calendarView.js`)**: `calculateCalendarLayout()` dynamically calculates total lecture slots ($\text{Weeks} \times \text{Meetings/Week}$) and formats the calendar grid depending on the selected mode.
-
-```
-
----
-
-### How it's organized
-
-If you want to keep your project structure file tree in the README up to date, you can also update the `js/` section in the file structure diagram like this:
-
-```markdown
-curriculum-map/
-  ...
-  js/
-    data-loader.js     fetches & indexes the JSON
-    exportRtf.js.      creates course outlines in RTF format
-    render.js          pure DOM-building functions
-    connections.js     SVG line drawing
-    courseEditor.js    modal logic for editing course properties & schedule settings
-    calendarView.js    dynamic calendar grid calculation & rendering logic
-    main.js            state + event wiring & global schedule defaults
-  ...
-
-```
-
-## The data model
-
-**curriculum.json** — one entry per course, each with a flat list of modules,
-each with a flat list of topics:
-
-```json
+JSON
 {
-  "id": "chem1051-m5",
-  "label": "Module 5",
-  "title": "Acids and Bases",
-  "topics": [
-    { "id": "chem1051-m5-t1", "title": "...", "objectives": ["..."] }
+  "legend": {
+    "strong": { "label": "Strong Connection", "color": "#ef4444" },
+    "related": { "label": "Related Topic", "color": "#3b82f6" },
+    "weak": { "label": "Weak Connection", "color": "#10b981" }
+  },
+  "courses": [
+    {
+      "id": "chem1010",
+      "code": "CHEM 1010",
+      "name": "Introductory Chemistry I",
+      "year": 1,
+      "yearLabel": "Year 1 (Fall)",
+      "weeksInSemester": 12,
+      "weeklyFormat": "3x50",
+      "textbook": {
+        "title": "Chemistry: The Central Science",
+        "author": "Brown et al.",
+        "edition": "14th"
+      },
+      "modules": [
+        {
+          "id": "m1",
+          "title": "Chemical Bonding & Structure",
+          "type": "lecture",
+          "hours": 3,
+          "objectives": ["Understand Lewis structures", "Predict VSEPR geometries"]
+        },
+        {
+          "id": "m2",
+          "title": "Midterm Examination",
+          "type": "midterm",
+          "hours": 1
+        },
+        {
+          "id": "m3",
+          "title": "Acid-Base Titration Lab",
+          "type": "lab",
+          "hours": 3
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "fromCourse": "chem1010",
+      "fromModule": "m1",
+      "toCourse": "chem2210",
+      "toModule": "m4",
+      "tier": "strong"
+    }
   ]
 }
-```
-
-`year` on the course controls which column it appears in (0 = pre-university,
-1/2/3 = year). `objectives` is an array so a topic can eventually carry more
-than one learning objective — right now most topics have a single
-placeholder objective auto-generated from the topic title. Treat those as a
-first draft, not final wording.
-
-**connections.json** — a flat list of edges between module ids, plus the
-`legend` object that defines the three tiers in one place:
-
-```json
-{
-  "id": "c15",
-  "from": "chem1051-m4",
-  "to": "chem2301-m5",
-  "level": "strong",
-  "note": "Why this connection matters, shown in the side panel."
-}
-```
-
-`level` is one of `strong` / `related` / `weak`. The names, descriptions, and
-line styles all come from `legend` — rename or re-describe a tier in one
-place and it updates the toggle buttons, the footer legend, and the badges
-in the side panel automatically.
-
-### Why three tiers, named this way
-
-Connections are drawn using real bond-strength language, since that's
-already the vocabulary this map's audience thinks in:
-
-| Tier | Analogy | Meaning | Line |
-|---|---|---|---|
-| **Strong Connection** | Covalent | Direct prerequisite — real fluency assumed | thick double stroke |
-| **Related Topic** | Ionic | Meaningful overlap, not a hard dependency | single solid stroke |
-| **Weak Interaction** | van der Waals | Helpful background, low urgency | solid stroke |
-
-If "Weak Interaction" doesn't stick, other options in the same spirit:
-"Background Context," "Peripheral Overlap," "Enrichment Only." It's a
-one-line edit in `connections.json`'s `legend` block.
-
-## Extending it
-
-- **Add a course**: append a course object to `curriculum.json` with a
-  unique `id`, the right `year`, and its modules/topics. No other file needs
-  to change — the board renders whatever `year` values it finds and groups
-  them into columns automatically.
-- **Add topic-level connections** (not just module-level): connections just
-  reference ids — if you give a topic its own connection entry pointing at
-  `chem1051-m5-t2` instead of `chem1051-m5`, it'll work as long as you also
-  add a matching `data-module-id`-style anchor for topics in the DOM (right
-  now only modules are drawn as nodes; topics only show up in the side
-  panel). That's the natural next step if you want topic-level lines later.
-- **Change what counts as "connected"**: the tier toggles in the header
-  filter which connections are drawn/counted at all, so you can hide the
-  "weak" tier entirely while planning a syllabus, for instance.
-- **Fill in real learning objectives**: `objectives` is already an array per
-  topic — swap the placeholder for the actual outcomes as you write them.
-
-
-## Interaction model
-
-- Click a module to open its topics + connections in the right-hand panel.
-- Click a linked module inside that panel to jump straight to it.
-- "All connections" mode draws every visible link at once (dimming
-  unrelated ones once you've selected a module); "Focus on selection" mode
-  only draws lines touching the selected module and dims everything else.
-- The tier checkboxes in the header show/hide each bond tier independently.
-- Click to drag a module within a course or to another course. (added July 24)
-
-## Dynamic Schedule & Calendar Configuration (added July 2026)
-
-Courses can now be configured with flexible semester durations and weekly meeting formats. This updates the course capacity and calendar grid views dynamically without forcing fixed 36-lecture assumptions.
-
-### Configurable Settings
-- **Semester Duration**: Supports 10, 12, 14, 15, or 16-week terms.
-- **Weekly Format Modes**:
-  - **3x/week** (50 mins per lecture — e.g., MWF style)
-  - **2x/week** (~90 mins per lecture — e.g., TTh style)
-  - **1x/week** (3-hour block / seminar style)
-
-### Data Structure & Usage
-A default configuration is initialized globally in `js/main.js` and managed per course:
-
-```javascript
-const defaultScheduleConfig = {
-  weeksInSemester: 12,
-  meetingsPerWeek: 3,
-  minutesPerMeeting: 50,
-  startWeekDay: 'Monday'
-};
-
-## Exporting Course Outlines (RTF Format)
-
-Courses can be exported directly to Rich Text Format (`.rtf`), which can be opened natively in Microsoft Word, Google Docs, or Apple Pages for faculty customization.
-
-### Included Outline Sections
-1. **Header (Centered)**: Course Code, Course Title, and Credit Count.
-2. **Textbook & Required Materials**: Formatted listing for Title, Author, ISBN, or place-holders.
-3. **Course Schedule / Calendar**: Dynamic weekly breakdown calculated from active term configuration.
-4. **Modules & Learning Objectives**:
-   - Chapter reading assignments per module.
-   - Bulleted learning objectives and topics.
-   - **Curriculum Connections**: Sub-sections indicating prerequisite or forward-facing modules across other courses (including direction and contextual connection notes).
+🛡️ Data Privacy
+CurriMap is designed with a privacy-first architecture. All operations—including workspace editing, graph drawing, calendar rendering, and RTF document generation—happen entirely inside your browser's JavaScript runtime. No course data, personal information, or institutional materials are ever sent to external servers.
