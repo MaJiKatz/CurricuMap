@@ -2,6 +2,8 @@
 
 **CurriMap** is an interactive, privacy-first, browser-based visual curriculum planning and dependency mapping tool. Designed for academic program heads, department chairs, and educators, it allows you to visualize degree pathways, map prerequisite connections, track accreditation metrics, and export complete, policy-compliant course syllabus packages—all in a zero-backend, browser-native workspace.
 
+Use it here https://majikatz.github.io/CurricuMap/
+
 ---
 
 ## ✨ Features
