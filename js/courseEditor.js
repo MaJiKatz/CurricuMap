@@ -1,6 +1,6 @@
 /* ============================================================
    js/courseEditor.js
-   Handles course modal interactions, module/midterm management, 
+   Handles course modal interactions, module/midterm/lab management, 
    nested topics/objectives editing, and connections.
    ============================================================ */
 
@@ -134,11 +134,11 @@ function renderModulesList() {
 
   container.innerHTML = '';
 
-  const availableModules = editingModules.filter(m => !m.isExam);
+  const availableModules = editingModules.filter(m => !m.isExam && !m.isLab);
 
   editingModules.forEach((mod, modIdx) => {
     const wrapper = document.createElement('div');
-    wrapper.className = `module-row-container ${mod.isExam ? 'midterm-row-container' : ''}`;
+    wrapper.className = `module-row-container ${mod.isExam ? 'midterm-row-container' : ''} ${mod.isLab ? 'lab-row-container' : ''}`;
 
     if (mod.isExam) {
       // MIDTERM ROW
@@ -157,9 +157,10 @@ function renderModulesList() {
       wrapper.innerHTML = `
         <div class="module-header-row" style="background: rgba(107, 33, 168, 0.25); border-left: 4px solid #a855f7; padding: 6px;">
           <span style="font-size:1.1rem;">📝</span>
-          <input type="text" placeholder="ID" value="${mod.id || ''}" style="width: 100px;" onchange="editingModules[${modIdx}].id = this.value">
-          <input type="text" placeholder="Label (e.g. EXAM 1)" value="${mod.label || ''}" style="width: 110px;" onchange="editingModules[${modIdx}].label = this.value">
-          <input type="text" placeholder="Midterm Title (e.g. Midterm Examination 1)" value="${mod.title || ''}" style="flex: 1;" onchange="editingModules[${modIdx}].title = this.value">
+          <input type="text" placeholder="ID" value="${mod.id || ''}" style="width: 90px;" onchange="editingModules[${modIdx}].id = this.value">
+          <input type="text" placeholder="Label (e.g. EXAM 1)" value="${mod.label || ''}" style="width: 100px;" onchange="editingModules[${modIdx}].label = this.value">
+          <input type="text" placeholder="Title (e.g. Midterm 1)" value="${mod.title || ''}" style="flex: 1;" onchange="editingModules[${modIdx}].title = this.value">
+          <input type="number" placeholder="Grade %" value="${mod.weightPercent ?? 20}" style="width: 80px;" title="Grade Weight %" onchange="editingModules[${modIdx}].weightPercent = parseFloat(this.value) || 0" />
           <input type="number" class="mod-lectures-input" min="1" max="5" placeholder="Slots" value="${mod.lectureCount || 1}" title="Calendar slots taken" onchange="editingModules[${modIdx}].lectureCount = parseInt(this.value, 10) || 1" />
           <button type="button" class="btn btn-cancel" onclick="removeModuleRow(${modIdx})">&times;</button>
         </div>
@@ -167,6 +168,43 @@ function renderModulesList() {
           <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 6px; color: #c084fc;">Modules Covered in this Midterm:</div>
           <div style="display: flex; flex-wrap: wrap; gap: 6px;">
             ${optionsHtml || '<em style="font-size:0.8rem; color:#94a3b8;">Add standard modules first to assign them here.</em>'}
+          </div>
+        </div>
+      `;
+    } else if (mod.isLab) {
+      // LAB MODULE ROW
+      if (!Array.isArray(mod.labs)) mod.labs = [];
+
+      let labItemsHtml = mod.labs.map((lab, lIdx) => `
+        <div class="nested-item-row" style="gap: 8px;">
+          <span style="font-size:0.85rem; color:#a5f3fc; font-weight:600; min-width: 50px;">Lab ${lIdx + 1}:</span>
+          <input type="text" placeholder="Lab Title / Experiment Name..." value="${lab.title || ''}" style="flex: 1;" onchange="editingModules[${modIdx}].labs[${lIdx}].title = this.value">
+          <input type="number" placeholder="Weight %" value="${lab.weightPercent ?? 0}" style="width: 90px;" title="Lab Weight %" onchange="editingModules[${modIdx}].labs[${lIdx}].weightPercent = parseFloat(this.value) || 0; updateLabTotalGrade(${modIdx});">
+          <button type="button" class="btn btn-cancel btn-sm" onclick="removeLabItem(${modIdx}, ${lIdx})">&times;</button>
+        </div>
+      `).join('');
+
+      wrapper.innerHTML = `
+        <div class="module-header-row" style="background: rgba(6, 182, 212, 0.15); border-left: 4px solid #06b6d4; padding: 6px;">
+          <span style="font-size:1.1rem;">🧪</span>
+          <input type="text" placeholder="ID" value="${mod.id || ''}" style="width: 90px;" onchange="editingModules[${modIdx}].id = this.value">
+          <input type="text" placeholder="Label (e.g. LABS)" value="${mod.label || ''}" style="width: 100px;" onchange="editingModules[${modIdx}].label = this.value">
+          <input type="text" placeholder="Section Title (e.g. Practical Chemistry Labs)" value="${mod.title || ''}" style="flex: 1;" onchange="editingModules[${modIdx}].title = this.value">
+          <div style="display:flex; align-items:center; gap:4px; font-size:0.85rem; color:#67e8f9; font-weight:600;">
+            Total Lab Grade: <span id="labTotalGrade-${modIdx}">${mod.weightPercent || 0}%</span>
+          </div>
+          <button type="button" class="btn btn-cancel" onclick="removeModuleRow(${modIdx})">&times;</button>
+        </div>
+        <div class="nested-section" style="padding: 8px; background: rgba(0,0,0,0.2);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="font-weight: 600; font-size: 0.85rem; color: #67e8f9;">Individual Experiments (${mod.labs.length})</div>
+            <div style="display: flex; gap: 6px;">
+              <button type="button" class="btn btn-secondary btn-sm" style="border-color:#06b6d4; color:#67e8f9;" onclick="equalizeLabWeights(${modIdx})">⚖️ Equalize Weights</button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="addLabItem(${modIdx})">+ Add Experiment</button>
+            </div>
+          </div>
+          <div id="labs-${modIdx}">
+            ${labItemsHtml || '<em style="font-size:0.8rem; color:#94a3b8;">No individual experiments added yet.</em>'}
           </div>
         </div>
       `;
@@ -238,7 +276,8 @@ function addModuleRow() {
     lectureCount: 3,
     topics: [],
     objectives: [],
-    isExam: false
+    isExam: false,
+    isLab: false
   });
   renderModulesList();
 }
@@ -252,10 +291,71 @@ function addMidtermRow() {
     label: `MIDTERM`,
     title: 'Midterm Examination',
     lectureCount: 1,
+    weightPercent: 20,
     isExam: true,
+    isLab: false,
     coveredModuleIds: []
   });
   renderModulesList();
+}
+
+function addLabRow() {
+  const courseIdEl = document.getElementById('courseId');
+  const courseId = (courseIdEl && courseIdEl.value) ? courseIdEl.value : 'course';
+
+  editingModules.push({
+    id: `${courseId}-labs`,
+    label: `LABS`,
+    title: 'Laboratory Component',
+    isLab: true,
+    isExam: false,
+    weightPercent: 20,
+    labs: [
+      { title: 'Lab 1: Safety & Techniques', weightPercent: 5 },
+      { title: 'Lab 2: Gravimetric Analysis', weightPercent: 5 },
+      { title: 'Lab 3: Titration Practice', weightPercent: 5 },
+      { title: 'Lab 4: Spectroscopy', weightPercent: 5 }
+    ]
+  });
+  renderModulesList();
+}
+
+function addLabItem(modIdx) {
+  if (!editingModules[modIdx].labs) editingModules[modIdx].labs = [];
+  editingModules[modIdx].labs.push({
+    title: `Lab ${editingModules[modIdx].labs.length + 1}`,
+    weightPercent: 0
+  });
+  renderModulesList();
+}
+
+function removeLabItem(modIdx, labIdx) {
+  editingModules[modIdx].labs.splice(labIdx, 1);
+  updateLabTotalGrade(modIdx);
+  renderModulesList();
+}
+
+function equalizeLabWeights(modIdx) {
+  const labs = editingModules[modIdx].labs || [];
+  if (labs.length === 0) return;
+
+  const total = editingModules[modIdx].weightPercent || 20;
+  const equalWeight = parseFloat((total / labs.length).toFixed(2));
+
+  labs.forEach(lab => {
+    lab.weightPercent = equalWeight;
+  });
+
+  renderModulesList();
+}
+
+function updateLabTotalGrade(modIdx) {
+  const labs = editingModules[modIdx].labs || [];
+  const total = labs.reduce((sum, l) => sum + (parseFloat(l.weightPercent) || 0), 0);
+  editingModules[modIdx].weightPercent = parseFloat(total.toFixed(2));
+  
+  const labelEl = document.getElementById(`labTotalGrade-${modIdx}`);
+  if (labelEl) labelEl.textContent = `${editingModules[modIdx].weightPercent}%`;
 }
 
 function toggleMidtermModule(midtermIdx, moduleId, isChecked) {
@@ -353,8 +453,25 @@ function saveCourseData() {
         label: mod.label || 'MIDTERM',
         title: mod.title || 'Midterm Examination',
         lectureCount: parseInt(mod.lectureCount, 10) || 1,
+        weightPercent: parseFloat(mod.weightPercent) || 0,
         isExam: true,
         coveredModuleIds: mod.coveredModuleIds || []
+      };
+    }
+    if (mod.isLab) {
+      const labs = (mod.labs || []).map(l => ({
+        title: l.title || 'Lab Experiment',
+        weightPercent: parseFloat(l.weightPercent) || 0
+      }));
+      const totalWeight = labs.reduce((sum, l) => sum + l.weightPercent, 0);
+
+      return {
+        id: mod.id,
+        label: mod.label || 'LABS',
+        title: mod.title || 'Laboratory Component',
+        weightPercent: totalWeight,
+        isLab: true,
+        labs: labs
       };
     }
     return {
@@ -403,6 +520,11 @@ window.closeCourseModal = closeCourseModal;
 window.switchTab = switchTab;
 window.addModuleRow = addModuleRow;
 window.addMidtermRow = addMidtermRow;
+window.addLabRow = addLabRow;
+window.addLabItem = addLabItem;
+window.removeLabItem = removeLabItem;
+window.equalizeLabWeights = equalizeLabWeights;
+window.updateLabTotalGrade = updateLabTotalGrade;
 window.toggleMidtermModule = toggleMidtermModule;
 window.removeModuleRow = removeModuleRow;
 window.addTopicRow = addTopicRow;

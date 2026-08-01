@@ -1,6 +1,6 @@
 /* ============================================================
    render.js
-   DOM rendering for courses, modules, and midterms.
+   DOM rendering for courses, modules, midterms, and labs.
    ============================================================ */
 
 function formatTopic(topic) {
@@ -202,14 +202,14 @@ function renderCourseCard(course, isCollapsed) {
 
   card.appendChild(head);
 
-  // Module & Midterm List Rendering
+  // Module, Midterm & Lab List Rendering
   const list = document.createElement('div');
   list.className = 'module-list';
 
   (course.modules || []).forEach((mod) => {
     const chip = document.createElement('button');
     chip.type = 'button';
-    chip.className = `module-chip ${mod.isExam ? 'midterm-chip' : ''}`;
+    chip.className = `module-chip ${mod.isExam ? 'midterm-chip' : ''} ${mod.isLab ? 'lab-chip' : ''}`;
     chip.draggable = true;
     chip.dataset.moduleId = mod.id;
     chip.dataset.courseId = course.id;
@@ -217,8 +217,17 @@ function renderCourseCard(course, isCollapsed) {
     if (mod.isExam) {
       chip.style.borderColor = '#a855f7';
       chip.style.background = 'rgba(107, 33, 168, 0.35)';
+      const weightBadge = mod.weightPercent ? ` <span style="font-size:0.75rem; background:#6b21a8; padding:1px 4px; border-radius:3px; color:#f3e8ff;">${mod.weightPercent}%</span>` : '';
       chip.innerHTML = `
-        <span class="m-label" style="color: #e9d5ff; font-weight: 600;">📝 ${escapeHtml(mod.label)}</span>
+        <span class="m-label" style="color: #e9d5ff; font-weight: 600;">📝 ${escapeHtml(mod.label)}${weightBadge}</span>
+        <span class="m-title" style="font-weight: 600; color: #ffffff;">${escapeHtml(mod.title)}</span>
+      `;
+    } else if (mod.isLab) {
+      chip.style.borderColor = '#06b6d4';
+      chip.style.background = 'rgba(6, 182, 212, 0.2)';
+      const totalWeight = mod.weightPercent ? ` <span style="font-size:0.75rem; background:#0891b2; padding:1px 4px; border-radius:3px; color:#cffaffe0;">${mod.weightPercent}%</span>` : '';
+      chip.innerHTML = `
+        <span class="m-label" style="color: #67e8f9; font-weight: 600;">🧪 ${escapeHtml(mod.label)}${totalWeight}</span>
         <span class="m-title" style="font-weight: 600; color: #ffffff;">${escapeHtml(mod.title)}</span>
       `;
     } else {
@@ -261,6 +270,8 @@ function openCalendarModal(course) {
 
   const lectureStream = [];
   (course.modules || []).forEach((mod) => {
+    if (mod.isLab) return; // Labs are managed separately from standard lecture slots
+
     const count = parseInt(mod.lectureCount, 10) || 1;
     for (let i = 1; i <= count; i++) {
       lectureStream.push({
@@ -268,7 +279,8 @@ function openCalendarModal(course) {
         title: mod.title || 'Untitled',
         index: i,
         total: count,
-        isExam: !!mod.isExam
+        isExam: !!mod.isExam,
+        weightPercent: mod.weightPercent
       });
     }
   });
@@ -282,10 +294,11 @@ function openCalendarModal(course) {
       if (currentIdx < lectureStream.length) {
         const item = lectureStream[currentIdx];
         const isExamStyle = item.isExam ? 'background: rgba(107, 33, 168, 0.3); border-left: 3px solid #a855f7;' : '';
+        const weightTag = item.isExam && item.weightPercent ? ` (${item.weightPercent}%)` : '';
         
         weekLecturesHTML += `
           <div class="cal-lecture-item" style="${isExamStyle}">
-            <span class="cal-lec-tag" style="${item.isExam ? 'color: #d8b4fe;' : ''}">${escapeHtml(item.label)} (${item.index}/${item.total})</span>
+            <span class="cal-lec-tag" style="${item.isExam ? 'color: #d8b4fe;' : ''}">${escapeHtml(item.label)}${weightTag} (${item.index}/${item.total})</span>
             <div class="cal-lec-title">${escapeHtml(item.title)}</div>
           </div>
         `;
@@ -396,10 +409,38 @@ function renderDrawer(data, moduleId) {
       </div>
       <h2 class="drawer-title">${escapeHtml(mod.title)}</h2>
       <div style="background: rgba(107, 33, 168, 0.25); border: 1px solid #a855f7; color: #f3e8ff; padding: 10px; border-radius: 6px; margin: 12px 0;">
-        ⏱️ <strong>Schedule Allocation:</strong> Takes ${mod.lectureCount || 1} lecture block(s) in term layout.
+        🎯 <strong>Grade Evaluation Weight:</strong> ${mod.weightPercent ?? 0}% of final grade.<br>
+        ⏱️ <strong>Schedule Allocation:</strong> ${mod.lectureCount || 1} lecture block(s).
       </div>
       <div class="drawer-section-label">Scope & Covered Modules</div>
       ${coveredHtml}
+    `;
+    return;
+  }
+
+  if (mod.isLab) {
+    // LAB DRAWER VIEW
+    const labsList = (mod.labs || []);
+    const labsHtml = labsList.length > 0
+      ? labsList.map((lab, i) => `
+          <div class="topic-item" style="border-left: 3px solid #06b6d4; padding-left: 8px; margin-bottom: 8px;">
+            <strong>Lab ${i + 1}:</strong> ${escapeHtml(lab.title)} 
+            <span style="float: right; color: #67e8f9; font-weight: 600;">${lab.weightPercent ?? 0}%</span>
+          </div>
+        `).join('')
+      : '<p class="topic-objective">No individual experiments listed.</p>';
+
+    content.innerHTML = `
+      <div class="drawer-header-actions">
+        <span class="drawer-course-code">${escapeHtml(course.code)} · 🧪 ${escapeHtml(mod.label)}</span>
+        <button class="btn-edit-course" onclick="if(window.openCourseEditor) window.openCourseEditor('${mod.id}')" title="Edit Course">✏️</button>
+      </div>
+      <h2 class="drawer-title">${escapeHtml(mod.title)}</h2>
+      <div style="background: rgba(6, 182, 212, 0.15); border: 1px solid #06b6d4; color: #cffafe; padding: 10px; border-radius: 6px; margin: 12px 0;">
+        🧪 <strong>Total Laboratory Weight:</strong> ${mod.weightPercent ?? 0}% of final grade.
+      </div>
+      <div class="drawer-section-label">Laboratory Experiments (${labsList.length})</div>
+      ${labsHtml}
     `;
     return;
   }
