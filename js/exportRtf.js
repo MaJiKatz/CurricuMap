@@ -1,6 +1,7 @@
 /* ============================================================
    js/exportRtf.js
-   Generates and triggers RTF downloads for individual or all course outlines.
+   Generates and triggers RTF downloads for individual or all course outlines,
+   compliant with Memorial University of Newfoundland (MUN) syllabus regulations.
    ============================================================ */
 
 // --- 1. EXPORT SINGLE COURSE ---
@@ -56,25 +57,51 @@ function buildCourseRtfContent(course, connections) {
   // HEADER: COURSE NAME & NUMBER (CENTERED)
   rtf += `\\pard\\qc\\b\\fs36 ${escapeRtf(course.code)}: ${escapeRtf(course.name)}\\b0\\fs22\\par\n`;
   if (course.credits) {
-    rtf += `\\pard\\qc\\cf2\\fs20 (${course.credits} Credits)\\cf1\\fs22\\par\n`;
+    rtf += `\\pard\\qc\\cf2\\fs20 (${course.credits} Credit Hours)\\cf1\\fs22\\par\n`;
   }
   rtf += `\\pard\\qj\\par\n\n`;
 
-  // SECTION 1. TEXTBOOK INFORMATION
-  rtf += `\\pard\\qj\\b\\fs28 1. Required Textbook & Course Materials\\b0\\fs22\\par\n`;
+  // --- INSTRUCTOR, CONSULTATION & PREREQUISITES ---
+  rtf += `\\pard\\qj\\b\\fs28 Course & Instructor Information\\b0\\fs22\\par\n`;
+  rtf += `\\line\\par\n`;
+  
+  const instructor = course.instructor || {};
+  const instName = typeof instructor === 'string' ? instructor : (instructor.name || 'TBD');
+  const instEmail = instructor.email || 'TBD';
+  const instOffice = instructor.office || 'TBD';
+  const officeHours = instructor.officeHours || course.officeHours || 'TBD / By Appointment';
+
+  rtf += `\\pard\\qj\\li360\\b Instructor Name:\\b0  ${escapeRtf(instName)}\\par\n`;
+  rtf += `\\pard\\qj\\li360\\b Instructor Email:\\b0  ${escapeRtf(instEmail)}\\par\n`;
+  rtf += `\\pard\\qj\\li360\\b Office Location:\\b0  ${escapeRtf(instOffice)}\\par\n`;
+  rtf += `\\pard\\qj\\li360\\b Instructor Availability / Consultation Hours:\\b0  ${escapeRtf(officeHours)}\\par\n`;
+  
+  // Prerequisites & Co-requisites
+  const prereqs = course.prerequisites || course.prereqs || 'None';
+  const coreqs = course.corequisites || course.coreqs || 'None';
+  rtf += `\\pard\\qj\\li360\\b Required Prerequisites:\\b0  ${escapeRtf(prereqs)}\\par\n`;
+  rtf += `\\pard\\qj\\li360\\b Required Co-requisites:\\b0  ${escapeRtf(coreqs)}\\par\n`;
+  rtf += `\\pard\\qj\\par\n\n`;
+
+  // SECTION 1. TEXTBOOKS & REQUIRED PURCHASES
+  rtf += `\\pard\\qj\\b\\fs28 1. Required Textbooks & Course Resources\\b0\\fs22\\par\n`;
   rtf += `\\line\\par\n`;
   
   if (course.textbook) {
     const title = typeof course.textbook === 'string' ? course.textbook : (course.textbook.title || 'TBD');
     rtf += `\\pard\\qj\\li360\\b Title:\\b0  ${escapeRtf(title)}\\par\n`;
     if (course.textbook.author) rtf += `\\pard\\qj\\li360\\b Author(s):\\b0  ${escapeRtf(course.textbook.author)}\\par\n`;
-    if (course.textbook.isbn) rtf += `\\pard\\qj\\li360\\b ISBN:\\b0  ${escapeRtf(course.textbook.isbn)}\\par\n`;
+    if (course.textbook.isbn) rtf += `\\pard\\qj\\li360\\b ISBN / Edition:\\b0  ${escapeRtf(course.textbook.isbn)}\\par\n`;
   } else {
-    rtf += `\\pard\\qj\\li360\\i [Faculty to insert textbook / open educational resources information here]\\i0\\par\n`;
+    rtf += `\\pard\\qj\\li360\\i [Faculty to list required textbooks or items that must be purchased]\\i0\\par\n`;
+  }
+  if (course.software || course.otherResources) {
+    if (course.software) rtf += `\\pard\\qj\\li360\\b Required Software/Tools:\\b0  ${escapeRtf(course.software)}\\par\n`;
+    if (course.otherResources) rtf += `\\pard\\qj\\li360\\b Other Required Resources:\\b0  ${escapeRtf(course.otherResources)}\\par\n`;
   }
   rtf += `\\pard\\qj\\par\n\n`;
 
-  // SECTION 2. COURSE CALENDAR / SCHEDULE & FORMAT
+  // SECTION 2. COURSE CALENDAR & SCHEDULE OVERVIEW
   rtf += `\\pard\\qj\\b\\fs28 2. Course Schedule Overview\\b0\\fs22\\par\n`;
   
   const config = window.currentCourseConfig || window.defaultScheduleConfig || { weeksInSemester: 12, meetingsPerWeek: 3, minutesPerBlock: 50 };
@@ -101,13 +128,50 @@ function buildCourseRtfContent(course, connections) {
   }
   rtf += `\\pard\\qj\\par\n\n`;
 
-  // SECTION 3. MODULES, LEARNING OBJECTIVES & CURRICULUM CONNECTIONS
-  rtf += `\\pard\\qj\\b\\fs28 3. Course Modules & Learning Objectives\\b0\\fs22\\par\n`;
+  // SECTION 3. METHOD OF EVALUATION & GRADING SYSTEM
+  rtf += `\\pard\\qj\\b\\fs28 3. Method of Evaluation & Grading System\\b0\\fs22\\par\n`;
+  rtf += `\\line\\par\n`;
+
+  // Allocation of Marks
+  rtf += `\\pard\\qj\\li360\\b 3.1 Allocation of Marks:\\b0\\par\n`;
+  const evalBreakdown = course.evaluationScheme || course.evaluation || course.gradingScheme;
+  if (evalBreakdown) {
+    if (Array.isArray(evalBreakdown)) {
+      evalBreakdown.forEach(item => {
+        rtf += `\\pard\\qj\\li720\\\'95  ${escapeRtf(item.component || item.name)}: ${escapeRtf(item.weight || item.allocation)}`;
+        if (item.date) rtf += ` \\cf2 (Probable Date/Due: ${escapeRtf(item.date)})\\cf1`;
+        rtf += `\\par\n`;
+      });
+    } else {
+      rtf += `\\pard\\qj\\li720 ${escapeRtf(evalBreakdown)}\\par\n`;
+    }
+  } else {
+    rtf += `\\pard\\qj\\li720\\\'95 Midterm Examination(s): 25% (Probable Date: Week 6)\\par\n`;
+    rtf += `\\pard\\qj\\li720\\\'95 Laboratory / Practical Work: 25%\\par\n`;
+    rtf += `\\pard\\qj\\li720\\\'95 Assignments & Quizzes: 15%\\par\n`;
+    rtf += `\\pard\\qj\\li720\\\'95 Final Examination: 35% (Scheduled by Registrar)\\par\n`;
+  }
+
+  // Grading System Statement
+  const gradingSys = course.gradingSystem || "Numeric Grade System (0-100%, pass mark 50%) in accordance with University Senate regulations.";
+  rtf += `\\pard\\qj\\li360\\b 3.2 Grading System:\\b0  ${escapeRtf(gradingSys)}\\par\n`;
+
+  // Alternate Evaluation / Missed Work
+  rtf += `\\pard\\qj\\li360\\b 3.3 Alternate Evaluation & Missed Work Policy:\\b0\\par\n`;
+  if (course.alternateEvaluationPolicy) {
+    rtf += `\\pard\\qj\\li720 ${escapeRtf(course.alternateEvaluationPolicy)}\\par\n`;
+  } else {
+    rtf += `\\pard\\qj\\li720 In accordance with University Regulations (Exemptions from Parts of the Evaluation), students unable to complete an evaluation due to acceptable cause must notify the instructor promptly. Where acceptable cause is established, an alternate evaluation or reweighting will be offered.\\par\n`;
+  }
+  rtf += `\\pard\\qj\\par\n\n`;
+
+  // SECTION 4. COURSE MODULES, LEARNING OBJECTIVES & CONNECTIONS
+  rtf += `\\pard\\qj\\b\\fs28 4. Course Modules & Learning Objectives\\b0\\fs22\\par\n`;
   rtf += `\\line\\par\n`;
 
   (course.modules || []).forEach((mod, idx) => {
     const modNum = idx + 1;
-    rtf += `\\pard\\qj\\li360\\b\\fs24 3.${modNum} Module ${modNum}: ${escapeRtf(mod.title || mod.label)}\\b0\\fs22\\par\n`;
+    rtf += `\\pard\\qj\\li360\\b\\fs24 4.${modNum} Module ${modNum}: ${escapeRtf(mod.title || mod.label)}\\b0\\fs22\\par\n`;
     
     if (mod.chapter) {
       rtf += `\\pard\\qj\\li360\\cf2 Reading Reference: Chapter ${escapeRtf(mod.chapter)}\\cf1\\par\n`;
@@ -175,6 +239,59 @@ function buildCourseRtfContent(course, connections) {
 
     rtf += `\\pard\\qj\\par\n`;
   });
+
+  // SECTION 5. LAB INFORMATION & SAFETY
+  rtf += `\\pard\\qj\\b\\fs28 5. Laboratory Information & Safety\\b0\\fs22\\par\n`;
+  rtf += `\\line\\par\n`;
+  if (course.labInfo || course.lab) {
+    const lab = course.labInfo || course.lab;
+    if (typeof lab === 'string') {
+      rtf += `\\pard\\qj\\li360 ${escapeRtf(lab)}\\par\n`;
+    } else {
+      if (lab.schedule) rtf += `\\pard\\qj\\li360\\b Schedule/Format:\\b0  ${escapeRtf(lab.schedule)}\\par\n`;
+      if (lab.location) rtf += `\\pard\\qj\\li360\\b Location:\\b0  ${escapeRtf(lab.location)}\\par\n`;
+      if (lab.safety) rtf += `\\pard\\qj\\li360\\b Safety & Personal Protective Equipment (PPE):\\b0  ${escapeRtf(lab.safety)}\\par\n`;
+      if (lab.description) rtf += `\\pard\\qj\\li360 ${escapeRtf(lab.description)}\\par\n`;
+    }
+  } else {
+    rtf += `\\pard\\qj\\li360\\i [Laboratory schedules, safety requirements, PPE standards, and experiment lists to be inserted if applicable]\\i0\\par\n`;
+  }
+  rtf += `\\pard\\qj\\par\n\n`;
+
+  // SECTION 6. USE OF ASSISTIVE TOOLS & GENERATIVE AI
+  rtf += `\\pard\\qj\\b\\fs28 6. Use of Assistive Tools & Generative AI Policy\\b0\\fs22\\par\n`;
+  rtf += `\\line\\par\n`;
+  if (course.aiPolicy) {
+    rtf += `\\pard\\qj\\li360 ${escapeRtf(course.aiPolicy)}\\par\n`;
+  } else {
+    rtf += `\\pard\\qj\\li360 Permissible use of assistive technologies and Generative Artificial Intelligence (e.g., ChatGPT, Claude) in this course will be explicitly stated for each assignment. Unless explicitly permitted by the instructor, the use of generative AI tools to produce coursework, code, or written assignments is unauthorized and constitutes academic misconduct.\\par\n`;
+  }
+  rtf += `\\pard\\qj\\par\n\n`;
+
+  // SECTION 7. ADDITIONAL INFORMATION
+  rtf += `\\pard\\qj\\b\\fs28 7. Additional Course Information\\b0\\fs22\\par\n`;
+  rtf += `\\line\\par\n`;
+  if (course.additionalInfo) {
+    rtf += `\\pard\\qj\\li360 ${escapeRtf(course.additionalInfo)}\\par\n`;
+  } else {
+    rtf += `\\pard\\qj\\li360\\i [Faculty notes on attendance, communication guidelines, late submission penalties, or supplementary learning resources]\\i0\\par\n`;
+  }
+  rtf += `\\pard\\qj\\par\n\n`;
+
+  // SECTION 8. UNIVERSITY STATEMENTS & POLICIES (MUN COMPLIANT)
+  rtf += `\\pard\\qj\\b\\fs28 8. University Statements & Institutional Policies\\b0\\fs22\\par\n`;
+  rtf += `\\line\\par\n`;
+
+  // Academic Integrity Statement
+  rtf += `\\pard\\qj\\li360\\b 8.1 Academic Integrity:\\b0  Students are expected to adhere strictly to Memorial University of Newfoundland's standards of academic honesty. Please refer to the entry on \\i Academic Misconduct\\i0  in the University Calendar for definitions, procedures, and penalties regarding plagiarism, cheating, and misrepresentation.\\par\n\n`;
+
+  // Accommodations Statement
+  rtf += `\\pard\\qj\\li360\\b 8.2 Student Accommodations:\\b0  Memorial University of Newfoundland is committed to accommodating students with disabilities. Students requiring academic accommodations are encouraged to register with Student Accessibility Services (SAS) and inform the instructor as early as possible in the semester.\\par\n\n`;
+
+  // ATIPP Privacy Statement
+  rtf += `\\pard\\qj\\li360\\b 8.3 Student Privacy & Grade Notification (ATIPP):\\b0  Methods used for the notification of grades earned in all parts of the evaluation and for the return of graded evaluative instruments will adhere strictly to the Access to Information and Protection of Privacy Act (ATIPP) of the Government of Newfoundland and Labrador. Grades will only be posted or communicated via secure, University-approved channels (e.g., Brightspace or official university email).\\par\n`;
+  
+  rtf += `\\pard\\qj\\par\n\n`;
 
   return rtf;
 }
