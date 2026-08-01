@@ -179,7 +179,8 @@ function renderModulesList() {
         <div class="nested-item-row" style="gap: 8px;">
           <span style="font-size:0.85rem; color:#a5f3fc; font-weight:600; min-width: 50px;">Lab ${lIdx + 1}:</span>
           <input type="text" placeholder="Lab Title / Experiment Name..." value="${lab.title || ''}" style="flex: 1;" onchange="editingModules[${modIdx}].labs[${lIdx}].title = this.value">
-          <input type="number" placeholder="Weight %" value="${lab.weightPercent ?? 0}" style="width: 90px;" title="Lab Weight %" onchange="editingModules[${modIdx}].labs[${lIdx}].weightPercent = parseFloat(this.value) || 0; updateLabTotalGrade(${modIdx});">
+          <input type="number" step="0.5" placeholder="Hours" value="${lab.hours ?? 3}" style="width: 75px;" title="Lab Duration (Hours)" onchange="editingModules[${modIdx}].labs[${lIdx}].hours = parseFloat(this.value) || 0;">
+          <input type="number" placeholder="Weight %" value="${lab.weightPercent ?? 0}" style="width: 85px;" title="Lab Weight %" onchange="editingModules[${modIdx}].labs[${lIdx}].weightPercent = parseFloat(this.value) || 0; updateLabTotalGrade(${modIdx});">
           <button type="button" class="btn btn-cancel btn-sm" onclick="removeLabItem(${modIdx}, ${lIdx})">&times;</button>
         </div>
       `).join('');
@@ -191,7 +192,7 @@ function renderModulesList() {
           <input type="text" placeholder="Label (e.g. LABS)" value="${mod.label || ''}" style="width: 100px;" onchange="editingModules[${modIdx}].label = this.value">
           <input type="text" placeholder="Section Title (e.g. Practical Chemistry Labs)" value="${mod.title || ''}" style="flex: 1;" onchange="editingModules[${modIdx}].title = this.value">
           <div style="display:flex; align-items:center; gap:4px; font-size:0.85rem; color:#67e8f9; font-weight:600;">
-            Total Lab Grade: <span id="labTotalGrade-${modIdx}">${mod.weightPercent || 0}%</span>
+            Total Grade: <span id="labTotalGrade-${modIdx}">${mod.weightPercent || 0}%</span>
           </div>
           <button type="button" class="btn btn-cancel" onclick="removeModuleRow(${modIdx})">&times;</button>
         </div>
@@ -311,10 +312,10 @@ function addLabRow() {
     isExam: false,
     weightPercent: 20,
     labs: [
-      { title: 'Lab 1: Safety & Techniques', weightPercent: 5 },
-      { title: 'Lab 2: Gravimetric Analysis', weightPercent: 5 },
-      { title: 'Lab 3: Titration Practice', weightPercent: 5 },
-      { title: 'Lab 4: Spectroscopy', weightPercent: 5 }
+      { title: 'Lab 1: Safety & Techniques', hours: 3, weightPercent: 5 },
+      { title: 'Lab 2: Gravimetric Analysis', hours: 3, weightPercent: 5 },
+      { title: 'Lab 3: Titration Practice', hours: 3, weightPercent: 5 },
+      { title: 'Lab 4: Spectroscopy', hours: 3, weightPercent: 5 }
     ]
   });
   renderModulesList();
@@ -324,6 +325,7 @@ function addLabItem(modIdx) {
   if (!editingModules[modIdx].labs) editingModules[modIdx].labs = [];
   editingModules[modIdx].labs.push({
     title: `Lab ${editingModules[modIdx].labs.length + 1}`,
+    hours: 3,
     weightPercent: 0
   });
   renderModulesList();
@@ -449,33 +451,38 @@ function saveCourseData() {
   const cleanedModules = editingModules.map((mod) => {
     if (mod.isExam) {
       return {
-        id: mod.id,
+        id: mod.id || `midterm-${Date.now()}`,
         label: mod.label || 'MIDTERM',
         title: mod.title || 'Midterm Examination',
         lectureCount: parseInt(mod.lectureCount, 10) || 1,
         weightPercent: parseFloat(mod.weightPercent) || 0,
         isExam: true,
+        isLab: false,
         coveredModuleIds: mod.coveredModuleIds || []
       };
     }
     if (mod.isLab) {
       const labs = (mod.labs || []).map(l => ({
         title: l.title || 'Lab Experiment',
+        hours: parseFloat(l.hours) || 3,
         weightPercent: parseFloat(l.weightPercent) || 0
       }));
       const totalWeight = labs.reduce((sum, l) => sum + l.weightPercent, 0);
 
       return {
-        id: mod.id,
+        id: mod.id || `labs-${Date.now()}`,
         label: mod.label || 'LABS',
         title: mod.title || 'Laboratory Component',
-        weightPercent: totalWeight,
+        weightPercent: parseFloat(totalWeight.toFixed(2)),
         isLab: true,
+        isExam: false,
         labs: labs
       };
     }
     return {
       ...mod,
+      isExam: false,
+      isLab: false,
       topics: (mod.topics || [])
         .map((t) => (typeof t === 'object' ? (t.title || t.name || t.description || '') : t))
         .filter((t) => typeof t === 'string' && t.trim() !== ''),

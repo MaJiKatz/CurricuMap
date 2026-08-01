@@ -270,7 +270,7 @@ function openCalendarModal(course) {
 
   const lectureStream = [];
   (course.modules || []).forEach((mod) => {
-    if (mod.isLab) return; // Labs are managed separately from standard lecture slots
+    if (mod.isLab) return;
 
     const count = parseInt(mod.lectureCount, 10) || 1;
     for (let i = 1; i <= count; i++) {
@@ -423,9 +423,12 @@ function renderDrawer(data, moduleId) {
     const labsList = (mod.labs || []);
     const labsHtml = labsList.length > 0
       ? labsList.map((lab, i) => `
-          <div class="topic-item" style="border-left: 3px solid #06b6d4; padding-left: 8px; margin-bottom: 8px;">
-            <strong>Lab ${i + 1}:</strong> ${escapeHtml(lab.title)} 
-            <span style="float: right; color: #67e8f9; font-weight: 600;">${lab.weightPercent ?? 0}%</span>
+          <div class="topic-item" style="border-left: 3px solid #06b6d4; padding-left: 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <strong>Lab ${i + 1}:</strong> ${escapeHtml(lab.title)}
+              <div style="font-size:0.75rem; color:#94a3b8; margin-top:2px;">⏳ ${lab.hours ?? 3} hours per session</div>
+            </div>
+            <span style="color: #67e8f9; font-weight: 600;">${lab.weightPercent ?? 0}%</span>
           </div>
         `).join('')
       : '<p class="topic-objective">No individual experiments listed.</p>';

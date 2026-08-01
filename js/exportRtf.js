@@ -24,7 +24,7 @@ function downloadCourseOutlineRTF(courseId) {
   triggerRtfDownload(rtf, `${course.code.replace(/\s+/g, '_')}_Course_Outline.rtf`);
 }
 
-// --- 2. EXPORT ALL COURSES (PAGE BREAK SEPARATED) ---
+// --- 2. EXPORT ALL COURSES (WITH DEDICATED SUMMARY PAGE & PAGE BREAKS) ---
 function downloadAllCourseOutlinesRTF() {
   if (!window.DATA || !window.DATA.courses || window.DATA.courses.length === 0) {
     alert("No course data found.");
@@ -37,10 +37,50 @@ function downloadAllCourseOutlinesRTF() {
   rtf += `\\viewkind4\\uc1\\f0\\fs22\n\n`;
 
   const connections = window.DATA.connections || [];
+  const courses = window.DATA.courses;
 
-  window.DATA.courses.forEach((course, index) => {
+  // ==========================================
+  // PAGE 1: STANDALONE SUMMARY COVER PAGE
+  // ==========================================
+  rtf += `\\pard\\qc\\b\\fs36 Program Curriculum & Workload Summary\\b0\\fs22\\par\n`;
+  rtf += `\\line\\par\n\n`;
+
+  let grandTotalLectureHours = 0;
+  let grandTotalLabHours = 0;
+  let courseStatsListRtf = '';
+
+  courses.forEach((c) => {
+    const stats = calculateCourseHoursAndStats(c);
+    grandTotalLectureHours += stats.lectureHours;
+    grandTotalLabHours += stats.labHours;
+
+    courseStatsListRtf += `\\pard\\qj\\li360\\b ${escapeRtf(c.code)}: ${escapeRtf(c.name)}\\b0\\par\n`;
+    courseStatsListRtf += `\\pard\\qj\\li720\\cf2 Lecture Hours: ${stats.lectureHours} hrs | Lab Hours: ${stats.labHours} hrs | Total Contact Hours: ${stats.totalHours} hrs\\cf1\\par\n`;
+  });
+
+  const grandTotalHours = grandTotalLectureHours + grandTotalLabHours;
+
+  rtf += `\\pard\\qj\\b\\fs28 Aggregate Program Statistics\\b0\\fs22\\par\n`;
+  rtf += `\\line\\par\n`;
+  rtf += `\\pard\\qj\\li360\\\'95  \\b Total Courses:\\b0  ${courses.length}\\par\n`;
+  rtf += `\\pard\\qj\\li360\\\'95  \\b Total Program Lecture Hours:\\b0  ${grandTotalLectureHours} hrs\\par\n`;
+  rtf += `\\pard\\qj\\li360\\\'95  \\b Total Program Laboratory Hours:\\b0  ${grandTotalLabHours} hrs\\par\n`;
+  rtf += `\\pard\\qj\\li360\\\'95  \\b Total Combined Contact Hours:\\b0  ${grandTotalHours} hrs\\par\n`;
+  rtf += `\\pard\\qj\\par\n\n`;
+
+  rtf += `\\pard\\qj\\b\\fs28 Course-by-Course Stats\\b0\\fs22\\par\n`;
+  rtf += `\\line\\par\n`;
+  rtf += courseStatsListRtf;
+
+  // HARD PAGE BREAK & SECTION RESET TO KEEP SUMMARY EXCLUSIVELY ON PAGE 1
+  rtf += `\\sect\\page\\sectd\n\n`;
+
+  // ==========================================
+  // INDIVIDUAL COURSE OUTLINES
+  // ==========================================
+  courses.forEach((course, index) => {
     if (index > 0) {
-      rtf += `\\page\n`; // Insert hard page break between courses
+      rtf += `\\page\n`; // Insert hard page break between consecutive outlines
     }
     rtf += buildCourseRtfContent(course, connections);
   });
@@ -50,14 +90,89 @@ function downloadAllCourseOutlinesRTF() {
   triggerRtfDownload(rtf, `Complete_Curriculum_Outlines.rtf`);
 }
 
-// --- 3. HELPER: BUILD COURSE RTF STRING ---
+// --- 3. HELPER: CALCULATE COURSE HOURS & EVALUATION ---
+function calculateCourseHoursAndStats(course) {
+  let lectureCount = 0;
+  let labHours = 0;
+  let definedWeightTotal = 0;
+  const midterms = [];
+  const labs = [];
+
+  // Check if hours/schedule are explicitly provided on course root
+  if (course.labHours !== undefined) {
+    labHours = parseFloat(course.labHours) || 0;
+  }
+
+  // Iterate modules/evaluations to aggregate items and hours
+  (course.modules || []).forEach((mod) => {
+    if (mod.isExam) {
+      const w = parseFloat(mod.weightPercent || mod.weight) || 0;
+      midterms.push({ title: mod.title || mod.label || 'Midterm Exam', weight: w, date: mod.date || mod.scheduledWeek });
+      definedWeightTotal += w;
+    } else if (mod.isLab) {
+      const w = parseFloat(mod.weightPercent || mod.weight) || 0;
+      definedWeightTotal += w;
+      
+      let modLabHours = parseFloat(mod.labHours || mod.hours) || 0;
+      if (Array.isArray(mod.labs)) {
+        mod.labs.forEach((l) => {
+          modLabHours += parseFloat(l.hours) || 0;
+        });
+      }
+      if (!course.labHours) labHours += modLabHours;
+
+      labs.push({ title: mod.title || mod.label || 'Practical / Laboratory Work', weight: w, hours: modLabHours });
+    } else {
+      lectureCount += parseInt(mod.lectureCount || mod.lectures, 10) || 0;
+    }
+  });
+
+  // Default lecture hours calculation based on semester config if lectureCount not on modules
+  const config = window.currentCourseConfig || window.defaultScheduleConfig || { weeksInSemester: 12, meetingsPerWeek: 3 };
+  const meetingsPerWeek = config.meetingsPerWeek || config.lecturesPerWeek || 3;
+  const weeksInSemester = config.weeksInSemester || 12;
+  
+  const lectureHours = lectureCount > 0 ? lectureCount : (meetingsPerWeek * weeksInSemester);
+  const totalHours = lectureHours + labHours;
+
+  // Check custom evaluation scheme if defined on course directly
+  const customEval = course.evaluationScheme || course.evaluation || course.gradingScheme;
+  if (Array.isArray(customEval)) {
+    let customDefinedWeight = 0;
+    customEval.forEach(item => {
+      const w = parseFloat(item.weight || item.allocation || item.percent) || 0;
+      const name = String(item.component || item.name || '').toLowerCase();
+      if (!name.includes('final')) {
+        customDefinedWeight += w;
+      }
+    });
+    if (customDefinedWeight > 0) {
+      definedWeightTotal = customDefinedWeight;
+    }
+  }
+
+  const finalExamWeight = Math.max(0, 100 - definedWeightTotal);
+
+  return {
+    lectureHours,
+    labHours,
+    totalHours,
+    midterms,
+    labs,
+    definedWeightTotal,
+    finalExamWeight
+  };
+}
+
+// --- 4. HELPER: BUILD COURSE RTF STRING ---
 function buildCourseRtfContent(course, connections) {
   let rtf = '';
+  const stats = calculateCourseHoursAndStats(course);
 
   // HEADER: COURSE NAME & NUMBER (CENTERED)
   rtf += `\\pard\\qc\\b\\fs36 ${escapeRtf(course.code)}: ${escapeRtf(course.name)}\\b0\\fs22\\par\n`;
   if (course.credits) {
-    rtf += `\\pard\\qc\\cf2\\fs20 (${course.credits} Credit Hours)\\cf1\\fs22\\par\n`;
+    rtf += `\\pard\\qc\\cf2\\fs20 (${course.credits} Credit Hours | Total Contact Hours: ${stats.totalHours} hrs)\\cf1\\fs22\\par\n`;
   }
   rtf += `\\pard\\qj\\par\n\n`;
 
@@ -109,7 +224,7 @@ function buildCourseRtfContent(course, connections) {
   const minutesPerBlock = config.minutesPerBlock || config.lectureLength || 50;
   const weeksInSemester = config.weeksInSemester || 12;
 
-  rtf += `\\pard\\qj\\li360\\cf2 Class Format: ${meetingsPerWeek} lectures per week (${minutesPerBlock} minutes per block) over ${weeksInSemester} weeks.\\cf1\\par\n`;
+  rtf += `\\pard\\qj\\li360\\cf2 Class Format: ${meetingsPerWeek} lectures/week (${minutesPerBlock} min/block, ${stats.lectureHours} total lecture hrs) | ${stats.labHours} lab hrs across ${weeksInSemester} weeks.\\cf1\\par\n`;
   rtf += `\\line\\par\n`;
   
   if (typeof window.generateCalendarSchedule === 'function') {
@@ -134,22 +249,38 @@ function buildCourseRtfContent(course, connections) {
 
   // Allocation of Marks
   rtf += `\\pard\\qj\\li360\\b 3.1 Allocation of Marks:\\b0\\par\n`;
+  
   const evalBreakdown = course.evaluationScheme || course.evaluation || course.gradingScheme;
-  if (evalBreakdown) {
-    if (Array.isArray(evalBreakdown)) {
-      evalBreakdown.forEach(item => {
-        rtf += `\\pard\\qj\\li720\\\'95  ${escapeRtf(item.component || item.name)}: ${escapeRtf(item.weight || item.allocation)}`;
-        if (item.date) rtf += ` \\cf2 (Probable Date/Due: ${escapeRtf(item.date)})\\cf1`;
+  if (Array.isArray(evalBreakdown) && evalBreakdown.length > 0) {
+    evalBreakdown.forEach(item => {
+      rtf += `\\pard\\qj\\li720\\\'95  ${escapeRtf(item.component || item.name)}: ${escapeRtf(item.weight || item.allocation)}`;
+      if (item.date) rtf += ` \\cf2 (Probable Date/Due: ${escapeRtf(item.date)})\\cf1`;
+      rtf += `\\par\n`;
+    });
+  } else {
+    // Dynamic breakdown generated from course modules & calculated remaining final exam
+    if (stats.midterms.length > 0) {
+      stats.midterms.forEach((m) => {
+        rtf += `\\pard\\qj\\li720\\\'95  ${escapeRtf(m.title)}: ${m.weight}%`;
+        if (m.date) rtf += ` \\cf2 (Probable Date: ${escapeRtf(m.date)})\\cf1`;
         rtf += `\\par\n`;
       });
     } else {
-      rtf += `\\pard\\qj\\li720 ${escapeRtf(evalBreakdown)}\\par\n`;
+      rtf += `\\pard\\qj\\li720\\\'95  Midterm Examination(s): 25% (Probable Date: Week 6)\\par\n`;
     }
-  } else {
-    rtf += `\\pard\\qj\\li720\\\'95 Midterm Examination(s): 25% (Probable Date: Week 6)\\par\n`;
-    rtf += `\\pard\\qj\\li720\\\'95 Laboratory / Practical Work: 25%\\par\n`;
-    rtf += `\\pard\\qj\\li720\\\'95 Assignments & Quizzes: 15%\\par\n`;
-    rtf += `\\pard\\qj\\li720\\\'95 Final Examination: 35% (Scheduled by Registrar)\\par\n`;
+
+    if (stats.labs.length > 0) {
+      stats.labs.forEach((l) => {
+        rtf += `\\pard\\qj\\li720\\\'95  ${escapeRtf(l.title)}: ${l.weight}%`;
+        if (l.hours) rtf += ` \\cf2 (${l.hours} Laboratory Hours)\\cf1`;
+        rtf += `\\par\n`;
+      });
+    } else if (stats.labHours > 0) {
+      rtf += `\\pard\\qj\\li720\\\'95  Laboratory / Practical Work: 25% (${stats.labHours} Total Lab Hours)\\par\n`;
+    }
+
+    // Final Exam rendered as calculated difference
+    rtf += `\\pard\\qj\\li720\\\'95  Final Examination: ${stats.finalExamWeight}% (Scheduled by Registrar; calculated remaining balance)\\par\n`;
   }
 
   // Grading System Statement
