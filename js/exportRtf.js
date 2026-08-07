@@ -415,7 +415,20 @@ function buildCourseRtfContent(course, connections) {
 
   (course.modules || []).forEach((mod, idx) => {
     const modNum = idx + 1;
-    rtf += `\\pard\\qj\\li360\\b\\fs24 4.${modNum} Module ${modNum}: ${escapeRtf(mod.title || mod.label)}\\b0\\fs22\\par\n`;
+    
+    // Sum total lectures across topics within this module
+    let moduleLectureSum = 0;
+    if (Array.isArray(mod.topics) && mod.topics.length > 0) {
+      mod.topics.forEach((topic) => {
+        moduleLectureSum += getTopicLectureCount(topic);
+      });
+    } else {
+      moduleLectureSum = parseFloat(mod.lectureCount || mod.lectures || mod.hours) || 0;
+    }
+
+    const lecTag = ` [${moduleLectureSum} ${moduleLectureSum === 1 ? 'lecture' : 'lectures'}]`;
+
+    rtf += `\\pard\\qj\\li360\\b\\fs24 4.${modNum} Module ${modNum}: ${escapeRtf(mod.title || mod.label)}${escapeRtf(lecTag)}\\b0\\fs22\\par\n`;
     
     if (mod.chapter) {
       rtf += `\\pard\\qj\\li360\\cf2 Reading Reference: Chapter ${escapeRtf(mod.chapter)}\\cf1\\par\n`;
