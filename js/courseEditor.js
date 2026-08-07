@@ -1,7 +1,7 @@
 /* ============================================================
    js/courseEditor.js
    Handles course modal interactions, module/midterm/lab management, 
-   nested topics/objectives editing, and connections.
+   nested topics/objectives/questions editing, and connections.
    ============================================================ */
 
 let currentCourse = null;
@@ -126,6 +126,43 @@ function switchTab(tabName) {
   if (activeTab) activeTab.classList.add('active');
 }
 
+// SCRAPES DOM INPUTS INTO MEMORY BEFORE RE-RENDERING OR SAVING
+function syncModulesFromDOM() {
+  const container = document.getElementById('moduleList');
+  if (!container) return;
+
+  const moduleContainers = container.querySelectorAll('.module-row-container');
+  moduleContainers.forEach((wrapper, modIdx) => {
+    const mod = editingModules[modIdx];
+    if (!mod || mod.isExam || mod.isLab) return;
+
+    const topicCards = wrapper.querySelectorAll('.topic-editor-card');
+    const updatedTopics = [];
+
+    topicCards.forEach((card) => {
+      const titleIn = card.querySelector('.input-topic-title');
+      const descIn = card.querySelector('.input-topic-desc');
+
+      const objInputs = card.querySelectorAll('.input-topic-obj');
+      const objectives = [];
+      objInputs.forEach((i) => objectives.push(i.value));
+
+      const questInputs = card.querySelectorAll('.input-topic-quest');
+      const questions = [];
+      questInputs.forEach((i) => questions.push(i.value));
+
+      updatedTopics.push({
+        title: titleIn ? titleIn.value : '',
+        description: descIn ? descIn.value : '',
+        learningObjectives: objectives,
+        textbookQuestions: questions
+      });
+    });
+
+    mod.topics = updatedTopics;
+  });
+}
+
 function renderModulesList() {
   const container = document.getElementById('moduleList');
   const countEl = document.getElementById('moduleCount');
@@ -212,7 +249,6 @@ function renderModulesList() {
     } else {
       // STANDARD MODULE ROW
       if (!Array.isArray(mod.topics)) mod.topics = [];
-      if (!Array.isArray(mod.objectives)) mod.objectives = [];
 
       let html = `
         <div class="module-header-row">
@@ -223,37 +259,78 @@ function renderModulesList() {
           <button type="button" class="btn btn-cancel" onclick="removeModuleRow(${modIdx})">&times;</button>
         </div>
         <div class="nested-section">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h5>Topics</h5>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h5 style="margin: 0; font-size: 0.95rem; color: #38bdf8;">Topics (${mod.topics.length})</h5>
             <button type="button" class="btn btn-secondary btn-sm" onclick="addTopicRow(${modIdx})">+ Add Topic</button>
           </div>
           <div id="topics-${modIdx}">
       `;
 
       mod.topics.forEach((topic, tIdx) => {
-        const topicVal = typeof topic === 'object' ? (topic.title || topic.name || topic.description || '') : topic;
+        if (typeof topic !== 'object' || topic === null) {
+          topic = { title: typeof topic === 'string' ? topic : '', description: '', learningObjectives: [], textbookQuestions: [] };
+          mod.topics[tIdx] = topic;
+        }
+        if (!Array.isArray(topic.learningObjectives)) topic.learningObjectives = [];
+        if (!Array.isArray(topic.textbookQuestions)) topic.textbookQuestions = [];
+
         html += `
-          <div class="nested-item-row">
-            <input type="text" placeholder="Topic description..." value="${topicVal || ''}" style="flex: 1;" onchange="editingModules[${modIdx}].topics[${tIdx}] = this.value">
-            <button type="button" class="btn btn-cancel btn-sm" onclick="removeTopicRow(${modIdx}, ${tIdx})">&times;</button>
-          </div>
+          <div class="topic-editor-card" style="background: rgba(15, 23, 42, 0.5); border: 1px solid #334155; border-radius: 6px; padding: 10px; margin-bottom: 12px; position: relative;">
+            <button type="button" class="btn btn-cancel btn-sm" style="position: absolute; top: 8px; right: 8px;" onclick="removeTopicRow(${modIdx}, ${tIdx})" title="Delete Topic">&times;</button>
+            
+            <div style="margin-bottom: 8px;">
+              <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; margin-bottom: 2px;">Topic Title</label>
+              <input type="text" class="input-topic-title" placeholder="e.g. First Law of Thermodynamics" value="${topic.title || ''}" style="width: 100%;">
+            </div>
+
+            <div style="margin-bottom: 8px;">
+              <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; margin-bottom: 2px;">Description</label>
+              <textarea class="input-topic-desc" placeholder="Brief overview of topic..." rows="2" style="width: 100%; font-size: 0.85rem; padding: 4px 6px; background: #0f172a; border: 1px solid #334155; color: #f8fafc; border-radius: 4px;">${topic.description || ''}</textarea>
+            </div>
+
+            <!-- LEARNING OBJECTIVES -->
+            <div style="margin-bottom: 8px; padding: 6px; background: rgba(0, 0, 0, 0.2); border-radius: 4px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span style="font-size: 0.75rem; font-weight: 700; color: #38bdf8;">🎯 Learning Objectives</span>
+                <button type="button" class="btn btn-secondary btn-sm" style="font-size: 0.7rem; padding: 1px 6px;" onclick="addTopicObjective(${modIdx}, ${tIdx})">+ Add</button>
+              </div>
+              <div id="topic-objectives-${modIdx}-${tIdx}">
         `;
-      });
 
-      html += `</div></div><div class="nested-section">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <h5>Learning Objectives</h5>
-          <button type="button" class="btn btn-secondary btn-sm" onclick="addObjectiveRow(${modIdx})">+ Add Objective</button>
-        </div>
-        <div id="objectives-${modIdx}">
-      `;
+        topic.learningObjectives.forEach((obj, oIdx) => {
+          html += `
+            <div class="nested-item-row" style="margin-bottom: 4px; gap: 4px;">
+              <input type="text" class="input-topic-obj" placeholder="Objective..." value="${obj || ''}" style="flex: 1; font-size: 0.8rem;">
+              <button type="button" class="btn btn-cancel btn-sm" onclick="removeTopicObjective(${modIdx}, ${tIdx}, ${oIdx})">&times;</button>
+            </div>
+          `;
+        });
 
-      mod.objectives.forEach((obj, oIdx) => {
-        const objVal = typeof obj === 'object' ? (obj.title || obj.statement || obj.description || '') : obj;
         html += `
-          <div class="nested-item-row">
-            <input type="text" placeholder="Objective description..." value="${objVal || ''}" style="flex: 1;" onchange="editingModules[${modIdx}].objectives[${oIdx}] = this.value">
-            <button type="button" class="btn btn-cancel btn-sm" onclick="removeObjectiveRow(${modIdx}, ${oIdx})">&times;</button>
+              </div>
+            </div>
+
+            <!-- TEXTBOOK QUESTIONS -->
+            <div style="padding: 6px; background: rgba(0, 0, 0, 0.2); border-radius: 4px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span style="font-size: 0.75rem; font-weight: 700; color: #a7f3d0;">📖 Recommended Questions</span>
+                <button type="button" class="btn btn-secondary btn-sm" style="font-size: 0.7rem; padding: 1px 6px;" onclick="addTopicQuestion(${modIdx}, ${tIdx})">+ Add</button>
+              </div>
+              <div id="topic-questions-${modIdx}-${tIdx}">
+        `;
+
+        topic.textbookQuestions.forEach((quest, qIdx) => {
+          html += `
+            <div class="nested-item-row" style="margin-bottom: 4px; gap: 4px;">
+              <input type="text" class="input-topic-quest" placeholder="e.g., Ch. 5, #12, #18..." value="${quest || ''}" style="flex: 1; font-size: 0.8rem;">
+              <button type="button" class="btn btn-cancel btn-sm" onclick="removeTopicQuestion(${modIdx}, ${tIdx}, ${qIdx})">&times;</button>
+            </div>
+          `;
+        });
+
+        html += `
+              </div>
+            </div>
           </div>
         `;
       });
@@ -267,6 +344,7 @@ function renderModulesList() {
 }
 
 function addModuleRow() {
+  syncModulesFromDOM();
   const courseIdEl = document.getElementById('courseId');
   const courseId = (courseIdEl && courseIdEl.value) ? courseIdEl.value : 'course';
   
@@ -276,7 +354,6 @@ function addModuleRow() {
     title: 'New Module',
     lectureCount: 3,
     topics: [],
-    objectives: [],
     isExam: false,
     isLab: false
   });
@@ -284,6 +361,7 @@ function addModuleRow() {
 }
 
 function addMidtermRow() {
+  syncModulesFromDOM();
   const courseIdEl = document.getElementById('courseId');
   const courseId = (courseIdEl && courseIdEl.value) ? courseIdEl.value : 'course';
   
@@ -301,6 +379,7 @@ function addMidtermRow() {
 }
 
 function addLabRow() {
+  syncModulesFromDOM();
   const courseIdEl = document.getElementById('courseId');
   const courseId = (courseIdEl && courseIdEl.value) ? courseIdEl.value : 'course';
 
@@ -322,6 +401,7 @@ function addLabRow() {
 }
 
 function addLabItem(modIdx) {
+  syncModulesFromDOM();
   if (!editingModules[modIdx].labs) editingModules[modIdx].labs = [];
   editingModules[modIdx].labs.push({
     title: `Lab ${editingModules[modIdx].labs.length + 1}`,
@@ -332,12 +412,14 @@ function addLabItem(modIdx) {
 }
 
 function removeLabItem(modIdx, labIdx) {
+  syncModulesFromDOM();
   editingModules[modIdx].labs.splice(labIdx, 1);
   updateLabTotalGrade(modIdx);
   renderModulesList();
 }
 
 function equalizeLabWeights(modIdx) {
+  syncModulesFromDOM();
   const labs = editingModules[modIdx].labs || [];
   if (labs.length === 0) return;
 
@@ -374,30 +456,66 @@ function toggleMidtermModule(midtermIdx, moduleId, isChecked) {
 }
 
 function removeModuleRow(index) {
+  syncModulesFromDOM();
   editingModules.splice(index, 1);
   renderModulesList();
 }
 
+// --- TOPIC & SUB-ITEM MANAGEMENT ---
 function addTopicRow(modIndex) {
+  syncModulesFromDOM();
   if (!editingModules[modIndex].topics) editingModules[modIndex].topics = [];
-  editingModules[modIndex].topics.push('');
+  editingModules[modIndex].topics.push({
+    title: '',
+    description: '',
+    learningObjectives: [],
+    textbookQuestions: []
+  });
   renderModulesList();
 }
 
 function removeTopicRow(modIndex, topicIndex) {
+  syncModulesFromDOM();
   editingModules[modIndex].topics.splice(topicIndex, 1);
   renderModulesList();
 }
 
-function addObjectiveRow(modIndex) {
-  if (!editingModules[modIndex].objectives) editingModules[modIndex].objectives = [];
-  editingModules[modIndex].objectives.push('');
-  renderModulesList();
+function addTopicObjective(modIdx, topicIdx) {
+  syncModulesFromDOM();
+  const topic = editingModules[modIdx].topics[topicIdx];
+  if (topic) {
+    if (!Array.isArray(topic.learningObjectives)) topic.learningObjectives = [];
+    topic.learningObjectives.push('');
+    renderModulesList();
+  }
 }
 
-function removeObjectiveRow(modIndex, objIndex) {
-  editingModules[modIndex].objectives.splice(objIndex, 1);
-  renderModulesList();
+function removeTopicObjective(modIdx, topicIdx, objIdx) {
+  syncModulesFromDOM();
+  const topic = editingModules[modIdx].topics[topicIdx];
+  if (topic && topic.learningObjectives) {
+    topic.learningObjectives.splice(objIdx, 1);
+    renderModulesList();
+  }
+}
+
+function addTopicQuestion(modIdx, topicIdx) {
+  syncModulesFromDOM();
+  const topic = editingModules[modIdx].topics[topicIdx];
+  if (topic) {
+    if (!Array.isArray(topic.textbookQuestions)) topic.textbookQuestions = [];
+    topic.textbookQuestions.push('');
+    renderModulesList();
+  }
+}
+
+function removeTopicQuestion(modIdx, topicIdx, qIdx) {
+  syncModulesFromDOM();
+  const topic = editingModules[modIdx].topics[topicIdx];
+  if (topic && topic.textbookQuestions) {
+    topic.textbookQuestions.splice(qIdx, 1);
+    renderModulesList();
+  }
 }
 
 function renderConnectionsList() {
@@ -444,6 +562,8 @@ function removeConnectionRow(index) {
 }
 
 function saveCourseData() {
+  syncModulesFromDOM();
+
   const yearEl = document.getElementById('courseYear');
   const rawYear = yearEl ? yearEl.value : '';
   const yearVal = rawYear !== '' && !isNaN(rawYear) ? parseInt(rawYear, 10) : 1;
@@ -479,16 +599,26 @@ function saveCourseData() {
         labs: labs
       };
     }
+
+    const cleanedTopics = (mod.topics || [])
+      .map((t) => {
+        if (typeof t === 'string') {
+          return { title: t, description: '', learningObjectives: [], textbookQuestions: [] };
+        }
+        return {
+          title: t.title || '',
+          description: t.description || '',
+          learningObjectives: (t.learningObjectives || []).filter((o) => typeof o === 'string' && o.trim() !== ''),
+          textbookQuestions: (t.textbookQuestions || []).filter((q) => typeof q === 'string' && q.trim() !== '')
+        };
+      })
+      .filter((t) => t.title.trim() !== '' || t.description.trim() !== '' || t.learningObjectives.length > 0 || t.textbookQuestions.length > 0);
+
     return {
       ...mod,
       isExam: false,
       isLab: false,
-      topics: (mod.topics || [])
-        .map((t) => (typeof t === 'object' ? (t.title || t.name || t.description || '') : t))
-        .filter((t) => typeof t === 'string' && t.trim() !== ''),
-      objectives: (mod.objectives || [])
-        .map((o) => (typeof o === 'object' ? (o.title || o.statement || o.description || '') : o))
-        .filter((o) => typeof o === 'string' && o.trim() !== '')
+      topics: cleanedTopics
     };
   });
 
@@ -536,8 +666,10 @@ window.toggleMidtermModule = toggleMidtermModule;
 window.removeModuleRow = removeModuleRow;
 window.addTopicRow = addTopicRow;
 window.removeTopicRow = removeTopicRow;
-window.addObjectiveRow = addObjectiveRow;
-window.removeObjectiveRow = removeObjectiveRow;
+window.addTopicObjective = addTopicObjective;
+window.removeTopicObjective = removeTopicObjective;
+window.addTopicQuestion = addTopicQuestion;
+window.removeTopicQuestion = removeTopicQuestion;
 window.addConnectionRow = addConnectionRow;
 window.removeConnectionRow = removeConnectionRow;
 window.saveCourseData = saveCourseData;

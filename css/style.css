@@ -409,6 +409,7 @@ marker[id*="weak"] path { fill: var(--weak) !important; }
   line-height: 1.25;
   color: var(--ink);
   transition: border-color .12s ease, background .12s ease;
+  font-weight: 600;
 }
 
 .module-chip .m-label {
@@ -800,4 +801,112 @@ marker[id*="weak"] path { fill: var(--weak) !important; }
   background-color: #38bdf8;
   width: 18px;
   border-radius: 4px;
+}
+
+/* Drawer Content Styles */
+.drawer-textbook {
+  margin-bottom: 12px;
+}
+
+.drawer-topic-block {
+  padding: 4px 0;
+}
+
+.topic-divider {
+  border: 0;
+  border-top: 1px dotted #334155;
+  margin: 16px 0;
+}
+
+.topic-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #000000;
+}
+
+.topic-description {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  margin: 6px 0 10px 0;
+  line-height: 1.4;
+  padding-left: 8px;
+}
+
+.topic-section {
+  margin-top: 10px;
+}
+
+.topic-section-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: block;
+  margin-bottom: 4px;
+  
+}
+
+.topic-section-label.label-objectives {
+  color: #38bdf8;
+}
+
+.topic-section-label.label-questions {
+  color: #c300ff;
+}
+
+.topic-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.825rem;
+  color: #006dfc;
+}
+
+.topic-list-item {
+  margin-bottom: 4px;
+  line-height: 1.35;
+}
+
+/* Exam & Lab Drawer Cards */
+.drawer-banner {
+  padding: 10px;
+  border-radius: 6px;
+  margin: 12px 0;
+}
+
+.exam-banner {
+  background: rgba(107, 33, 168, 0.25);
+  border: 1px solid #a855f7;
+  color: black;
+}
+
+.lab-banner {
+  background: rgba(6, 182, 212, 0.15);
+  border: 1px solid #06b6d4;
+  color: black;
+}
+
+.exam-covered-item {
+  border-left: 3px solid #a855f7;
+  padding-left: 8px;
+  margin-bottom: 8px;
+}
+
+.lab-item {
+  border-left: 3px solid #06b6d4;
+  padding-left: 8px;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.lab-subtext {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+.lab-weight {
+  color: #67e8f9;
+  font-weight: 600;
 }

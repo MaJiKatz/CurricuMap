@@ -219,16 +219,16 @@ function renderCourseCard(course, isCollapsed) {
       chip.style.background = 'rgba(107, 33, 168, 0.35)';
       const weightBadge = mod.weightPercent ? ` <span style="font-size:0.75rem; background:#6b21a8; padding:1px 4px; border-radius:3px; color:#f3e8ff;">${mod.weightPercent}%</span>` : '';
       chip.innerHTML = `
-        <span class="m-label" style="color: #e9d5ff; font-weight: 600;">📝 ${escapeHtml(mod.label)}${weightBadge}</span>
-        <span class="m-title" style="font-weight: 600; color: #ffffff;">${escapeHtml(mod.title)}</span>
+        <span class="m-label" style="color: black; font-weight: 600;">📝 ${escapeHtml(mod.label)}${weightBadge}</span>
+        <span class="m-title" style="font-weight: 600; color: black;">${escapeHtml(mod.title)}</span>
       `;
     } else if (mod.isLab) {
       chip.style.borderColor = '#06b6d4';
       chip.style.background = 'rgba(6, 182, 212, 0.2)';
       const totalWeight = mod.weightPercent ? ` <span style="font-size:0.75rem; background:#0891b2; padding:1px 4px; border-radius:3px; color:#cffaffe0;">${mod.weightPercent}%</span>` : '';
       chip.innerHTML = `
-        <span class="m-label" style="color: #67e8f9; font-weight: 600;">🧪 ${escapeHtml(mod.label)}${totalWeight}</span>
-        <span class="m-title" style="font-weight: 600; color: #ffffff;">${escapeHtml(mod.title)}</span>
+        <span class="m-label" style="color: black; font-weight: 600;">🧪 ${escapeHtml(mod.label)}${totalWeight}</span>
+        <span class="m-title" style="font-weight: 600; color: black;">${escapeHtml(mod.title)}</span>
       `;
     } else {
       chip.innerHTML = `
@@ -396,7 +396,7 @@ function renderDrawer(data, moduleId) {
 
     const coveredHtml = coveredMods.length > 0
       ? coveredMods.map(m => `
-          <div class="topic-item" style="border-left: 3px solid #a855f7; padding-left: 8px; margin-bottom: 8px;">
+          <div class="topic-item exam-covered-item">
             <strong>${escapeHtml(m.label)}:</strong> ${escapeHtml(m.title)}
           </div>
         `).join('')
@@ -408,7 +408,7 @@ function renderDrawer(data, moduleId) {
         <button class="btn-edit-course" onclick="if(window.openCourseEditor) window.openCourseEditor('${mod.id}')" title="Edit Course">✏️</button>
       </div>
       <h2 class="drawer-title">${escapeHtml(mod.title)}</h2>
-      <div style="background: rgba(107, 33, 168, 0.25); border: 1px solid #a855f7; color: #f3e8ff; padding: 10px; border-radius: 6px; margin: 12px 0;">
+      <div class="drawer-banner exam-banner">
         🎯 <strong>Grade Evaluation Weight:</strong> ${mod.weightPercent ?? 0}% of final grade.<br>
         ⏱️ <strong>Schedule Allocation:</strong> ${mod.lectureCount || 1} lecture block(s).
       </div>
@@ -423,12 +423,12 @@ function renderDrawer(data, moduleId) {
     const labsList = (mod.labs || []);
     const labsHtml = labsList.length > 0
       ? labsList.map((lab, i) => `
-          <div class="topic-item" style="border-left: 3px solid #06b6d4; padding-left: 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+          <div class="topic-item lab-item">
             <div>
               <strong>Lab ${i + 1}:</strong> ${escapeHtml(lab.title)}
-              <div style="font-size:0.75rem; color:#94a3b8; margin-top:2px;">⏳ ${lab.hours ?? 3} hours per session</div>
+              <div class="lab-subtext">⏳ ${lab.hours ?? 3} hours per session</div>
             </div>
-            <span style="color: #67e8f9; font-weight: 600;">${lab.weightPercent ?? 0}%</span>
+            <span class="lab-weight">${lab.weightPercent ?? 0}%</span>
           </div>
         `).join('')
       : '<p class="topic-objective">No individual experiments listed.</p>';
@@ -439,7 +439,7 @@ function renderDrawer(data, moduleId) {
         <button class="btn-edit-course" onclick="if(window.openCourseEditor) window.openCourseEditor('${mod.id}')" title="Edit Course">✏️</button>
       </div>
       <h2 class="drawer-title">${escapeHtml(mod.title)}</h2>
-      <div style="background: rgba(6, 182, 212, 0.15); border: 1px solid #06b6d4; color: #cffafe; padding: 10px; border-radius: 6px; margin: 12px 0;">
+      <div class="drawer-banner lab-banner">
         🧪 <strong>Total Laboratory Weight:</strong> ${mod.weightPercent ?? 0}% of final grade.
       </div>
       <div class="drawer-section-label">Laboratory Experiments (${labsList.length})</div>
@@ -450,35 +450,68 @@ function renderDrawer(data, moduleId) {
 
   // STANDARD MODULE DRAWER VIEW
   const chaptersText = mod.chapters ? `Ch. ${mod.chapters.join(', ')}` : '';
-  const formattedTb = formatTextbook(course.textbook);
+  const formattedTb = typeof formatTextbook === 'function' ? formatTextbook(course.textbook) : '';
   const textbookText = formattedTb && formattedTb !== 'None listed' 
     ? `<div class="drawer-textbook">📖 <strong>Textbook:</strong> ${escapeHtml(formattedTb)}</div>` 
     : '';
 
   const topicsHtml = mod.topics && mod.topics.length
-    ? mod.topics.map((t) => {
+    ? mod.topics.map((t, idx) => {
         if (typeof t === 'string') {
-          return `<div class="topic-item"><div class="topic-title-row"><span class="topic-title">${escapeHtml(t)}</span></div></div>`;
+          return `
+            <div class="drawer-topic-block">
+              <div class="topic-title-row"><span class="topic-title">${escapeHtml(t)}</span></div>
+            </div>
+            ${idx < mod.topics.length - 1 ? '<hr class="topic-divider">' : ''}
+          `;
         }
-        const sectionBadge = t.section ? `<span class="section-tag">Sec. ${escapeHtml(t.section)}</span>` : '';
-        const objectivesHtml = t.objectives && t.objectives.length
-          ? t.objectives.map((obj) => {
-              const objText = typeof obj === 'string' ? obj : (obj.text || obj.statement || obj.title);
-              const questions = obj.recommendedQuestions && obj.recommendedQuestions.length
-                ? `<div class="obj-questions">💡 <em>Questions:</em> ${escapeHtml(obj.recommendedQuestions.join(', '))}</div>`
-                : '';
-              return `<div class="topic-objective">${escapeHtml(objText)}${questions}</div>`;
-            }).join('')
+
+        const titleText = t.title || t.name || 'Untitled Topic';
+        
+        // Description
+        const descHtml = t.description 
+          ? `<div class="topic-description">${escapeHtml(t.description)}</div>` 
+          : '';
+
+        // Objectives
+        const rawObjectives = t.learningObjectives || t.objectives || [];
+        const objectivesHtml = rawObjectives.length
+          ? `
+            <div class="topic-section">
+              <span class="topic-section-label label-objectives">🎯 Learning Objectives</span>
+              <ul class="topic-list">
+                ${rawObjectives.map((obj) => {
+                  const objText = typeof obj === 'string' ? obj : (obj.text || obj.statement || obj.title || '');
+                  return `<li class="topic-list-item">${escapeHtml(objText)}</li>`;
+                }).join('')}
+              </ul>
+            </div>
+          `
+          : '';
+
+        // Questions
+        const rawQuestions = t.textbookQuestions || [];
+        const questionsHtml = rawQuestions.length
+          ? `
+            <div class="topic-section">
+              <span class="topic-section-label label-questions">📖 Recommended Questions</span>
+              <ul class="topic-list">
+                ${rawQuestions.map((q) => `<li class="topic-list-item">${escapeHtml(q)}</li>`).join('')}
+              </ul>
+            </div>
+          `
           : '';
 
         return `
-          <div class="topic-item">
+          <div class="drawer-topic-block">
             <div class="topic-title-row">
-              <span class="topic-title">${escapeHtml(formatTopic(t))}</span>
-              ${sectionBadge}
+              <span class="topic-title">${escapeHtml(titleText)}</span>
             </div>
+            ${descHtml}
             ${objectivesHtml}
+            ${questionsHtml}
           </div>
+          ${idx < mod.topics.length - 1 ? '<hr class="topic-divider">' : ''}
         `;
       }).join('')
     : `<p class="topic-objective">No topics listed for this module.</p>`;
