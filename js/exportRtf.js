@@ -90,6 +90,21 @@ function downloadAllCourseOutlinesRTF() {
   triggerRtfDownload(rtf, `Complete_Curriculum_Outlines.rtf`);
 }
 
+// --- HELPER: EXTRACT PER-TOPIC LECTURE COUNT ---
+function getTopicLectureCount(topic) {
+  if (typeof topic === 'number') return topic;
+  if (!topic || typeof topic === 'string') return 1;
+  const val = parseFloat(
+    topic.lectureCount ?? 
+    topic.lectures ?? 
+    topic.hours ?? 
+    topic.count ?? 
+    topic.numLectures ?? 
+    topic.duration
+  );
+  return (!isNaN(val) && val > 0) ? val : 1;
+}
+
 // --- 3. HELPER: CALCULATE COURSE HOURS & EVALUATION SCHEME ---
 function calculateCourseHoursAndStats(course) {
   let lectureCount = 0;
@@ -103,7 +118,7 @@ function calculateCourseHoursAndStats(course) {
     labHours = parseFloat(course.labHours) || 0;
   }
 
-  // Iterate modules/evaluations to aggregate items and lab hours
+  // Iterate modules to calculate per-topic lectures, exams, and labs
   (course.modules || []).forEach((mod) => {
     if (mod.isExam) {
       const w = parseFloat(mod.weightPercent || mod.weight) || 0;
@@ -123,7 +138,15 @@ function calculateCourseHoursAndStats(course) {
 
       labs.push({ title: mod.title || mod.label || 'Laboratory / Practical Work', weight: w, hours: modLabHours });
     } else {
-      lectureCount += parseInt(mod.lectureCount || mod.lectures, 10) || 0;
+      // Sum lecture count explicitly from topics inside this module
+      if (Array.isArray(mod.topics) && mod.topics.length > 0) {
+        mod.topics.forEach((topic) => {
+          lectureCount += getTopicLectureCount(topic);
+        });
+      } else {
+        // Fallback if a module contains no topic array
+        lectureCount += parseFloat(mod.lectureCount || mod.lectures || mod.hours) || 0;
+      }
     }
   });
 
@@ -162,6 +185,77 @@ function calculateCourseHoursAndStats(course) {
     definedWeightTotal,
     finalExamWeight
   };
+}
+
+// --- HELPER: BUILD PER-TOPIC SCHEDULE SLOTS INTO CALENDAR WEEKS ---
+function buildCourseSchedule(course, meetingsPerWeek, weeksInSemester) {
+  const slots = [];
+
+  // Generate day-by-day slots derived strictly from per-topic lecture counts
+  (course.modules || []).forEach((mod, mIdx) => {
+    const modLabel = mod.label || mod.code || `M${mIdx + 1}`;
+
+    if (mod.isExam) {
+      slots.push({
+        isExam: true,
+        title: mod.title || mod.label || 'Midterm Examination',
+        moduleLabel: modLabel
+      });
+    } else if (mod.isLab) {
+      slots.push({
+        isLab: true,
+        title: mod.title || mod.label || 'Laboratory Session',
+        moduleLabel: modLabel
+      });
+    } else if (Array.isArray(mod.topics) && mod.topics.length > 0) {
+      mod.topics.forEach((topic, tIdx) => {
+        const topicTitle = typeof topic === 'string' 
+          ? topic 
+          : (topic.title || topic.name || topic.label || `Topic ${tIdx + 1}`);
+        
+        const count = getTopicLectureCount(topic);
+
+        for (let i = 1; i <= count; i++) {
+          slots.push({
+            topicTitle: topicTitle,
+            moduleLabel: modLabel,
+            partInfo: count > 1 ? `(Lec ${i}/${count})` : ''
+          });
+        }
+      });
+    } else {
+      // Fallback if module has no topics array
+      const count = parseFloat(mod.lectureCount || mod.lectures || mod.hours) || 1;
+      const topicTitle = mod.title || mod.name || `Module ${mIdx + 1}`;
+      for (let i = 1; i <= count; i++) {
+        slots.push({
+          topicTitle: topicTitle,
+          moduleLabel: modLabel,
+          partInfo: count > 1 ? `(Lec ${i}/${count})` : ''
+        });
+      }
+    }
+  });
+
+  // Distribute individual topic slots into weekly schedule
+  const schedule = [];
+  let currentSlotIdx = 0;
+
+  for (let w = 1; w <= weeksInSemester; w++) {
+    const weekLectures = [];
+    for (let d = 1; d <= meetingsPerWeek; d++) {
+      if (currentSlotIdx < slots.length) {
+        weekLectures.push(slots[currentSlotIdx]);
+        currentSlotIdx++;
+      }
+    }
+    schedule.push({
+      weekNumber: w,
+      lectures: weekLectures
+    });
+  }
+
+  return schedule;
 }
 
 // --- 4. HELPER: BUILD COURSE RTF STRING ---
@@ -221,7 +315,7 @@ function buildCourseRtfContent(course, connections) {
   }
   rtf += `\\pard\\qj\\par\n\n`;
 
-  // SECTION 2. COURSE CALENDAR & SCHEDULE OVERVIEW
+  // SECTION 2. PER-TOPIC COURSE CALENDAR & SCHEDULE OVERVIEW
   rtf += `\\pard\\qj\\b\\fs28 2. Course Schedule Overview\\b0\\fs22\\par\n`;
   
   const config = window.currentCourseConfig || window.defaultScheduleConfig || { weeksInSemester: 12, meetingsPerWeek: 3, minutesPerBlock: 50 };
@@ -232,19 +326,38 @@ function buildCourseRtfContent(course, connections) {
   rtf += `\\pard\\qj\\li360\\cf2 Class Format: ${meetingsPerWeek} lectures/week (${minutesPerBlock} min/block, ${stats.lectureHours} total lecture hrs) | ${stats.labHours} lab hrs across ${weeksInSemester} weeks.\\cf1\\par\n`;
   rtf += `\\line\\par\n`;
   
-  if (typeof window.generateCalendarSchedule === 'function') {
-    const schedule = window.generateCalendarSchedule(course, meetingsPerWeek, weeksInSemester);
-    schedule.forEach(week => {
-      rtf += `\\pard\\qj\\li360\\b Week ${week.weekNumber}:\\b0  `;
+  const schedule = buildCourseSchedule(course, meetingsPerWeek, weeksInSemester);
+  if (schedule && schedule.length > 0) {
+    schedule.forEach((week) => {
+      rtf += `\\pard\\qj\\li360\\b Week ${week.weekNumber}:\\b0\\par\n`;
+
       if (week.lectures && week.lectures.length > 0) {
-        const topicsList = week.lectures.map(l => `${l.moduleLabel} (${l.moduleTitle})`).join('; ');
-        rtf += `${escapeRtf(topicsList)}\\par\n`;
+        week.lectures.forEach((lec, idx) => {
+          let lineText = '';
+
+          if (lec.isExam) {
+            lineText = `\\b [EXAM]\\b0  ${escapeRtf(lec.title || 'Midterm Examination')}`;
+          } else if (lec.isLab) {
+            lineText = `\\b [LAB]\\b0  ${escapeRtf(lec.title || 'Laboratory Session')}`;
+          } else {
+            // Render Topic Title prominently for students
+            const topicName = escapeRtf(lec.topicTitle || 'Topic Lecture');
+            const part = lec.partInfo ? ` \\cf2${escapeRtf(lec.partInfo)}\\cf1` : '';
+            const modTag = lec.moduleLabel ? ` \\cf2[${escapeRtf(lec.moduleLabel)}]\\cf1` : '';
+
+            lineText = `\\b ${topicName}\\b0${part}${modTag}`;
+          }
+
+          rtf += `\\pard\\qj\\li720 Day ${idx + 1}: ${lineText}\\par\n`;
+        });
       } else {
-        rtf += `\\cf2 Independent Study / Review\\cf1\\par\n`;
+        rtf += `\\pard\\qj\\li720\\cf2 Independent Study / Term Break / Review\\cf1\\par\n`;
       }
+      
+      rtf += `\\par\n`;
     });
   } else {
-    rtf += `\\pard\\qj\\li360\\i [Calendar generated based on term configuration]\\i0\\par\n`;
+    rtf += `\\pard\\qj\\li360\\i [Calendar generated based on topic schedule]\\i0\\par\n`;
   }
   rtf += `\\pard\\qj\\par\n\n`;
 
@@ -286,18 +399,18 @@ function buildCourseRtfContent(course, connections) {
     rtf += `\\pard\\qj\\li720\\\'95  Final Examination: ${stats.finalExamWeight}% (Scheduled by Registrar; calculated remaining balance)\\par\n`;
   }
 
-  // 3.2 Grading System (Course Overrides OR Global Setting)
+  // 3.2 Grading System
   const gradingSys = course.gradingSystem || globalSettings.gradingSystem || "Numeric Grade System (0-100%, pass mark 50%) in accordance with University Senate regulations.";
   rtf += `\\pard\\qj\\li360\\b 3.2 Grading System:\\b0  ${escapeRtf(gradingSys)}\\par\n`;
 
-  // 3.3 Alternate Evaluation & Missed Work Policy (Course Overrides OR Global Setting)
+  // 3.3 Alternate Evaluation & Missed Work Policy
   const missedWork = course.alternateEvaluationPolicy || course.missedWorkPolicy || globalSettings.missedWorkPolicy || "In accordance with University Regulations (Exemptions from Parts of the Evaluation), students unable to complete an evaluation due to acceptable cause must notify the instructor promptly. Where acceptable cause is established, an alternate evaluation or reweighting will be offered.";
   rtf += `\\pard\\qj\\li360\\b 3.3 Alternate Evaluation & Missed Work Policy:\\b0\\par\n`;
   rtf += `\\pard\\qj\\li720 ${escapeRtf(missedWork)}\\par\n`;
   rtf += `\\pard\\qj\\par\n\n`;
 
-  // SECTION 4. COURSE MODULES, LEARNING OBJECTIVES & CONNECTIONS
-  rtf += `\\pard\\qj\\b\\fs28 4. Course Modules & Learning Objectives\\b0\\fs22\\par\n`;
+  // SECTION 4. COURSE MODULES, PER-TOPIC OBJECTIVES & CONNECTIONS
+  rtf += `\\pard\\qj\\b\\fs28 4. Course Modules & Detailed Topics\\b0\\fs22\\par\n`;
   rtf += `\\line\\par\n`;
 
   (course.modules || []).forEach((mod, idx) => {
@@ -308,24 +421,46 @@ function buildCourseRtfContent(course, connections) {
       rtf += `\\pard\\qj\\li360\\cf2 Reading Reference: Chapter ${escapeRtf(mod.chapter)}\\cf1\\par\n`;
     }
 
-    // Learning Objectives
-    rtf += `\\pard\\qj\\li720\\b Learning Objectives:\\b0\\par\n`;
-    if (mod.topics && mod.topics.length > 0) {
-      mod.topics.forEach(topic => {
+    // Per-Topic Detailed Breakdown
+    if (Array.isArray(mod.topics) && mod.topics.length > 0) {
+      mod.topics.forEach((topic, tIdx) => {
         const topicTitle = typeof topic === 'string' ? topic : (topic.title || topic.label || topic.name || '');
+        const topicLecCount = getTopicLectureCount(topic);
+        const lecInfo = topicLecCount ? ` \\cf2 (${topicLecCount} lecture${topicLecCount > 1 ? 's' : ''})\\cf1` : '';
+
         if (topicTitle) {
-          rtf += `\\pard\\qj\\li720\\\'95  ${escapeRtf(topicTitle)}\\par\n`;
+          rtf += `\\pard\\qj\\li720\\b Topic 4.${modNum}.${tIdx + 1}: ${escapeRtf(topicTitle)}\\b0${lecInfo}\\par\n`;
         }
-        
-        if (topic.objectives && topic.objectives.length > 0) {
-          topic.objectives.forEach(obj => {
-            const objText = typeof obj === 'string' 
-              ? obj 
-              : (obj.text || obj.title || obj.description || obj.label || JSON.stringify(obj));
-              
-            rtf += `\\pard\\qj\\li1080\\cf2 - ${escapeRtf(objText)}\\cf1\\par\n`;
+
+        if (topic.description) {
+          rtf += `\\pard\\qj\\li1080\\i ${escapeRtf(topic.description)}\\i0\\par\n`;
+        }
+
+        // Learning Objectives
+        const objs = topic.learningObjectives || topic.objectives || [];
+        if (objs.length > 0) {
+          rtf += `\\pard\\qj\\li1080\\b Learning Objectives:\\b0\\par\n`;
+          objs.forEach((obj) => {
+            const objText = typeof obj === 'string' ? obj : (obj.text || obj.title || obj.description || '');
+            if (objText) {
+              rtf += `\\pard\\qj\\li1440\\cf2 - ${escapeRtf(objText)}\\cf1\\par\n`;
+            }
           });
         }
+
+        // Recommended / Textbook Questions
+        const questions = topic.textbookQuestions || topic.questions || [];
+        if (questions.length > 0) {
+          rtf += `\\pard\\qj\\li1080\\b Recommended Practice Questions:\\b0\\par\n`;
+          questions.forEach((quest) => {
+            const questText = typeof quest === 'string' ? quest : (quest.text || quest.title || '');
+            if (questText) {
+              rtf += `\\pard\\qj\\li1440\\cf2 - ${escapeRtf(questText)}\\cf1\\par\n`;
+            }
+          });
+        }
+
+        rtf += `\\par\n`;
       });
     } else {
       rtf += `\\pard\\qj\\li720\\\'95  ${escapeRtf(mod.description || 'Core topics and competencies for this unit.')}\\par\n`;

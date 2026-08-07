@@ -126,6 +126,8 @@ function switchTab(tabName) {
   if (activeTab) activeTab.classList.add('active');
 }
 
+// --- DOM SYNCING & MODULE LIST RENDERING ---
+
 // SCRAPES DOM INPUTS INTO MEMORY BEFORE RE-RENDERING OR SAVING
 function syncModulesFromDOM() {
   const container = document.getElementById('moduleList');
@@ -142,6 +144,7 @@ function syncModulesFromDOM() {
     topicCards.forEach((card) => {
       const titleIn = card.querySelector('.input-topic-title');
       const descIn = card.querySelector('.input-topic-desc');
+      const lecIn = card.querySelector('.input-topic-lectures');
 
       const objInputs = card.querySelectorAll('.input-topic-obj');
       const objectives = [];
@@ -154,6 +157,7 @@ function syncModulesFromDOM() {
       updatedTopics.push({
         title: titleIn ? titleIn.value : '',
         description: descIn ? descIn.value : '',
+        lectureCount: lecIn ? (parseInt(lecIn.value, 10) || 1) : 1,
         learningObjectives: objectives,
         textbookQuestions: questions
       });
@@ -169,123 +173,130 @@ function renderModulesList() {
   if (countEl) countEl.textContent = editingModules.length;
   if (!container) return;
 
-  container.innerHTML = '';
+  if (editingModules.length === 0) {
+    container.innerHTML = '<p style="color: #94a3b8; font-size: 0.85rem; padding: 12px; text-align: center;">No modules added yet. Click a button above to add one.</p>';
+    return;
+  }
 
-  const availableModules = editingModules.filter(m => !m.isExam && !m.isLab);
+  let html = '';
 
   editingModules.forEach((mod, modIdx) => {
-    const wrapper = document.createElement('div');
-    wrapper.className = `module-row-container ${mod.isExam ? 'midterm-row-container' : ''} ${mod.isLab ? 'lab-row-container' : ''}`;
-
+    // --- 1. MIDTERM / EXAM MODULE ROW ---
     if (mod.isExam) {
-      // MIDTERM ROW
-      if (!Array.isArray(mod.coveredModuleIds)) mod.coveredModuleIds = [];
+      const allOtherMods = editingModules.filter((m) => !m.isExam && !m.isLab);
+      const coveredSet = new Set(mod.coveredModuleIds || []);
 
-      let optionsHtml = availableModules.map(m => {
-        const isChecked = mod.coveredModuleIds.includes(m.id);
+      const coveredCheckboxesHtml = allOtherMods.map((m) => {
+        const isChecked = coveredSet.has(m.id) ? 'checked' : '';
         return `
-          <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.85rem; background: #1e293b; padding: 2px 8px; border-radius: 4px; border: 1px solid #334155; color: #f1f5f9;">
-            <input type="checkbox" value="${m.id}" ${isChecked ? 'checked' : ''} onchange="toggleMidtermModule(${modIdx}, '${m.id}', this.checked)">
-            ${m.label || m.id}
+          <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.8rem; color: #cbd5e1; background: #1e293b; padding: 2px 6px; border-radius: 4px; border: 1px solid #334155;">
+            <input type="checkbox" ${isChecked} onchange="toggleMidtermModule(${modIdx}, '${m.id}', this.checked)">
+            ${escapeHtml(m.label || m.id)}
           </label>
         `;
       }).join(' ');
 
-      wrapper.innerHTML = `
-        <div class="module-header-row" style="background: rgba(107, 33, 168, 0.25); border-left: 4px solid #a855f7; padding: 6px;">
-          <span style="font-size:1.1rem;">📝</span>
-          <input type="text" placeholder="ID" value="${mod.id || ''}" style="width: 90px;" onchange="editingModules[${modIdx}].id = this.value">
-          <input type="text" placeholder="Label (e.g. EXAM 1)" value="${mod.label || ''}" style="width: 100px;" onchange="editingModules[${modIdx}].label = this.value">
-          <input type="text" placeholder="Title (e.g. Midterm 1)" value="${mod.title || ''}" style="flex: 1;" onchange="editingModules[${modIdx}].title = this.value">
-          <input type="number" placeholder="Grade %" value="${mod.weightPercent ?? 20}" style="width: 80px;" title="Grade Weight %" onchange="editingModules[${modIdx}].weightPercent = parseFloat(this.value) || 0" />
-          <input type="number" class="mod-lectures-input" min="1" max="5" placeholder="Slots" value="${mod.lectureCount || 1}" title="Calendar slots taken" onchange="editingModules[${modIdx}].lectureCount = parseInt(this.value, 10) || 1" />
-          <button type="button" class="btn btn-cancel" onclick="removeModuleRow(${modIdx})">&times;</button>
-        </div>
-        <div class="nested-section" style="padding: 8px; background: rgba(0,0,0,0.2);">
-          <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 6px; color: #c084fc;">Modules Covered in this Midterm:</div>
-          <div style="display: flex; flex-wrap: wrap; gap: 6px;">
-            ${optionsHtml || '<em style="font-size:0.8rem; color:#94a3b8;">Add standard modules first to assign them here.</em>'}
+      html += `
+        <div class="module-row-container exam-row" style="border-left: 4px solid #a855f7; background: rgba(168, 85, 247, 0.05); padding: 12px; margin-bottom: 12px; border-radius: 6px; border: 1px solid #334155;">
+          <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
+            <span style="font-weight: 700; color: #c084fc;">📝 EXAM</span>
+            <input type="text" value="${escapeHtml(mod.label || 'MIDTERM')}" onchange="editingModules[${modIdx}].label = this.value" placeholder="Label" style="width: 100px;">
+            <input type="text" value="${escapeHtml(mod.title || '')}" onchange="editingModules[${modIdx}].title = this.value" placeholder="Exam Title" style="flex: 1;">
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <label style="font-size: 0.75rem; color: #94a3b8;">Weight %:</label>
+              <input type="number" value="${mod.weightPercent ?? 20}" onchange="editingModules[${modIdx}].weightPercent = parseFloat(this.value) || 0" style="width: 60px;">
+            </div>
+            <button type="button" class="btn btn-cancel btn-sm" onclick="removeModuleRow(${modIdx})" title="Delete Exam">&times;</button>
           </div>
-        </div>
-      `;
-    } else if (mod.isLab) {
-      // LAB MODULE ROW
-      if (!Array.isArray(mod.labs)) mod.labs = [];
-
-      let labItemsHtml = mod.labs.map((lab, lIdx) => `
-        <div class="nested-item-row" style="gap: 8px;">
-          <span style="font-size:0.85rem; color:#a5f3fc; font-weight:600; min-width: 50px;">Lab ${lIdx + 1}:</span>
-          <input type="text" placeholder="Lab Title / Experiment Name..." value="${lab.title || ''}" style="flex: 1;" onchange="editingModules[${modIdx}].labs[${lIdx}].title = this.value">
-          <input type="number" step="0.5" placeholder="Hours" value="${lab.hours ?? 3}" style="width: 75px;" title="Lab Duration (Hours)" onchange="editingModules[${modIdx}].labs[${lIdx}].hours = parseFloat(this.value) || 0;">
-          <input type="number" placeholder="Weight %" value="${lab.weightPercent ?? 0}" style="width: 85px;" title="Lab Weight %" onchange="editingModules[${modIdx}].labs[${lIdx}].weightPercent = parseFloat(this.value) || 0; updateLabTotalGrade(${modIdx});">
-          <button type="button" class="btn btn-cancel btn-sm" onclick="removeLabItem(${modIdx}, ${lIdx})">&times;</button>
-        </div>
-      `).join('');
-
-      wrapper.innerHTML = `
-        <div class="module-header-row" style="background: rgba(6, 182, 212, 0.15); border-left: 4px solid #06b6d4; padding: 6px;">
-          <span style="font-size:1.1rem;">🧪</span>
-          <input type="text" placeholder="ID" value="${mod.id || ''}" style="width: 90px;" onchange="editingModules[${modIdx}].id = this.value">
-          <input type="text" placeholder="Label (e.g. LABS)" value="${mod.label || ''}" style="width: 100px;" onchange="editingModules[${modIdx}].label = this.value">
-          <input type="text" placeholder="Section Title (e.g. Practical Chemistry Labs)" value="${mod.title || ''}" style="flex: 1;" onchange="editingModules[${modIdx}].title = this.value">
-          <div style="display:flex; align-items:center; gap:4px; font-size:0.85rem; color:#67e8f9; font-weight:600;">
-            Total Grade: <span id="labTotalGrade-${modIdx}">${mod.weightPercent || 0}%</span>
-          </div>
-          <button type="button" class="btn btn-cancel" onclick="removeModuleRow(${modIdx})">&times;</button>
-        </div>
-        <div class="nested-section" style="padding: 8px; background: rgba(0,0,0,0.2);">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <div style="font-weight: 600; font-size: 0.85rem; color: #67e8f9;">Individual Experiments (${mod.labs.length})</div>
-            <div style="display: flex; gap: 6px;">
-              <button type="button" class="btn btn-secondary btn-sm" style="border-color:#06b6d4; color:#67e8f9;" onclick="equalizeLabWeights(${modIdx})">⚖️ Equalize Weights</button>
-              <button type="button" class="btn btn-secondary btn-sm" onclick="addLabItem(${modIdx})">+ Add Experiment</button>
+          <div>
+            <div style="font-size: 0.75rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px;">Covered Modules:</div>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+              ${coveredCheckboxesHtml || '<span style="font-size: 0.75rem; color: #64748b;">No regular modules available to map yet.</span>'}
             </div>
           </div>
-          <div id="labs-${modIdx}">
-            ${labItemsHtml || '<em style="font-size:0.8rem; color:#94a3b8;">No individual experiments added yet.</em>'}
+        </div>
+      `;
+      return;
+    }
+
+    // --- 2. LAB SECTION ROW ---
+    if (mod.isLab) {
+      const labs = mod.labs || [];
+      let labsListHtml = '';
+
+      labs.forEach((lab, labIdx) => {
+        labsListHtml += `
+          <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 6px; background: #0f172a; padding: 6px; border-radius: 4px; border: 1px solid #334155;">
+            <input type="text" value="${escapeHtml(lab.title || '')}" onchange="editingModules[${modIdx}].labs[${labIdx}].title = this.value" placeholder="Lab Title" style="flex: 1; font-size: 0.85rem;">
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <label style="font-size: 0.7rem; color: #94a3b8;">Hours:</label>
+              <input type="number" value="${lab.hours ?? 3}" onchange="editingModules[${modIdx}].labs[${labIdx}].hours = parseFloat(this.value) || 0" style="width: 50px; font-size: 0.85rem;">
+            </div>
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <label style="font-size: 0.7rem; color: #94a3b8;">Weight %:</label>
+              <input type="number" value="${lab.weightPercent ?? 0}" step="0.5" onchange="editingModules[${modIdx}].labs[${labIdx}].weightPercent = parseFloat(this.value) || 0; updateLabTotalGrade(${modIdx});" style="width: 60px; font-size: 0.85rem;">
+            </div>
+            <button type="button" class="btn btn-cancel btn-sm" onclick="removeLabItem(${modIdx}, ${labIdx})" title="Delete Lab">&times;</button>
+          </div>
+        `;
+      });
+
+      html += `
+        <div class="module-row-container lab-row" style="border-left: 4px solid #06b6d4; background: rgba(6, 182, 212, 0.05); padding: 12px; margin-bottom: 12px; border-radius: 6px; border: 1px solid #334155;">
+          <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
+            <span style="font-weight: 700; color: #67e8f9;">🧪 LABS</span>
+            <input type="text" value="${escapeHtml(mod.label || 'LABS')}" onchange="editingModules[${modIdx}].label = this.value" placeholder="Label" style="width: 90px;">
+            <input type="text" value="${escapeHtml(mod.title || '')}" onchange="editingModules[${modIdx}].title = this.value" placeholder="Lab Section Title" style="flex: 1;">
+            <div style="font-size: 0.85rem; font-weight: 600; color: #67e8f9; padding: 0 6px;">
+              Total: <span id="labTotalGrade-${modIdx}">${mod.weightPercent ?? 0}%</span>
+            </div>
+            <button type="button" class="btn btn-cancel btn-sm" onclick="removeModuleRow(${modIdx})" title="Delete Lab Section">&times;</button>
+          </div>
+
+          <div style="margin-top: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span style="font-size: 0.75rem; font-weight: 600; color: #94a3b8; text-transform: uppercase;">Experiments / Modules</span>
+              <div style="display: flex; gap: 6px;">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="equalizeLabWeights(${modIdx})" style="font-size: 0.7rem;">Equalize Weights</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="addLabItem(${modIdx})" style="font-size: 0.7rem;">+ Add Experiment</button>
+              </div>
+            </div>
+            ${labsListHtml || '<p style="font-size: 0.8rem; color: #64748b;">No experiments added yet.</p>'}
           </div>
         </div>
       `;
-    } else {
-      // STANDARD MODULE ROW
-      if (!Array.isArray(mod.topics)) mod.topics = [];
+      return;
+    }
 
-      let html = `
-        <div class="module-header-row">
-          <input type="text" placeholder="ID" value="${mod.id || ''}" style="width: 100px;" onchange="editingModules[${modIdx}].id = this.value">
-          <input type="text" placeholder="Label" value="${mod.label || ''}" style="width: 100px;" onchange="editingModules[${modIdx}].label = this.value">
-          <input type="text" placeholder="Module Title" value="${mod.title || ''}" style="flex: 1;" onchange="editingModules[${modIdx}].title = this.value">
-          <input type="number" class="mod-lectures-input" min="1" max="20" placeholder="Lectures" value="${mod.lectureCount || 1}" onchange="editingModules[${modIdx}].lectureCount = parseInt(this.value, 10) || 1" />
-          <button type="button" class="btn btn-cancel" onclick="removeModuleRow(${modIdx})">&times;</button>
-        </div>
-        <div class="nested-section">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-            <h5 style="margin: 0; font-size: 0.95rem; color: #38bdf8;">Topics (${mod.topics.length})</h5>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="addTopicRow(${modIdx})">+ Add Topic</button>
-          </div>
-          <div id="topics-${modIdx}">
-      `;
-
+    // --- 3. STANDARD CONTENT MODULE ROW ---
+    let topicsHtml = '';
+    if (Array.isArray(mod.topics)) {
       mod.topics.forEach((topic, tIdx) => {
         if (typeof topic !== 'object' || topic === null) {
-          topic = { title: typeof topic === 'string' ? topic : '', description: '', learningObjectives: [], textbookQuestions: [] };
+          topic = { title: typeof topic === 'string' ? topic : '', description: '', lectureCount: 1, learningObjectives: [], textbookQuestions: [] };
           mod.topics[tIdx] = topic;
         }
         if (!Array.isArray(topic.learningObjectives)) topic.learningObjectives = [];
         if (!Array.isArray(topic.textbookQuestions)) topic.textbookQuestions = [];
 
-        html += `
+        topicsHtml += `
           <div class="topic-editor-card" style="background: rgba(15, 23, 42, 0.5); border: 1px solid #334155; border-radius: 6px; padding: 10px; margin-bottom: 12px; position: relative;">
             <button type="button" class="btn btn-cancel btn-sm" style="position: absolute; top: 8px; right: 8px;" onclick="removeTopicRow(${modIdx}, ${tIdx})" title="Delete Topic">&times;</button>
             
-            <div style="margin-bottom: 8px;">
-              <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; margin-bottom: 2px;">Topic Title</label>
-              <input type="text" class="input-topic-title" placeholder="e.g. First Law of Thermodynamics" value="${topic.title || ''}" style="width: 100%;">
+            <div style="display: flex; gap: 8px; margin-bottom: 8px; padding-right: 28px;">
+              <div style="flex: 1;">
+                <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; margin-bottom: 2px;">Topic Title</label>
+                <input type="text" class="input-topic-title" placeholder="e.g. First Law of Thermodynamics" value="${escapeHtml(topic.title || '')}" style="width: 100%;">
+              </div>
+              <div style="width: 90px;">
+                <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; margin-bottom: 2px;">Lectures</label>
+                <input type="number" class="input-topic-lectures" min="1" max="10" placeholder="1" value="${topic.lectureCount || 1}" style="width: 100%;">
+              </div>
             </div>
 
             <div style="margin-bottom: 8px;">
               <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; margin-bottom: 2px;">Description</label>
-              <textarea class="input-topic-desc" placeholder="Brief overview of topic..." rows="2" style="width: 100%; font-size: 0.85rem; padding: 4px 6px; background: #0f172a; border: 1px solid #334155; color: #f8fafc; border-radius: 4px;">${topic.description || ''}</textarea>
+              <textarea class="input-topic-desc" placeholder="Brief overview of topic..." rows="2" style="width: 100%; font-size: 0.85rem; padding: 4px 6px; background: #0f172a; border: 1px solid #334155; color: #f8fafc; border-radius: 4px;">${escapeHtml(topic.description || '')}</textarea>
             </div>
 
             <!-- LEARNING OBJECTIVES -->
@@ -295,18 +306,12 @@ function renderModulesList() {
                 <button type="button" class="btn btn-secondary btn-sm" style="font-size: 0.7rem; padding: 1px 6px;" onclick="addTopicObjective(${modIdx}, ${tIdx})">+ Add</button>
               </div>
               <div id="topic-objectives-${modIdx}-${tIdx}">
-        `;
-
-        topic.learningObjectives.forEach((obj, oIdx) => {
-          html += `
-            <div class="nested-item-row" style="margin-bottom: 4px; gap: 4px;">
-              <input type="text" class="input-topic-obj" placeholder="Objective..." value="${obj || ''}" style="flex: 1; font-size: 0.8rem;">
-              <button type="button" class="btn btn-cancel btn-sm" onclick="removeTopicObjective(${modIdx}, ${tIdx}, ${oIdx})">&times;</button>
-            </div>
-          `;
-        });
-
-        html += `
+                ${topic.learningObjectives.map((obj, oIdx) => `
+                  <div class="nested-item-row" style="display: flex; margin-bottom: 4px; gap: 4px;">
+                    <input type="text" class="input-topic-obj" placeholder="Objective..." value="${escapeHtml(obj || '')}" style="flex: 1; font-size: 0.8rem;">
+                    <button type="button" class="btn btn-cancel btn-sm" onclick="removeTopicObjective(${modIdx}, ${tIdx}, ${oIdx})">&times;</button>
+                  </div>
+                `).join('')}
               </div>
             </div>
 
@@ -317,30 +322,39 @@ function renderModulesList() {
                 <button type="button" class="btn btn-secondary btn-sm" style="font-size: 0.7rem; padding: 1px 6px;" onclick="addTopicQuestion(${modIdx}, ${tIdx})">+ Add</button>
               </div>
               <div id="topic-questions-${modIdx}-${tIdx}">
-        `;
-
-        topic.textbookQuestions.forEach((quest, qIdx) => {
-          html += `
-            <div class="nested-item-row" style="margin-bottom: 4px; gap: 4px;">
-              <input type="text" class="input-topic-quest" placeholder="e.g., Ch. 5, #12, #18..." value="${quest || ''}" style="flex: 1; font-size: 0.8rem;">
-              <button type="button" class="btn btn-cancel btn-sm" onclick="removeTopicQuestion(${modIdx}, ${tIdx}, ${qIdx})">&times;</button>
-            </div>
-          `;
-        });
-
-        html += `
+                ${topic.textbookQuestions.map((quest, qIdx) => `
+                  <div class="nested-item-row" style="display: flex; margin-bottom: 4px; gap: 4px;">
+                    <input type="text" class="input-topic-quest" placeholder="e.g., Ch. 5, #12, #18..." value="${escapeHtml(quest || '')}" style="flex: 1; font-size: 0.8rem;">
+                    <button type="button" class="btn btn-cancel btn-sm" onclick="removeTopicQuestion(${modIdx}, ${tIdx}, ${qIdx})">&times;</button>
+                  </div>
+                `).join('')}
               </div>
             </div>
           </div>
         `;
       });
-
-      html += `</div></div>`;
-      wrapper.innerHTML = html;
     }
 
-    container.appendChild(wrapper);
+    html += `
+      <div class="module-row-container" style="background: #1e293b; padding: 12px; margin-bottom: 12px; border-radius: 6px; border: 1px solid #334155;">
+        <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
+          <input type="text" value="${escapeHtml(mod.label || '')}" onchange="editingModules[${modIdx}].label = this.value" placeholder="MOD 01" style="width: 90px;">
+          <input type="text" value="${escapeHtml(mod.title || '')}" onchange="editingModules[${modIdx}].title = this.value" placeholder="Module Title" style="flex: 1;">
+          <button type="button" class="btn btn-cancel btn-sm" onclick="removeModuleRow(${modIdx})" title="Delete Module">&times;</button>
+        </div>
+
+        <div style="margin-top: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <span style="font-size: 0.75rem; font-weight: 600; color: #94a3b8; text-transform: uppercase;">Topics (${(mod.topics || []).length})</span>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="addTopicRow(${modIdx})" style="font-size: 0.7rem;">+ Add Topic</button>
+          </div>
+          ${topicsHtml || '<p style="font-size: 0.8rem; color: #64748b; margin-bottom: 8px;">No topics defined for this module.</p>'}
+        </div>
+      </div>
+    `;
   });
+
+  container.innerHTML = html;
 }
 
 function addModuleRow() {
@@ -468,6 +482,7 @@ function addTopicRow(modIndex) {
   editingModules[modIndex].topics.push({
     title: '',
     description: '',
+    lectureCount: 1, // Default count
     learningObjectives: [],
     textbookQuestions: []
   });
@@ -603,17 +618,17 @@ function saveCourseData() {
     const cleanedTopics = (mod.topics || [])
       .map((t) => {
         if (typeof t === 'string') {
-          return { title: t, description: '', learningObjectives: [], textbookQuestions: [] };
+          return { title: t, description: '', lectureCount: 1, learningObjectives: [], textbookQuestions: [] };
         }
         return {
           title: t.title || '',
           description: t.description || '',
+          lectureCount: parseInt(t.lectureCount, 10) || 1, // Preserve count
           learningObjectives: (t.learningObjectives || []).filter((o) => typeof o === 'string' && o.trim() !== ''),
           textbookQuestions: (t.textbookQuestions || []).filter((q) => typeof q === 'string' && q.trim() !== '')
         };
       })
       .filter((t) => t.title.trim() !== '' || t.description.trim() !== '' || t.learningObjectives.length > 0 || t.textbookQuestions.length > 0);
-
     return {
       ...mod,
       isExam: false,
@@ -673,3 +688,4 @@ window.removeTopicQuestion = removeTopicQuestion;
 window.addConnectionRow = addConnectionRow;
 window.removeConnectionRow = removeConnectionRow;
 window.saveCourseData = saveCourseData;
+window.renderModulesList = renderModulesList;

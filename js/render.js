@@ -272,16 +272,46 @@ function openCalendarModal(course) {
   (course.modules || []).forEach((mod) => {
     if (mod.isLab) return;
 
-    const count = parseInt(mod.lectureCount, 10) || 1;
-    for (let i = 1; i <= count; i++) {
-      lectureStream.push({
-        label: mod.label || (mod.isExam ? 'EXAM' : 'MOD'),
-        title: mod.title || 'Untitled',
-        index: i,
-        total: count,
-        isExam: !!mod.isExam,
-        weightPercent: mod.weightPercent
+    if (mod.isExam) {
+      // Exams
+      const count = parseInt(mod.lectureCount, 10) || 1;
+      for (let i = 1; i <= count; i++) {
+        lectureStream.push({
+          label: mod.label || 'EXAM',
+          title: mod.title || 'Midterm Examination',
+          index: i,
+          total: count,
+          isExam: true,
+          weightPercent: mod.weightPercent
+        });
+      }
+    } else if (mod.topics && mod.topics.length > 0) {
+      // Stream each topic by its assigned lectureCount
+      mod.topics.forEach((topic) => {
+        const topicTitle = typeof topic === 'string' ? topic : (topic.title || 'Untitled Topic');
+        const count = typeof topic === 'object' ? (parseInt(topic.lectureCount, 10) || 1) : 1;
+        for (let i = 1; i <= count; i++) {
+          lectureStream.push({
+            label: mod.label || 'MOD',
+            title: topicTitle,
+            index: i,
+            total: count,
+            isExam: false
+          });
+        }
       });
+    } else {
+      // Fallback if no sub-topics are defined
+      const count = parseInt(mod.lectureCount, 10) || 1;
+      for (let i = 1; i <= count; i++) {
+        lectureStream.push({
+          label: mod.label || 'MOD',
+          title: mod.title || 'Untitled Module',
+          index: i,
+          total: count,
+          isExam: false
+        });
+      }
     }
   });
 
@@ -405,7 +435,7 @@ function renderDrawer(data, moduleId) {
     content.innerHTML = `
       <div class="drawer-header-actions">
         <span class="drawer-course-code">${escapeHtml(course.code)} · 📝 ${escapeHtml(mod.label)}</span>
-        <button class="btn-edit-course" onclick="if(window.openCourseEditor) window.openCourseEditor('${mod.id}')" title="Edit Course">✏️</button>
+        <button class="btn-edit-course" onclick="if(window.openCourseEditor) window.openCourseEditor('${course.id}')" title="Edit Course">✏️</button>
       </div>
       <h2 class="drawer-title">${escapeHtml(mod.title)}</h2>
       <div class="drawer-banner exam-banner">
@@ -436,7 +466,7 @@ function renderDrawer(data, moduleId) {
     content.innerHTML = `
       <div class="drawer-header-actions">
         <span class="drawer-course-code">${escapeHtml(course.code)} · 🧪 ${escapeHtml(mod.label)}</span>
-        <button class="btn-edit-course" onclick="if(window.openCourseEditor) window.openCourseEditor('${mod.id}')" title="Edit Course">✏️</button>
+        <button class="btn-edit-course" onclick="if(window.openCourseEditor) window.openCourseEditor('${course.id}')" title="Edit Course">✏️</button>
       </div>
       <h2 class="drawer-title">${escapeHtml(mod.title)}</h2>
       <div class="drawer-banner lab-banner">
@@ -519,7 +549,7 @@ function renderDrawer(data, moduleId) {
   content.innerHTML = `
     <div class="drawer-header-actions">
       <span class="drawer-course-code">${escapeHtml(course.code)} · ${escapeHtml(mod.label)} ${chaptersText ? `(${chaptersText})` : ''}</span>
-      <button class="btn-edit-course" onclick="if(window.openCourseEditor) window.openCourseEditor('${mod.id}')" title="Edit Course">✏️</button>
+      <button class="btn-edit-course" onclick="if(window.openCourseEditor) window.openCourseEditor('${course.id}')" title="Edit Course">✏️</button>
     </div>
     <h2 class="drawer-title">${escapeHtml(mod.title)}</h2>
     ${textbookText}
