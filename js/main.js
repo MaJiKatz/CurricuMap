@@ -124,6 +124,19 @@ window.defaultScheduleConfig = {
     let isConnectMode = false;
     let connectingSource = null;
     let tempLine = null;
+    let isDraggingConnection = false;
+
+    // Ensure SVG layer never blocks clicks
+    const svg = document.getElementById('connectionLayer');
+    if (svg) svg.style.pointerEvents = 'none';
+
+    // Helper to toggle native draggable state on chips
+    function setNativeDraggable(enabled) {
+      document.querySelectorAll('.module-chip').forEach((chip) => {
+        if (enabled) chip.setAttribute('draggable', 'true');
+        else chip.removeAttribute('draggable');
+      });
+    }
 
     // 1. Connect Mode Toggle Button Listener
     const connectBtn = document.getElementById('connectModeBtn');
@@ -133,46 +146,96 @@ window.defaultScheduleConfig = {
         connectBtn.textContent = isConnectMode ? '🔗 Connect Mode: ON' : '🔗 Connect Mode: OFF';
         connectBtn.classList.toggle('btn-primary', isConnectMode);
         document.body.classList.toggle('connect-mode-active', isConnectMode);
+
+        setNativeDraggable(!isConnectMode);
+        cancelConnection();
       });
     }
 
-    // --- BOARD POINTER DOWN (Handles both Card Dragging & Connect Drawing) ---
-    board.addEventListener('pointerdown', (e) => {
-      
-      if (e.target.closest('button, .collapse-btn, .btn-edit-course, .edit-course-btn, .btn-delete-course, .btn-calendar, .btn-download-outline')) {
-        return;
+    function cancelConnection() {
+      if (tempLine) {
+        tempLine.remove();
+        tempLine = null;
       }
+      document.querySelectorAll('.is-connecting-source').forEach((el) => el.classList.remove('is-connecting-source'));
+      connectingSource = null;
+      isDraggingConnection = false;
+    }
 
+    // --- PREVENT NATIVE HTML5 DRAG IN CONNECT MODE ---
+    board.addEventListener('dragstart', (e) => {
+      if (isConnectMode) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    });
+
+    // --- BOARD POINTER DOWN ---
+    //console.log(board);
+    board.addEventListener('pointerdown', (e) => {
+      //console.log("pointerdown target:", e.target);
+
+      // If in Connect Mode, prioritize finding a module chip or course card FIRST
       if (isConnectMode) {
         const node = e.target.closest('.module-chip, .course-card');
-        if (!node) return;
+        //console.log("Connect Mode target node:", node);
 
-        e.stopPropagation();
+        if (node) {
+          e.stopPropagation();
+          e.preventDefault();
 
-        const nodeId = node.dataset.moduleId || node.dataset.courseId;
-        const rect = node.getBoundingClientRect();
-        const boardRect = board.getBoundingClientRect();
+          if (document.activeElement) document.activeElement.blur();
+          if (window.getSelection) window.getSelection().removeAllRanges();
 
-        const startX = rect.left + rect.width / 2 - boardRect.left;
-        const startY = rect.top + rect.height / 2 - boardRect.top;
+          const nodeId = node.dataset.moduleId || node.dataset.courseId;
 
-        connectingSource = { id: nodeId, x: startX, y: startY };
+          // Two-click connection handling
+          if (connectingSource && connectingSource.id !== nodeId && !isDraggingConnection) {
+            completeConnection(nodeId);
+            return;
+          }
 
-        const svg = document.getElementById('connectionLayer');
-        if (svg) {
-          tempLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-          tempLine.setAttribute('x1', startX);
-          tempLine.setAttribute('y1', startY);
-          tempLine.setAttribute('x2', startX);
-          tempLine.setAttribute('y2', startY);
-          tempLine.setAttribute('stroke', '#3b82f6');
-          tempLine.setAttribute('stroke-width', '3');
-          tempLine.setAttribute('stroke-dasharray', '5,5');
-          svg.appendChild(tempLine);
+          // Start new connection
+          cancelConnection();
+
+          const svgEl = document.getElementById('connectionLayer');
+          const svgRect = svgEl ? svgEl.getBoundingClientRect() : { left: 0, top: 0 };
+          const rect = node.getBoundingClientRect();
+
+          const startX = rect.left + rect.width / 2 - svgRect.left;
+          const startY = rect.top + rect.height / 2 - svgRect.top;
+
+          connectingSource = { id: nodeId, x: startX, y: startY, node };
+          isDraggingConnection = true;
+          node.classList.add('is-connecting-source');
+
+          const selectedLevel = document.getElementById('connectionTypeSelect')?.value || 'related';
+
+          if (svgEl) {
+            tempLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            tempLine.setAttribute('x1', startX);
+            tempLine.setAttribute('y1', startY);
+            tempLine.setAttribute('x2', startX);
+            tempLine.setAttribute('y2', startY);
+            tempLine.setAttribute('stroke', `var(--${selectedLevel}, #0066cc)`);
+            tempLine.setAttribute('stroke-width', '3.5');
+            tempLine.setAttribute('stroke-dasharray', '5,5');
+            tempLine.style.pointerEvents = 'none';
+            svgEl.appendChild(tempLine);
+          }
+          return;
+        } else {
+          cancelConnection();
+          return;
         }
+      }
+
+      // Early exit for UI control buttons (only evaluated outside Connect Mode)
+      if (e.target.closest('.collapse-btn, .btn-edit-course, .edit-course-btn, .btn-delete-course, .btn-calendar, .btn-download-outline')) {
         return;
       }
 
+      // Normal Card Dragging
       const handle = e.target.closest('.drag-handle, .course-card-head');
       if (!handle) return;
       
@@ -194,11 +257,13 @@ window.defaultScheduleConfig = {
       card.setPointerCapture(e.pointerId);
     });
 
-    document.addEventListener('pointermove', (e) => {
+    window.addEventListener('pointermove', (e) => {
       if (isConnectMode && connectingSource && tempLine) {
-        const boardRect = board.getBoundingClientRect();
-        const currentX = e.clientX - boardRect.left;
-        const currentY = e.clientY - boardRect.top;
+        const svgEl = document.getElementById('connectionLayer');
+        const svgRect = svgEl ? svgEl.getBoundingClientRect() : { left: 0, top: 0 };
+
+        const currentX = e.clientX - svgRect.left;
+        const currentY = e.clientY - svgRect.top;
 
         tempLine.setAttribute('x2', currentX);
         tempLine.setAttribute('y2', currentY);
@@ -225,7 +290,79 @@ window.defaultScheduleConfig = {
       }
     });
 
+    function completeConnection(targetId) {
+      if (!connectingSource || !targetId || targetId === connectingSource.id) {
+        cancelConnection();
+        return;
+      }
+
+      const exists = DATA.connections.some(
+        (c) => (c.from === connectingSource.id && c.to === targetId) ||
+               (c.from === targetId && c.to === connectingSource.id)
+      );
+
+      if (!exists) {
+        const selectedLevel = document.getElementById('connectionTypeSelect')?.value || 'related';
+        state.activeTiers.add(selectedLevel);
+
+        const newConn = {
+          id: `conn-${Date.now()}`,
+          from: connectingSource.id,
+          to: targetId,
+          level: selectedLevel,
+          note: 'Created via Connect Mode'
+        };
+
+        if (!Array.isArray(DATA.connections)) DATA.connections = [];
+        DATA.connections.push(newConn);
+        refreshVisuals();
+      }
+
+      cancelConnection();
+    }
+
+    const stopDrag = (e) => {
+      if (isConnectMode && connectingSource) {
+        if (isDraggingConnection) {
+          const stack = document.elementsFromPoint(e.clientX, e.clientY) || [];
+          let targetNode = null;
+
+          for (const el of stack) {
+            const found = el.closest('.module-chip, .course-card');
+            if (found && found !== connectingSource.node) {
+              targetNode = found;
+              break;
+            }
+          }
+
+          if (targetNode) {
+            const targetId = targetNode.dataset.moduleId || targetNode.dataset.courseId;
+            completeConnection(targetId);
+          } else {
+            // Keep source active for two-click connect if mouse was released without a target
+            isDraggingConnection = false;
+          }
+        }
+        return;
+      }
+
+      if (draggingState) {
+        fitCanvasToContent(draggingState.canvas);
+        draggingState.card.classList.remove('is-dragging');
+        draggingState = null;
+        refreshVisuals();
+      }
+    };
+
+    window.addEventListener('pointerup', stopDrag);
+    window.addEventListener('pointercancel', stopDrag);
+
     board.addEventListener('dragover', (e) => {
+      if (isConnectMode) {
+        e.preventDefault();
+        return;
+      }
+
       const targetCard = e.target.closest('.course-card');
       if (targetCard) {
         e.preventDefault();
@@ -256,6 +393,12 @@ window.defaultScheduleConfig = {
     });
 
     board.addEventListener('drop', (e) => {
+      if (isConnectMode) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
       const targetCard = e.target.closest('.course-card');
       if (!targetCard) return;
 
@@ -312,55 +455,7 @@ window.defaultScheduleConfig = {
       }
     });
 
-    const stopDrag = (e) => {
-      if (isConnectMode && connectingSource) {
-        if (tempLine) {
-          tempLine.remove();
-          tempLine = null;
-        }
-
-        const targetNode = document.elementFromPoint(e.clientX, e.clientY)?.closest('.module-chip, .course-card');
-        const targetId = targetNode?.dataset.moduleId || targetNode?.dataset.courseId;
-
-        if (targetId && targetId !== connectingSource.id) {
-          const exists = DATA.connections.some(
-            (c) => (c.from === connectingSource.id && c.to === targetId) ||
-                   (c.from === targetId && c.to === connectingSource.id)
-          );
-
-          if (!exists) {
-            const selectedLevel = document.getElementById('connectionTypeSelect')?.value || 'related';
-
-            const newConn = {
-              id: `conn-${Date.now()}`,
-              from: connectingSource.id,
-              to: targetId,
-              level: selectedLevel,
-              note: 'Created via Drawing Mode'
-            };
-
-            DATA.connections.push(newConn);
-            refreshVisuals();
-          }
-        }
-
-        connectingSource = null;
-        return;
-      }
-
-      if (draggingState) {
-        fitCanvasToContent(draggingState.canvas);
-        draggingState.card.classList.remove('is-dragging');
-        draggingState = null;
-        refreshVisuals();
-      }
-    };
-
-    board.addEventListener('pointerup', stopDrag);
-    board.addEventListener('pointercancel', stopDrag);
-
     board.addEventListener('click', (e) => {
-
       const downloadBtn = e.target.closest('.btn-download-outline');
       if (downloadBtn) {
         e.stopPropagation();
