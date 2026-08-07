@@ -712,7 +712,7 @@ marker[id*="weak"] path { fill: var(--weak) !important; }
 }
 
 .legend-swatch.weak, .legend-line.weak {
-  background-image: linear-gradient(90deg, var(--weak) 60%, transparent 40%);
+  background: var(--weak);
   background-size: 8px 2.5px;
   height: 2.5px;
 }
