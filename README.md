@@ -10,10 +10,10 @@ Use it here https://majikatz.github.io/CurricuMap/
 
 * 🗺️ **Visual Canvas & Degree Mapping:** Organizes courses across chronological academic year columns with native support for pre-university years (Year 0) through upper years.
 * 🔗 **Dynamic Dependencies (Connect Mode):** Interactive SVG rendering to visually link prerequisite courses, modules, and granular learning objectives with customizable connection strengths (*Strong, Related, Weak*).
-* 📝 **Comprehensive Course & Schedule Editor:** Built-in modal to manage course codes, names, semester lengths (10–16 weeks), and flexible weekly lecture formats (e.g., 3x50m, 2x90m, 1x3h).
-* 🧪 **Labs, Midterms & Modules:** Dedicated tabbed editor to schedule unit topic modules, granular learning objectives, midterm evaluations, laboratory practical hours, and required textbook metadata.
-* 📅 **Course Calendar Matrix View:** Click the calendar icon on any course card to open an auto-generated, week-by-week timetable breaking down every lecture topic, exam, and lab session across the semester duration.
-* 📄 **Accreditation-Ready RTF Syllabus Export:** Instantly generate formatted Word/RTF course outlines for individual courses or export a single, program-wide document bundle complete with total contact hours and accreditation metrics.
+* 📝 **Comprehensive Course & Schedule Editor:** Built-in modal to manage course codes, names, semester lengths, weekly lecture formats, and dynamic cascading dropdowns to link prerequisites across courses and modules.
+ 🧪 **Labs, Midterms & Modules:** Dedicated tabbed editor to schedule unit modules, granular per-topic lecture hours, nested learning objectives, textbook practice questions, midterm evaluations, and laboratory practical hours.
+* 📅 **Course Calendar Matrix View:** Auto-generated, week-by-week timetable breaking down every individual lecture topic, exam, and lab session across the semester duration.
+* 📄 **Accreditation-Ready RTF Syllabus Export:** Instantly generate formatted Word/RTF course outlines incorporating per-topic schedule breakdowns, total contact hours, and accreditation metrics.
 * ⚙️ **Global Institutional Policy Defaults:** Configure department-wide grading schemes, missed work policies, and academic integrity/accommodation statements once in global settings to auto-populate all exported syllabi.
 * ❓ **Interactive Onboarding Guide:** Integrated step-by-step modal guide walking new users through features, connection drawing, scheduling, and exports.
 * 🔒 **100% Private & Local Storage:** No server required and zero data collected. Everything runs locally in your browser. Save and load complete degree map states anytime using `.json` workspace files.
@@ -48,11 +48,11 @@ currimap/
 ├── js/
 │   ├── main.js         # Core initialization & event orchestration
 │   ├── render.js       # Board, card, drawer, and legend DOM rendering
-│   ├── courseEditor.js # Course, module, lab, and exam editor logic
+│   ├── courseEditor.js # Course, module, topic, lab, exam, and cascading connection editor
 │   ├── connections.js  # SVG line calculation & interactive Connect Mode
-│   ├── calendarView.js # Week-by-week course calendar matrix renderer
+│   ├── calendarView.js # Per-topic week-by-week timetable matrix renderer
 │   ├── settings.js     # Institutional & department policy default state
-│   ├── exportRtf.js    # RTF syllabus generation & accreditation summary compiler
+│   ├── exportRtf.js    # Per-topic RTF syllabus generation & accreditation summary compiler
 │   ├── introModal.js   # Interactive onboarding guide & step-by-step tour
 │   └── data-loader.js  # Workspace save/load (JSON) & LocalStorage management
 └── data/
@@ -74,8 +74,6 @@ JSON
       "name": "Introductory Chemistry I",
       "year": 1,
       "yearLabel": "Year 1 (Fall)",
-      "weeksInSemester": 12,
-      "weeklyFormat": "3x50",
       "textbook": {
         "title": "Chemistry: The Central Science",
         "author": "Brown et al.",
@@ -83,36 +81,56 @@ JSON
       },
       "modules": [
         {
-          "id": "m1",
+          "id": "chem1010-m1",
+          "label": "MOD 01",
           "title": "Chemical Bonding & Structure",
-          "type": "lecture",
-          "hours": 3,
-          "objectives": ["Understand Lewis structures", "Predict VSEPR geometries"]
+          "lectureCount": 3,
+          "isExam": false,
+          "isLab": false,
+          "topics": [
+            {
+              "title": "Lewis Structures & VSEPR",
+              "description": "Introduction to resonance, formal charge, and molecular geometry.",
+              "lectureCount": 2,
+              "learningObjectives": [
+                "Draw valid Lewis structures for polyatomic ions",
+                "Predict molecular geometry using VSEPR theory"
+              ],
+              "textbookQuestions": ["Ch. 8 #12", "Ch. 8 #15-20"]
+            }
+          ]
         },
         {
-          "id": "m2",
-          "title": "Midterm Examination",
-          "type": "midterm",
-          "hours": 1
+          "id": "chem1010-midterm-1",
+          "label": "MIDTERM",
+          "title": "Midterm Examination 1",
+          "isExam": true,
+          "weightPercent": 20,
+          "coveredModuleIds": ["chem1010-m1"]
         },
         {
-          "id": "m3",
-          "title": "Acid-Base Titration Lab",
-          "type": "lab",
-          "hours": 3
+          "id": "chem1010-labs",
+          "label": "LABS",
+          "title": "Laboratory Component",
+          "isLab": true,
+          "weightPercent": 20,
+          "labs": [
+            { "title": "Lab 1: Acid-Base Titration", "hours": 3, "weightPercent": 5 }
+          ]
         }
       ]
     }
   ],
   "connections": [
     {
-      "fromCourse": "chem1010",
-      "fromModule": "m1",
-      "toCourse": "chem2210",
-      "toModule": "m4",
-      "tier": "strong"
+      "id": "c1001",
+      "from": "chem1010-m1",
+      "to": "chem2210-m4",
+      "level": "strong",
+      "note": "Required foundational geometry concept"
     }
   ]
 }
+
 🛡️ Data Privacy
 CurriMap is designed with a privacy-first architecture. All operations—including workspace editing, graph drawing, calendar rendering, and RTF document generation—happen entirely inside your browser's JavaScript runtime. No course data, personal information, or institutional materials are ever sent to external servers.
