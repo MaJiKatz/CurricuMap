@@ -265,86 +265,56 @@ function openCalendarModal(course) {
     document.body.appendChild(modal);
   }
 
-  const lecturesPerWeek = 3;
-  const totalWeeks = 12;
+  // 1. Get active schedule config or fall back to default
+  const config = window.currentCourseConfig || window.defaultScheduleConfig || {
+    weeksInSemester: 12,
+    meetingsPerWeek: 3,
+    minutesPerMeeting: 50
+  };
 
-  const lectureStream = [];
-  (course.modules || []).forEach((mod) => {
-    if (mod.isLab) return;
+  // 2. Delegate calculation to calendarView.js
+  const layout = typeof window.calculateCalendarLayout === 'function'
+    ? window.calculateCalendarLayout(course, config)
+    : { weeks: [] };
 
-    if (mod.isExam) {
-      // Exams
-      const count = parseInt(mod.lectureCount, 10) || 1;
-      for (let i = 1; i <= count; i++) {
-        lectureStream.push({
-          label: mod.label || 'EXAM',
-          title: mod.title || 'Midterm Examination',
-          index: i,
-          total: count,
-          isExam: true,
-          weightPercent: mod.weightPercent
-        });
-      }
-    } else if (mod.topics && mod.topics.length > 0) {
-      // Stream each topic by its assigned lectureCount
-      mod.topics.forEach((topic) => {
-        const topicTitle = typeof topic === 'string' ? topic : (topic.title || 'Untitled Topic');
-        const count = typeof topic === 'object' ? (parseInt(topic.lectureCount, 10) || 1) : 1;
-        for (let i = 1; i <= count; i++) {
-          lectureStream.push({
-            label: mod.label || 'MOD',
-            title: topicTitle,
-            index: i,
-            total: count,
-            isExam: false
-          });
-        }
-      });
-    } else {
-      // Fallback if no sub-topics are defined
-      const count = parseInt(mod.lectureCount, 10) || 1;
-      for (let i = 1; i <= count; i++) {
-        lectureStream.push({
-          label: mod.label || 'MOD',
-          title: mod.title || 'Untitled Module',
-          index: i,
-          total: count,
-          isExam: false
-        });
-      }
-    }
-  });
-
+  // 3. Render HTML using the dynamic layout slots
   let weeksHTML = '';
-  let currentIdx = 0;
 
-  for (let w = 1; w <= totalWeeks; w++) {
+  (layout.weeks || []).forEach((week) => {
     let weekLecturesHTML = '';
-    for (let l = 0; l < lecturesPerWeek; l++) {
-      if (currentIdx < lectureStream.length) {
-        const item = lectureStream[currentIdx];
-        const isExamStyle = item.isExam ? 'background: rgba(107, 33, 168, 0.3); border-left: 3px solid #a855f7;' : '';
-        const weightTag = item.isExam && item.weightPercent ? ` (${item.weightPercent}%)` : '';
-        
-        weekLecturesHTML += `
-          <div class="cal-lecture-item" style="${isExamStyle}">
-            <span class="cal-lec-tag" style="${item.isExam ? 'color: #d8b4fe;' : ''}">${escapeHtml(item.label)}${weightTag} (${item.index}/${item.total})</span>
-            <div class="cal-lec-title">${escapeHtml(item.title)}</div>
-          </div>
-        `;
-        currentIdx++;
-      }
-    }
+
+    (week.slots || []).forEach((slot) => {
+      const item = slot.lectureData;
+      if (!item) return;
+
+      const isExamStyle = item.isExam ? 'background: rgba(107, 33, 168, 0.3); border-left: 3px solid #a855f7;' : '';
+      const weightTag = item.isExam && item.weightPercent ? ` (${item.weightPercent}%)` : '';
+      const tagColor = item.isExam ? 'color: #d8b4fe;' : '';
+
+      // Displays "MOD (Lecture 2/5)" using module totals instead of topic totals
+      const countLabel = item.totalInModule 
+        ? ` (${item.lectureNumber}/${item.totalInModule})` 
+        : '';
+
+      weekLecturesHTML += `
+        <div class="cal-lecture-item" style="${isExamStyle}">
+          <span class="cal-lec-tag" style="${tagColor}">
+            ${escapeHtml(item.moduleLabel)}${weightTag}${countLabel}
+          </span>
+          <div class="cal-lec-title">${escapeHtml(item.title)}</div>
+        </div>
+      `;
+    });
 
     weeksHTML += `
       <div class="cal-week-card">
-        <div class="cal-week-header">Week ${w}</div>
+        <div class="cal-week-header">Week ${week.weekNumber}</div>
         <div class="cal-week-body">
           ${weekLecturesHTML || '<div class="cal-empty">No lectures</div>'}
         </div>
       </div>
     `;
-  }
+  });
 
   modal.innerHTML = `
     <div class="calendar-modal-card">

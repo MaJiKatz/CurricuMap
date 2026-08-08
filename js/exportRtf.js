@@ -118,7 +118,7 @@ function calculateCourseHoursAndStats(course) {
     labHours = parseFloat(course.labHours) || 0;
   }
 
-  // Iterate modules to calculate per-topic lectures, exams, and labs
+  // Iterate modules to calculate total lectures, exams, and labs
   (course.modules || []).forEach((mod) => {
     if (mod.isExam) {
       const w = parseFloat(mod.weightPercent || mod.weight) || 0;
@@ -138,15 +138,19 @@ function calculateCourseHoursAndStats(course) {
 
       labs.push({ title: mod.title || mod.label || 'Laboratory / Practical Work', weight: w, hours: modLabHours });
     } else {
-      // Sum lecture count explicitly from topics inside this module
+      // Calculate topic sum for module
+      let topicSum = 0;
       if (Array.isArray(mod.topics) && mod.topics.length > 0) {
         mod.topics.forEach((topic) => {
-          lectureCount += getTopicLectureCount(topic);
+          topicSum += getTopicLectureCount(topic);
         });
-      } else {
-        // Fallback if a module contains no topic array
-        lectureCount += parseFloat(mod.lectureCount || mod.lectures || mod.hours) || 0;
       }
+
+      // Module lecture count is at least topicSum, or explicit module lecture count
+      const explicitModCount = parseFloat(mod.lectureCount || mod.lectures || mod.hours) || 0;
+      const effectiveModLectures = Math.max(explicitModCount, topicSum);
+
+      lectureCount += effectiveModLectures;
     }
   });
 
@@ -187,57 +191,67 @@ function calculateCourseHoursAndStats(course) {
   };
 }
 
-// --- HELPER: BUILD PER-TOPIC SCHEDULE SLOTS INTO CALENDAR WEEKS ---
+// --- HELPER: BUILD SCHEDULE SLOTS WITH UNASSIGNED MODULE SLOTS ---
 function buildCourseSchedule(course, meetingsPerWeek, weeksInSemester) {
   const slots = [];
 
-  // Generate day-by-day slots derived strictly from per-topic lecture counts
   (course.modules || []).forEach((mod, mIdx) => {
     const modLabel = mod.label || mod.code || `M${mIdx + 1}`;
+    const modTitle = mod.title || mod.label || `Module ${mIdx + 1}`;
 
     if (mod.isExam) {
       slots.push({
         isExam: true,
-        title: mod.title || mod.label || 'Midterm Examination',
+        title: modTitle,
         moduleLabel: modLabel
       });
     } else if (mod.isLab) {
       slots.push({
         isLab: true,
-        title: mod.title || mod.label || 'Laboratory Session',
+        title: modTitle,
         moduleLabel: modLabel
       });
-    } else if (Array.isArray(mod.topics) && mod.topics.length > 0) {
-      mod.topics.forEach((topic, tIdx) => {
-        const topicTitle = typeof topic === 'string' 
-          ? topic 
-          : (topic.title || topic.name || topic.label || `Topic ${tIdx + 1}`);
-        
-        const count = getTopicLectureCount(topic);
-
-        for (let i = 1; i <= count; i++) {
-          slots.push({
-            topicTitle: topicTitle,
-            moduleLabel: modLabel,
-            partInfo: count > 1 ? `(Lec ${i}/${count})` : ''
-          });
-        }
-      });
     } else {
-      // Fallback if module has no topics array
-      const count = parseFloat(mod.lectureCount || mod.lectures || mod.hours) || 1;
-      const topicTitle = mod.title || mod.name || `Module ${mIdx + 1}`;
-      for (let i = 1; i <= count; i++) {
+      let assignedTopicLectures = 0;
+
+      // 1. Unroll defined topic slots
+      if (Array.isArray(mod.topics) && mod.topics.length > 0) {
+        mod.topics.forEach((topic, tIdx) => {
+          const topicTitle = typeof topic === 'string' 
+            ? topic 
+            : (topic.title || topic.name || topic.label || `Topic ${tIdx + 1}`);
+          
+          const count = getTopicLectureCount(topic);
+          assignedTopicLectures += count;
+
+          for (let i = 1; i <= count; i++) {
+            slots.push({
+              topicTitle: topicTitle,
+              moduleLabel: modLabel,
+              partInfo: count > 1 ? `(Lec ${i}/${count})` : ''
+            });
+          }
+        });
+      }
+
+      // 2. Determine if total module lectures exceeds topic sum
+      const explicitModCount = parseFloat(mod.lectureCount || mod.lectures || mod.hours) || 0;
+      const totalModLectures = Math.max(explicitModCount, assignedTopicLectures);
+      const remainingUnassignedSlots = totalModLectures - assignedTopicLectures;
+
+      // 3. Unroll remaining slots displaying ONLY the module name
+      for (let r = 0; r < remainingUnassignedSlots; r++) {
         slots.push({
-          topicTitle: topicTitle,
+          topicTitle: modTitle, // Displays just module name
           moduleLabel: modLabel,
-          partInfo: count > 1 ? `(Lec ${i}/${count})` : ''
+          partInfo: '',
+          isUnassignedModuleSlot: true
         });
       }
     }
   });
 
-  // Distribute individual topic slots into weekly schedule
+  // Distribute slots into weekly schedule
   const schedule = [];
   let currentSlotIdx = 0;
 
@@ -339,6 +353,9 @@ function buildCourseRtfContent(course, connections) {
             lineText = `\\b [EXAM]\\b0  ${escapeRtf(lec.title || 'Midterm Examination')}`;
           } else if (lec.isLab) {
             lineText = `\\b [LAB]\\b0  ${escapeRtf(lec.title || 'Laboratory Session')}`;
+          } else if (lec.isUnassignedModuleSlot) {
+            // Unassigned module lecture slot shows only the module name
+            lineText = `\\b ${escapeRtf(lec.topicTitle)}\\b0`;
           } else {
             // Render Topic Title prominently for students
             const topicName = escapeRtf(lec.topicTitle || 'Topic Lecture');
@@ -417,14 +434,14 @@ function buildCourseRtfContent(course, connections) {
     const modNum = idx + 1;
     
     // Sum total lectures across topics within this module
-    let moduleLectureSum = 0;
+    let topicSum = 0;
     if (Array.isArray(mod.topics) && mod.topics.length > 0) {
       mod.topics.forEach((topic) => {
-        moduleLectureSum += getTopicLectureCount(topic);
+        topicSum += getTopicLectureCount(topic);
       });
-    } else {
-      moduleLectureSum = parseFloat(mod.lectureCount || mod.lectures || mod.hours) || 0;
     }
+    const explicitModCount = parseFloat(mod.lectureCount || mod.lectures || mod.hours) || 0;
+    const moduleLectureSum = Math.max(explicitModCount, topicSum);
 
     const lecTag = ` [${moduleLectureSum} ${moduleLectureSum === 1 ? 'lecture' : 'lectures'}]`;
 

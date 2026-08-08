@@ -8,6 +8,23 @@ let currentCourse = null;
 let editingModules = [];
 let editingConnections = [];
 
+// Helper to reliably read total lecture count across property variations
+function getModuleLectureCount(mod) {
+  if (!mod) return 0;
+  const val = mod.lectureCount ?? mod.lectures ?? mod.totalLectures ?? mod.lecture_count;
+  return parseInt(val, 10) || 0;
+}
+
+// Helper to calculate sum of topic lectures in a module
+function getModuleTopicsSum(module) {
+  if (!module || !Array.isArray(module.topics)) return 0;
+  return module.topics.reduce((sum, topic) => {
+    if (typeof topic === 'string') return sum + 1;
+    const val = parseFloat(topic.lectureCount ?? topic.lectures ?? topic.hours) || 1;
+    return sum + val;
+  }, 0);
+}
+
 function openCourseEditor(targetId = null) {
   let course = null;
   let connections = [];
@@ -52,7 +69,16 @@ function openCourseModal(courseData = null, connectionsData = []) {
   };
 
   editingModules = courseData && courseData.modules 
-    ? JSON.parse(JSON.stringify(courseData.modules)) 
+    ? JSON.parse(JSON.stringify(courseData.modules)).map(mod => {
+        const topicSum = getModuleTopicsSum(mod);
+        const existingLec = getModuleLectureCount(mod);
+        const targetLec = Math.max(existingLec, topicSum, 1);
+        return {
+          ...mod,
+          lectureCount: targetLec,
+          lectures: targetLec
+        };
+      })
     : [];
 
   const moduleIds = editingModules.map((m) => m.id);
@@ -126,9 +152,24 @@ function switchTab(tabName) {
   if (activeTab) activeTab.classList.add('active');
 }
 
-// --- DOM SYNCING & MODULE LIST RENDERING ---
+function handleModuleLecturesInputChange(modIdx, inputElement) {
+  syncModulesFromDOM();
+  const mod = editingModules[modIdx];
+  if (!mod) return;
 
-// SCRAPES DOM INPUTS INTO MEMORY BEFORE RE-RENDERING OR SAVING
+  const topicSum = getModuleTopicsSum(mod);
+  let newVal = parseInt(inputElement.value, 10) || 0;
+
+  if (newVal < topicSum) {
+    newVal = topicSum;
+    inputElement.value = newVal;
+  }
+
+  mod.lectureCount = newVal;
+  mod.lectures = newVal;
+}
+
+// Scrapes DOM inputs into memory before re-rendering or saving
 function syncModulesFromDOM() {
   const container = document.getElementById('moduleList');
   if (!container) return;
@@ -138,6 +179,7 @@ function syncModulesFromDOM() {
     const mod = editingModules[modIdx];
     if (!mod || mod.isExam || mod.isLab) return;
 
+    const modLecturesInput = wrapper.querySelector('.input-module-lectures');
     const topicCards = wrapper.querySelectorAll('.topic-editor-card');
     const updatedTopics = [];
 
@@ -164,6 +206,18 @@ function syncModulesFromDOM() {
     });
 
     mod.topics = updatedTopics;
+
+    const topicSum = getModuleTopicsSum(mod);
+    const existingVal = getModuleLectureCount(mod);
+    const domVal = modLecturesInput ? parseInt(modLecturesInput.value, 10) : NaN;
+    
+    let explicitModLectures = !isNaN(domVal) ? domVal : existingVal;
+    if (explicitModLectures < topicSum) {
+      explicitModLectures = topicSum;
+    }
+
+    mod.lectureCount = explicitModLectures;
+    mod.lectures = explicitModLectures;
   });
 }
 
@@ -181,7 +235,6 @@ function renderModulesList() {
   let html = '';
 
   editingModules.forEach((mod, modIdx) => {
-    // --- 1. MIDTERM / EXAM MODULE ROW ---
     if (mod.isExam) {
       const allOtherMods = editingModules.filter((m) => !m.isExam && !m.isLab);
       const coveredSet = new Set(mod.coveredModuleIds || []);
@@ -219,7 +272,6 @@ function renderModulesList() {
       return;
     }
 
-    // --- 2. LAB SECTION ROW ---
     if (mod.isLab) {
       const labs = mod.labs || [];
       let labsListHtml = '';
@@ -268,7 +320,13 @@ function renderModulesList() {
       return;
     }
 
-    // --- 3. STANDARD CONTENT MODULE ROW ---
+    const topicSum = getModuleTopicsSum(mod);
+    const existingLec = getModuleLectureCount(mod);
+    const effectiveModLectures = Math.max(existingLec, topicSum);
+
+    mod.lectureCount = effectiveModLectures;
+    mod.lectures = effectiveModLectures;
+
     let topicsHtml = '';
     if (Array.isArray(mod.topics)) {
       mod.topics.forEach((topic, tIdx) => {
@@ -290,7 +348,7 @@ function renderModulesList() {
               </div>
               <div style="width: 90px;">
                 <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; margin-bottom: 2px;">Lectures</label>
-                <input type="number" class="input-topic-lectures" min="1" max="10" placeholder="1" value="${topic.lectureCount || 1}" style="width: 100%;">
+                <input type="number" class="input-topic-lectures" min="1" max="20" placeholder="1" value="${topic.lectureCount || 1}" style="width: 100%;">
               </div>
             </div>
 
@@ -299,7 +357,6 @@ function renderModulesList() {
               <textarea class="input-topic-desc" placeholder="Brief overview of topic..." rows="2" style="width: 100%; font-size: 0.85rem; padding: 4px 6px; background: #0f172a; border: 1px solid #334155; color: #f8fafc; border-radius: 4px;">${escapeHtml(topic.description || '')}</textarea>
             </div>
 
-            <!-- LEARNING OBJECTIVES -->
             <div style="margin-bottom: 8px; padding: 6px; background: rgba(0, 0, 0, 0.2); border-radius: 4px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                 <span style="font-size: 0.75rem; font-weight: 700; color: #38bdf8;">🎯 Learning Objectives</span>
@@ -315,7 +372,6 @@ function renderModulesList() {
               </div>
             </div>
 
-            <!-- TEXTBOOK QUESTIONS -->
             <div style="padding: 6px; background: rgba(0, 0, 0, 0.2); border-radius: 4px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                 <span style="font-size: 0.75rem; font-weight: 700; color: #a7f3d0;">📖 Recommended Questions</span>
@@ -340,6 +396,20 @@ function renderModulesList() {
         <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
           <input type="text" value="${escapeHtml(mod.label || '')}" onchange="editingModules[${modIdx}].label = this.value" placeholder="MOD 01" style="width: 90px;">
           <input type="text" value="${escapeHtml(mod.title || '')}" onchange="editingModules[${modIdx}].title = this.value" placeholder="Module Title" style="flex: 1;">
+          
+          <div style="display: flex; align-items: center; gap: 4px;">
+            <label style="font-size: 0.72rem; color: #94a3b8; font-weight: 600; text-transform: uppercase;">Total Lectures:</label>
+            <input 
+              type="number" 
+              class="input-module-lectures" 
+              min="${topicSum}" 
+              value="${effectiveModLectures}" 
+              onchange="handleModuleLecturesInputChange(${modIdx}, this)" 
+              style="width: 65px;"
+              title="Total Module Lectures (Min: ${topicSum} based on topics)"
+            />
+          </div>
+
           <button type="button" class="btn btn-cancel btn-sm" onclick="removeModuleRow(${modIdx})" title="Delete Module">&times;</button>
         </div>
 
@@ -367,6 +437,7 @@ function addModuleRow() {
     label: `MOD 0${editingModules.length + 1}`,
     title: 'New Module',
     lectureCount: 3,
+    lectures: 3,
     topics: [],
     isExam: false,
     isLab: false
@@ -384,6 +455,7 @@ function addMidtermRow() {
     label: `MIDTERM`,
     title: 'Midterm Examination',
     lectureCount: 1,
+    lectures: 1,
     weightPercent: 20,
     isExam: true,
     isLab: false,
@@ -475,17 +547,34 @@ function removeModuleRow(index) {
   renderModulesList();
 }
 
-// --- TOPIC & SUB-ITEM MANAGEMENT ---
 function addTopicRow(modIndex) {
   syncModulesFromDOM();
-  if (!editingModules[modIndex].topics) editingModules[modIndex].topics = [];
-  editingModules[modIndex].topics.push({
+
+  const mod = editingModules[modIndex];
+  if (!mod) return;
+
+  if (!mod.topics) mod.topics = [];
+
+  // Preserve the module's existing lecture allocation.
+  // Adding a topic should never reduce the number of lectures.
+  const existingLectures = getModuleLectureCount(mod);
+
+  mod.topics.push({
     title: '',
     description: '',
-    lectureCount: 1, // Default count
+    lectureCount: 1,
     learningObjectives: [],
     textbookQuestions: []
   });
+
+  // Only increase the module allocation if the topics
+  // now require more lectures than were originally allocated.
+  const topicSum = getModuleTopicsSum(mod);
+  const finalLectures = Math.max(existingLectures, topicSum, 1);
+
+  mod.lectureCount = finalLectures;
+  mod.lectures = finalLectures;
+
   renderModulesList();
 }
 
@@ -590,6 +679,7 @@ function saveCourseData() {
         label: mod.label || 'MIDTERM',
         title: mod.title || 'Midterm Examination',
         lectureCount: parseInt(mod.lectureCount, 10) || 1,
+        lectures: parseInt(mod.lectureCount, 10) || 1,
         weightPercent: parseFloat(mod.weightPercent) || 0,
         isExam: true,
         isLab: false,
@@ -623,14 +713,21 @@ function saveCourseData() {
         return {
           title: t.title || '',
           description: t.description || '',
-          lectureCount: parseInt(t.lectureCount, 10) || 1, // Preserve count
+          lectureCount: parseInt(t.lectureCount, 10) || 1,
           learningObjectives: (t.learningObjectives || []).filter((o) => typeof o === 'string' && o.trim() !== ''),
           textbookQuestions: (t.textbookQuestions || []).filter((q) => typeof q === 'string' && q.trim() !== '')
         };
       })
       .filter((t) => t.title.trim() !== '' || t.description.trim() !== '' || t.learningObjectives.length > 0 || t.textbookQuestions.length > 0);
+
+    const topicSum = getModuleTopicsSum({ topics: cleanedTopics });
+    const existingLec = getModuleLectureCount(mod);
+    const finalLec = Math.max(existingLec, topicSum);
+
     return {
       ...mod,
+      lectureCount: finalLec,
+      lectures: finalLec,
       isExam: false,
       isLab: false,
       topics: cleanedTopics
@@ -666,6 +763,16 @@ function saveCourseData() {
   closeCourseModal();
 }
 
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 window.openCourseEditor = openCourseEditor;
 window.openCourseModal = openCourseModal;
 window.closeCourseModal = closeCourseModal;
@@ -689,3 +796,4 @@ window.addConnectionRow = addConnectionRow;
 window.removeConnectionRow = removeConnectionRow;
 window.saveCourseData = saveCourseData;
 window.renderModulesList = renderModulesList;
+window.handleModuleLecturesInputChange = handleModuleLecturesInputChange;
