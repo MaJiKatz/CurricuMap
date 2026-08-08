@@ -278,11 +278,17 @@ function renderCourseCard(course, isCollapsed) {
   return card;
 }
 
+// ==========================================
+// CALENDAR MODAL FUNCTIONS
+// (Paste/Replace this section inside your full render.js)
+// ==========================================
+
 function openCalendarModal(course) {
   let modal = document.getElementById('calendar-modal');
   if (!modal) {
     modal = document.createElement('div');
     modal.id = 'calendar-modal';
+    modal.className = 'modal-backdrop hidden';
     document.body.appendChild(modal);
   }
 
@@ -305,39 +311,79 @@ function openCalendarModal(course) {
       const item = slot.lectureData;
       if (!item) return;
 
-      const isExamStyle = item.isExam ? 'background: rgba(107, 33, 168, 0.3); border-left: 3px solid #a855f7;' : '';
-      const weightTag = item.isExam && item.weightPercent ? ` (${item.weightPercent}%)` : '';
-      const tagColor = item.isExam ? 'color: #d8b4fe;' : '';
+      // Handle In-Class Assessments inside class meeting slots
+      if (item.isExam) {
+        const weightText = item.weightPercent ? ` (${item.weightPercent}%)` : '';
+        weekLecturesHTML += `
+          <div class="cal-lecture-item cal-inclass-exam" style="background: rgba(220, 38, 38, 0.15); border-left: 3px solid #ef4444; padding: 6px 8px; border-radius: 4px; margin-bottom: 4px;">
+            <span class="cal-lec-tag" style="color: #fca5a5; font-weight: 700;">
+              📝 ${escapeHtml(item.moduleLabel || 'EXAM')}${weightText}
+            </span>
+            <div class="cal-lec-title" style="color: #fef2f2; font-weight: 600;">
+              ${escapeHtml(item.title)}
+            </div>
+          </div>
+        `;
+      } else {
+        // Standard Lecture Topic Slot
+        const countLabel = item.totalInModule 
+          ? ` (${item.lectureNumber}/${item.totalInModule})` 
+          : '';
 
-      const countLabel = item.totalInModule 
-        ? ` (${item.lectureNumber}/${item.totalInModule})` 
-        : '';
+        let tagText = item.moduleLabel || '';
+        if (item.moduleTitle) {
+          tagText = `${item.moduleLabel}: ${item.moduleTitle}`;
+        }
 
-      let tagText = item.moduleLabel || '';
-      if (item.moduleTitle && !item.isExam) {
-        tagText = `${item.moduleLabel}: ${item.moduleTitle}`;
+        let displayTitle = item.title;
+        if (item.isPlaceholder) {
+          displayTitle = item.moduleTitle || item.title;
+        }
+
+        weekLecturesHTML += `
+          <div class="cal-lecture-item">
+            <span class="cal-lec-tag">
+              ${escapeHtml(tagText)}${countLabel}
+            </span>
+            <div class="cal-lec-title">${escapeHtml(displayTitle)}</div>
+          </div>
+        `;
       }
+    });
 
-      let displayTitle = item.title;
-      if (item.isPlaceholder) {
-        displayTitle = item.moduleTitle || item.title;
-      }
+    // Render Take-Home Assessments attached to this week
+    let assessmentsHTML = '';
+    if (week.assessments && week.assessments.length > 0) {
+      const itemsList = week.assessments.map(asm => {
+        const weightText = asm.weightPercent ? ` (${asm.weightPercent}%)` : '';
+        return `
+          <div class="cal-assessment-item" style="background: rgba(168, 85, 247, 0.2); border-left: 3px solid #a855f7; padding: 4px 8px; margin-top: 4px; border-radius: 4px;">
+            <div style="font-size: 0.75rem; font-weight: 700; color: #d8b4fe;">
+              🏠 ${escapeHtml(asm.label || 'Take-Home')}${weightText}
+            </div>
+            <div style="font-size: 0.85rem; color: #f3e8ff; font-weight: 600;">
+              ${escapeHtml(asm.title)}
+            </div>
+          </div>
+        `;
+      }).join('');
 
-      weekLecturesHTML += `
-        <div class="cal-lecture-item" style="${isExamStyle}">
-          <span class="cal-lec-tag" style="${tagColor}">
-            ${escapeHtml(tagText)}${weightTag}${countLabel}
-          </span>
-          <div class="cal-lec-title">${escapeHtml(displayTitle)}</div>
+      assessmentsHTML = `
+        <div class="cal-assessments-block" style="margin-top: 10px; padding-top: 6px; border-top: 1px dashed #475569;">
+          <div style="font-size: 0.7rem; font-weight: 700; color: #c084fc; text-transform: uppercase; margin-bottom: 2px;">
+            📌 Take-Home / Due This Week
+          </div>
+          ${itemsList}
         </div>
       `;
-    });
+    }
 
     weeksHTML += `
       <div class="cal-week-card">
         <div class="cal-week-header">Week ${week.weekNumber}</div>
         <div class="cal-week-body">
-          ${weekLecturesHTML || '<div class="cal-empty">No lectures</div>'}
+          ${weekLecturesHTML || '<div class="cal-empty">No lectures scheduled</div>'}
+          ${assessmentsHTML}
         </div>
       </div>
     `;
@@ -346,8 +392,8 @@ function openCalendarModal(course) {
   modal.innerHTML = `
     <div class="calendar-modal-card">
       <div class="modal-header">
-        <h2>📅 ${escapeHtml(course.code)}: ${escapeHtml(course.name)} Timeline</h2>
-        <button type="button" class="close-modal-btn" onclick="const m = document.getElementById('calendar-modal'); m.classList.remove('active'); m.classList.add('hidden');">&times;</button>
+        <h2>📅 ${escapeHtml(course.code || 'Course')}: ${escapeHtml(course.name || 'Schedule')} Timeline</h2>
+        <button type="button" class="close-modal-btn" onclick="closeCalendarModal()">&times;</button>
       </div>
       <div class="modal-body" style="overflow-y: auto;">
         <div class="calendar-grid">
@@ -360,6 +406,16 @@ function openCalendarModal(course) {
   modal.classList.remove('hidden');
   modal.classList.add('active');
 }
+
+function closeCalendarModal() {
+  const modal = document.getElementById('calendar-modal');
+  if (modal) {
+    modal.classList.remove('active');
+    modal.classList.add('hidden');
+  }
+}
+
+
 
 function renderTierToggles(legend, activeTiers) {
   const container = document.getElementById('tierToggles');
@@ -591,3 +647,4 @@ window.renderTierToggles = renderTierToggles;
 window.renderLegendBar = renderLegendBar;
 window.renderDrawer = renderDrawer;
 window.openCalendarModal = openCalendarModal;
+window.closeCalendarModal = closeCalendarModal;

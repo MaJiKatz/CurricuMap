@@ -4,6 +4,94 @@
    Includes global institutional policy resolution and curriculum stats summaries.
    ============================================================ */
 
+// --- HELPER: RESOLVE RAW MODULE IDs / COMPOUND CODES TO HUMAN-READABLE TITLES ---
+function resolveCoveredModulesText(course, rawInput) {
+  if (!rawInput) return '';
+
+  // Handle array, number, or delimited string inputs (commas, semicolons, dashes)
+  let idList = [];
+  if (Array.isArray(rawInput)) {
+    idList = rawInput;
+  } else if (typeof rawInput === 'number') {
+    idList = [String(rawInput)];
+  } else if (typeof rawInput === 'string') {
+    idList = rawInput.split(/[,;|]/).map(s => s.trim()).filter(Boolean);
+  }
+
+  if (idList.length === 0) return '';
+
+  const allCourses = (window.DATA && Array.isArray(window.DATA.courses)) 
+    ? window.DATA.courses 
+    : (course ? [course] : []);
+
+  const resolved = idList.map((rawId) => {
+    const idStr = String(rawId).trim();
+    const cleanId = idStr.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    // 1. Search current course's modules first
+    if (course && Array.isArray(course.modules)) {
+      const matchedModIdx = course.modules.findIndex((m, mIdx) => {
+        const mIdClean = String(m.id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const mCodeClean = String(m.code || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const mLabelClean = String(m.label || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const mTitleClean = String(m.title || m.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const mNum = String(mIdx + 1);
+
+        return (
+          mIdClean === cleanId ||
+          mCodeClean === cleanId ||
+          mLabelClean === cleanId ||
+          (mTitleClean && cleanId.includes(mTitleClean)) ||
+          cleanId === `m${mNum}` ||
+          cleanId === `module${mNum}` ||
+          cleanId.endsWith(`m${mNum}`) ||
+          cleanId.endsWith(`module${mNum}`)
+        );
+      });
+
+      if (matchedModIdx !== -1) {
+        const m = course.modules[matchedModIdx];
+        const label = m.label || m.code || `Module ${matchedModIdx + 1}`;
+        const title = m.title || m.name;
+        return title ? `${label}: ${title}` : label;
+      }
+    }
+
+    // 2. Cross-course search across window.DATA.courses for compound codes (e.g. Chem 1050-m4)
+    for (const c of allCourses) {
+      if (!Array.isArray(c.modules)) continue;
+
+      const cCodeClean = String(c.code || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+      for (let mIdx = 0; mIdx < c.modules.length; mIdx++) {
+        const m = c.modules[mIdx];
+        const mIdClean = String(m.id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const mNum = String(mIdx + 1);
+
+        const isMatch = (
+          cleanId === `${cCodeClean}${mIdClean}` ||
+          cleanId === `${cCodeClean}m${mNum}` ||
+          cleanId === `${cCodeClean}module${mNum}` ||
+          (mIdClean && cleanId === mIdClean)
+        );
+
+        if (isMatch) {
+          const label = m.label || m.code || `Module ${mIdx + 1}`;
+          const title = m.title || m.name || '';
+          const coursePrefix = (course && c.id !== course.id && c.code) ? `${c.code} ` : '';
+          const modText = title ? `${label}: ${title}` : label;
+          return `${coursePrefix}${modText}`;
+        }
+      }
+    }
+
+    // 3. Fallback: If no match found, present the raw input string
+    return idStr;
+  });
+
+  return resolved.join('; ');
+}
+
 // --- 1. EXPORT SINGLE COURSE ---
 function downloadCourseOutlineRTF(courseId) {
   const { course, connections } = window.getCourseById(courseId);
@@ -19,7 +107,7 @@ function downloadCourseOutlineRTF(courseId) {
 
   rtf += buildCourseRtfContent(course, connections || []);
 
-  rtf += `}\n`; // Close RTF block
+  rtf += `}\n`;
 
   triggerRtfDownload(rtf, `${course.code.replace(/\s+/g, '_')}_Course_Outline.rtf`);
 }
@@ -39,9 +127,7 @@ function downloadAllCourseOutlinesRTF() {
   const connections = window.DATA.connections || [];
   const courses = window.DATA.courses;
 
-  // ==========================================
-  // PAGE 1: STANDALONE PROGRAM SUMMARY PAGE
-  // ==========================================
+  // PAGE 1: PROGRAM SUMMARY
   rtf += `\\pard\\qc\\b\\fs36 Program Curriculum & Workload Summary\\b0\\fs22\\par\n`;
   rtf += `\\line\\par\n\n`;
 
@@ -62,30 +148,26 @@ function downloadAllCourseOutlinesRTF() {
 
   rtf += `\\pard\\qj\\b\\fs28 Aggregate Program Statistics\\b0\\fs22\\par\n`;
   rtf += `\\line\\par\n`;
-  rtf += `\\pard\\qj\\li360\\\'95  \\b Total Courses:\\b0  ${courses.length}\\par\n`;
-  rtf += `\\pard\\qj\\li360\\\'95  \\b Total Program Lecture Hours:\\b0  ${grandTotalLectureHours} hrs\\par\n`;
-  rtf += `\\pard\\qj\\li360\\\'95  \\b Total Program Laboratory Hours:\\b0  ${grandTotalLabHours} hrs\\par\n`;
-  rtf += `\\pard\\qj\\li360\\\'95  \\b Total Combined Contact Hours:\\b0  ${grandTotalHours} hrs\\par\n`;
+  rtf += `\\pard\\qj\\li360\\'95  \\b Total Courses:\\b0  ${courses.length}\\par\n`;
+  rtf += `\\pard\\qj\\li360\\'95  \\b Total Program Lecture Hours:\\b0  ${grandTotalLectureHours} hrs\\par\n`;
+  rtf += `\\pard\\qj\\li360\\'95  \\b Total Program Laboratory Hours:\\b0  ${grandTotalLabHours} hrs\\par\n`;
+  rtf += `\\pard\\qj\\li360\\'95  \\b Total Combined Contact Hours:\\b0  ${grandTotalHours} hrs\\par\n`;
   rtf += `\\pard\\qj\\par\n\n`;
 
   rtf += `\\pard\\qj\\b\\fs28 Course-by-Course Hours Breakdown\\b0\\fs22\\par\n`;
   rtf += `\\line\\par\n`;
   rtf += courseStatsListRtf;
 
-  // HARD PAGE BREAK & SECTION RESET (ISOLATES SUMMARY TO PAGE 1)
   rtf += `\\sect\\page\\sectd\n\n`;
 
-  // ==========================================
-  // INDIVIDUAL COURSE OUTLINES
-  // ==========================================
   courses.forEach((course, index) => {
     if (index > 0) {
-      rtf += `\\page\n`; // Hard page break between consecutive outlines
+      rtf += `\\page\n`;
     }
     rtf += buildCourseRtfContent(course, connections);
   });
 
-  rtf += `}\n`; // Close master RTF block
+  rtf += `}\n`;
 
   triggerRtfDownload(rtf, `Complete_Curriculum_Outlines.rtf`);
 }
@@ -113,16 +195,18 @@ function calculateCourseHoursAndStats(course) {
   const midterms = [];
   const labs = [];
 
-  // Check direct course root level lab hours
   if (course.labHours !== undefined) {
     labHours = parseFloat(course.labHours) || 0;
   }
 
-  // Iterate modules to calculate total lectures, exams, and labs
   (course.modules || []).forEach((mod) => {
     if (mod.isExam) {
       const w = parseFloat(mod.weightPercent || mod.weight) || 0;
-      midterms.push({ title: mod.title || mod.label || 'Midterm Examination', weight: w, date: mod.date || mod.scheduledWeek });
+      midterms.push({ 
+        title: mod.title || mod.label || 'Midterm Examination', 
+        weight: w, 
+        date: mod.date || mod.scheduledWeek 
+      });
       definedWeightTotal += w;
     } else if (mod.isLab) {
       const w = parseFloat(mod.weightPercent || mod.weight) || 0;
@@ -187,7 +271,178 @@ function calculateCourseHoursAndStats(course) {
   };
 }
 
-// --- HELPER: BUILD SCHEDULE SLOTS WITH UNASSIGNED MODULE SLOTS ---
+// --- HELPER: BUILD HIERARCHICAL ALLOCATION OF MARKS RTF ---
+function buildEvaluationSchemeRtf(course, config) {
+  const meetingsPerWeek = (config && config.meetingsPerWeek) || 
+                          (window.currentCourseConfig && window.currentCourseConfig.meetingsPerWeek) || 3;
+  const weeksInSemester = (config && config.weeksInSemester) || 
+                          (window.currentCourseConfig && window.currentCourseConfig.weeksInSemester) || 12;
+
+  let currentClassCount = 0;
+  const examMetadata = [];
+
+  (course.modules || []).forEach((mod) => {
+    if (mod.isLab) return;
+
+    if (mod.isExam) {
+      const mappedWeek = Math.min(
+        weeksInSemester,
+        Math.max(1, Math.ceil((currentClassCount + 1) / meetingsPerWeek))
+      );
+
+      examMetadata.push({
+        module: mod,
+        mappedWeek: mappedWeek
+      });
+
+      if (!mod.isTakeHome) {
+        const examSlots = parseInt(mod.lectureCount || mod.lectures, 10) || 1;
+        currentClassCount += examSlots;
+      }
+      return;
+    }
+
+    let topicSum = 0;
+    if (Array.isArray(mod.topics) && mod.topics.length > 0) {
+      mod.topics.forEach((topic) => {
+        topicSum += getTopicLectureCount(topic);
+      });
+    }
+    const explicitModCount = parseFloat(mod.lectureCount || mod.lectures || mod.hours) || 0;
+    const effectiveModLectures = Math.max(explicitModCount, topicSum, 1);
+
+    currentClassCount += effectiveModLectures;
+  });
+
+  const categories = {};
+  let totalDefinedWeight = 0;
+
+  examMetadata.forEach(({ module: mod, mappedWeek }) => {
+    const typeLabel = (mod.label || 'Assessment').trim();
+    if (!categories[typeLabel]) {
+      categories[typeLabel] = {
+        totalWeight: 0,
+        items: []
+      };
+    }
+
+    const weight = parseFloat(mod.weightPercent || mod.weight) || 0;
+    categories[typeLabel].totalWeight += weight;
+    totalDefinedWeight += weight;
+
+    // Check all common property variations for covered modules
+    const rawCovered = mod.coveredModuleIds || mod.coveredModules || mod.modulesCovered || mod.scope || mod.covered;
+    const coveredStr = resolveCoveredModulesText(course, rawCovered);
+
+    categories[typeLabel].items.push({
+      title: mod.title || `${typeLabel} Item`,
+      weight: weight,
+      isTakeHome: !!mod.isTakeHome,
+      coveredModules: coveredStr,
+      week: mappedWeek
+    });
+  });
+
+  (course.modules || []).forEach((mod) => {
+    if (mod.isLab) {
+      const labLabel = (mod.label || 'Laboratory Component').trim();
+      if (!categories[labLabel]) {
+        categories[labLabel] = { totalWeight: 0, items: [] };
+      }
+
+      if (Array.isArray(mod.labs) && mod.labs.length > 0) {
+        mod.labs.forEach((lab) => {
+          const w = parseFloat(lab.weightPercent || lab.weight) || 0;
+          categories[labLabel].totalWeight += w;
+          totalDefinedWeight += w;
+          categories[labLabel].items.push({
+            title: lab.title || 'Lab Experiment',
+            weight: w,
+            isTakeHome: false,
+            coveredModules: '',
+            week: null
+          });
+        });
+      } else {
+        const w = parseFloat(mod.weightPercent || mod.weight) || 0;
+        categories[labLabel].totalWeight += w;
+        totalDefinedWeight += w;
+        categories[labLabel].items.push({
+          title: mod.title || 'Laboratory Section',
+          weight: w,
+          isTakeHome: false,
+          coveredModules: '',
+          week: null
+        });
+      }
+    }
+  });
+
+  const customEval = course.evaluationScheme || course.evaluation || course.gradingScheme;
+  if (Object.keys(categories).length === 0 && Array.isArray(customEval) && customEval.length > 0) {
+    customEval.forEach((item) => {
+      const typeLabel = item.component || item.name || 'Evaluation';
+      const w = parseFloat(item.weight || item.allocation) || 0;
+      totalDefinedWeight += w;
+
+      const rawCovered = item.coveredModules || item.coveredModuleIds || item.modulesCovered || item.scope;
+
+      categories[typeLabel] = {
+        totalWeight: w,
+        items: [{
+          title: item.title || item.component || item.name,
+          weight: w,
+          isTakeHome: !!item.isTakeHome,
+          coveredModules: resolveCoveredModulesText(course, rawCovered),
+          week: item.week || item.scheduledWeek || null
+        }]
+      };
+    });
+  }
+
+  const finalExamWeight = Math.max(0, parseFloat((100 - totalDefinedWeight).toFixed(2)));
+
+  let rtf = `\\pard\\qj\\li360\\b 3.1 Allocation of Marks:\\b0\\par\n\n`;
+
+  const categoryKeys = Object.keys(categories);
+  if (categoryKeys.length === 0 && finalExamWeight === 100) {
+    rtf += `\\pard\\qj\\li720\\\'95  \\b Final Examination:\\b0  100% \\cf2 (Scheduled by Registrar)\\cf1\\par\n`;
+    return rtf;
+  }
+
+  categoryKeys.forEach((catType) => {
+    const catData = categories[catType];
+    const totalWeightText = catData.totalWeight > 0 ? ` (${catData.totalWeight}%)` : '';
+
+    rtf += `\\pard\\qj\\li360\\b\\fs24 ${escapeRtf(catType)}${totalWeightText}\\b0\\fs22\\par\n`;
+
+    catData.items.forEach((item) => {
+      const modeBadge = item.isTakeHome ? 'Take-Home' : 'In-Person';
+      const itemWeightText = item.weight > 0 ? `: ${item.weight}%` : '';
+
+      rtf += `\\pard\\qj\\li720\\\'95  \\b ${escapeRtf(item.title)}\\b0${itemWeightText} \\cf2(${modeBadge})\\cf1\\par\n`;
+
+      if (item.coveredModules) {
+        rtf += `\\pard\\qj\\li1080\\i\\cf2 Scope: ${escapeRtf(item.coveredModules)}\\cf1\\i0\\par\n`;
+      }
+      if (item.week) {
+        rtf += `\\pard\\qj\\li1080\\i\\cf2 Scheduled: Week ${item.week}\\cf1\\i0\\par\n`;
+      }
+    });
+
+    rtf += `\\par\n`;
+  });
+
+  if (finalExamWeight > 0) {
+    rtf += `\\pard\\qj\\li360\\b\\fs24 Final Examination (${finalExamWeight}%)\\b0\\fs22\\par\n`;
+    rtf += `\\pard\\qj\\li720\\\'95  \\b Comprehensive Final Exam\\b0: ${finalExamWeight}% \\cf2(In-Person)\\cf1\\par\n`;
+    rtf += `\\pard\\qj\\li1080\\i\\cf2 Scheduled: By University Registrar during examination period\\cf1\\i0\\par\n`;
+  }
+
+  return rtf;
+}
+
+// --- HELPER: BUILD SCHEDULE SLOTS ---
 function buildCourseSchedule(course, meetingsPerWeek, weeksInSemester) {
   const slots = [];
 
@@ -196,11 +451,16 @@ function buildCourseSchedule(course, meetingsPerWeek, weeksInSemester) {
     const modTitle = mod.title || mod.label || `Module ${mIdx + 1}`;
 
     if (mod.isExam) {
-      slots.push({
-        isExam: true,
-        title: modTitle,
-        moduleLabel: modLabel
-      });
+      if (!mod.isTakeHome) {
+        const examSlots = parseInt(mod.lectureCount || mod.lectures, 10) || 1;
+        for (let e = 0; e < examSlots; e++) {
+          slots.push({
+            isExam: true,
+            title: examSlots > 1 ? `${modTitle} (Part ${e + 1})` : modTitle,
+            moduleLabel: modLabel
+          });
+        }
+      }
     } else if (mod.isLab) {
       slots.push({
         isLab: true,
@@ -273,14 +533,14 @@ function buildCourseRtfContent(course, connections) {
     ? window.getGlobalSettings() 
     : (window.DEFAULT_GLOBAL_SETTINGS || {});
 
-  // HEADER: COURSE NAME & NUMBER (CENTERED)
+  // HEADER
   rtf += `\\pard\\qc\\b\\fs36 ${escapeRtf(course.code)}: ${escapeRtf(course.name)}\\b0\\fs22\\par\n`;
   if (course.credits) {
     rtf += `\\pard\\qc\\cf2\\fs20 (${course.credits} Credit Hours | Total Contact Hours: ${stats.totalHours} hrs)\\cf1\\fs22\\par\n`;
   }
   rtf += `\\pard\\qj\\par\n\n`;
 
-  // --- INSTRUCTOR, CONSULTATION & PREREQUISITES ---
+  // INSTRUCTOR & PREREQUISITES
   rtf += `\\pard\\qj\\b\\fs28 Course & Instructor Information\\b0\\fs22\\par\n`;
   rtf += `\\line\\par\n`;
   
@@ -301,7 +561,7 @@ function buildCourseRtfContent(course, connections) {
   rtf += `\\pard\\qj\\li360\\b Required Co-requisites:\\b0  ${escapeRtf(coreqs)}\\par\n`;
   rtf += `\\pard\\qj\\par\n\n`;
 
-  // SECTION 1. TEXTBOOKS & REQUIRED PURCHASES
+  // SECTION 1. TEXTBOOKS
   rtf += `\\pard\\qj\\b\\fs28 1. Required Textbooks & Course Resources\\b0\\fs22\\par\n`;
   rtf += `\\line\\par\n`;
   
@@ -319,7 +579,7 @@ function buildCourseRtfContent(course, connections) {
   }
   rtf += `\\pard\\qj\\par\n\n`;
 
-  // SECTION 2. PER-TOPIC COURSE CALENDAR & SCHEDULE OVERVIEW
+  // SECTION 2. CALENDAR & SCHEDULE
   rtf += `\\pard\\qj\\b\\fs28 2. Course Schedule Overview\\b0\\fs22\\par\n`;
   
   const config = window.currentCourseConfig || window.defaultScheduleConfig || { weeksInSemester: 12, meetingsPerWeek: 3, minutesPerBlock: 50 };
@@ -366,54 +626,22 @@ function buildCourseRtfContent(course, connections) {
   }
   rtf += `\\pard\\qj\\par\n\n`;
 
-  // SECTION 3. METHOD OF EVALUATION & GRADING SYSTEM
+  // SECTION 3. EVALUATION & GRADING SYSTEM
   rtf += `\\pard\\qj\\b\\fs28 3. Method of Evaluation & Grading System\\b0\\fs22\\par\n`;
   rtf += `\\line\\par\n`;
 
-  // 3.1 Allocation of Marks
-  rtf += `\\pard\\qj\\li360\\b 3.1 Allocation of Marks:\\b0\\par\n`;
-  const evalBreakdown = course.evaluationScheme || course.evaluation || course.gradingScheme;
-  if (Array.isArray(evalBreakdown) && evalBreakdown.length > 0) {
-    evalBreakdown.forEach(item => {
-      rtf += `\\pard\\qj\\li720\\\'95  ${escapeRtf(item.component || item.name)}: ${escapeRtf(item.weight || item.allocation)}`;
-      if (item.date) rtf += ` \\cf2 (Probable Date/Due: ${escapeRtf(item.date)})\\cf1`;
-      rtf += `\\par\n`;
-    });
-  } else {
-    if (stats.midterms.length > 0) {
-      stats.midterms.forEach((m) => {
-        rtf += `\\pard\\qj\\li720\\\'95  ${escapeRtf(m.title)}: ${m.weight}%`;
-        if (m.date) rtf += ` \\cf2 (Probable Date: ${escapeRtf(m.date)})\\cf1`;
-        rtf += `\\par\n`;
-      });
-    } else {
-      rtf += `\\pard\\qj\\li720\\\'95  Midterm Examination(s): 25% (Probable Date: Week 6)\\par\n`;
-    }
+  rtf += buildEvaluationSchemeRtf(course, config);
+  rtf += `\\par\n`;
 
-    if (stats.labs.length > 0) {
-      stats.labs.forEach((l) => {
-        rtf += `\\pard\\qj\\li720\\\'95  ${escapeRtf(l.title)}: ${l.weight}%`;
-        if (l.hours) rtf += ` \\cf2 (${l.hours} Laboratory Hours)\\cf1`;
-        rtf += `\\par\n`;
-      });
-    } else if (stats.labHours > 0) {
-      rtf += `\\pard\\qj\\li720\\\'95  Laboratory / Practical Work: 25% (${stats.labHours} Total Lab Hours)\\par\n`;
-    }
-
-    rtf += `\\pard\\qj\\li720\\\'95  Final Examination: ${stats.finalExamWeight}% (Scheduled by Registrar; calculated remaining balance)\\par\n`;
-  }
-
-  // 3.2 Grading System
   const gradingSys = course.gradingSystem || globalSettings.gradingSystem || "Numeric Grade System (0-100%, pass mark 50%) in accordance with University Senate regulations.";
   rtf += `\\pard\\qj\\li360\\b 3.2 Grading System:\\b0  ${escapeRtf(gradingSys)}\\par\n`;
 
-  // 3.3 Alternate Evaluation & Missed Work Policy
   const missedWork = course.alternateEvaluationPolicy || course.missedWorkPolicy || globalSettings.missedWorkPolicy || "In accordance with University Regulations (Exemptions from Parts of the Evaluation), students unable to complete an evaluation due to acceptable cause must notify the instructor promptly. Where acceptable cause is established, an alternate evaluation or reweighting will be offered.";
   rtf += `\\pard\\qj\\li360\\b 3.3 Alternate Evaluation & Missed Work Policy:\\b0\\par\n`;
   rtf += `\\pard\\qj\\li720 ${escapeRtf(missedWork)}\\par\n`;
   rtf += `\\pard\\qj\\par\n\n`;
 
-  // SECTION 4. COURSE MODULES, PER-TOPIC OBJECTIVES & CONNECTIONS
+  // SECTION 4. MODULES & TOPICS
   rtf += `\\pard\\qj\\b\\fs28 4. Course Modules & Detailed Topics\\b0\\fs22\\par\n`;
   rtf += `\\line\\par\n`;
 
@@ -476,7 +704,7 @@ function buildCourseRtfContent(course, connections) {
         rtf += `\\par\n`;
       });
     } else {
-      rtf += `\\pard\\qj\\li720\\\'95  ${escapeRtf(mod.description || 'Core topics and competencies for this unit.')}\\par\n`;
+      rtf += `\\pard\\qj\\li720\\'95  ${escapeRtf(mod.description || 'Core topics and competencies for this unit.')}\\par\n`;
     }
 
     const modConnections = (connections || []).filter(c => c.from === mod.id || c.to === mod.id);
@@ -536,7 +764,7 @@ function buildCourseRtfContent(course, connections) {
   }
   rtf += `\\pard\\qj\\par\n\n`;
 
-  // SECTION 6. USE OF ASSISTIVE TOOLS & GENERATIVE AI
+  // SECTION 6. GENERATIVE AI POLICY
   rtf += `\\pard\\qj\\b\\fs28 6. Use of Assistive Tools & Generative AI Policy\\b0\\fs22\\par\n`;
   rtf += `\\line\\par\n`;
   if (course.aiPolicy) {
@@ -546,7 +774,7 @@ function buildCourseRtfContent(course, connections) {
   }
   rtf += `\\pard\\qj\\par\n\n`;
 
-  // SECTION 7. ADDITIONAL INFORMATION
+  // SECTION 7. ADDITIONAL INFO
   rtf += `\\pard\\qj\\b\\fs28 7. Additional Course Information\\b0\\fs22\\par\n`;
   rtf += `\\line\\par\n`;
   if (course.additionalInfo) {
@@ -556,7 +784,7 @@ function buildCourseRtfContent(course, connections) {
   }
   rtf += `\\pard\\qj\\par\n\n`;
 
-  // SECTION 8. UNIVERSITY STATEMENTS & POLICIES (INSTITUTIONAL SETTINGS)
+  // SECTION 8. UNIVERSITY POLICIES
   rtf += `\\pard\\qj\\b\\fs28 8. University Statements & Institutional Policies\\b0\\fs22\\par\n`;
   rtf += `\\line\\par\n`;
 
