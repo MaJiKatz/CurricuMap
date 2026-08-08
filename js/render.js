@@ -214,12 +214,26 @@ function renderCourseCard(course, isCollapsed) {
     chip.dataset.moduleId = mod.id;
     chip.dataset.courseId = course.id;
 
+    const deleteBtnHtml = `
+      <span 
+        class="btn-delete-module" 
+        title="Delete Item" 
+        onclick="deleteModuleFromViewer('${course.id}', '${mod.id}', event)" 
+        style="padding: 0 4px; font-weight: bold; cursor: pointer; opacity: 0.6; font-size: 1.1rem; line-height: 1;" 
+        onmouseover="this.style.opacity='1'; this.style.color='#f87171';" 
+        onmouseout="this.style.opacity='0.6'; this.style.color='inherit';"
+      >&times;</span>
+    `;
+
     if (mod.isExam) {
       chip.style.borderColor = '#a855f7';
       chip.style.background = 'rgba(107, 33, 168, 0.35)';
       const weightBadge = mod.weightPercent ? ` <span style="font-size:0.75rem; background:#6b21a8; padding:1px 4px; border-radius:3px; color:#f3e8ff;">${mod.weightPercent}%</span>` : '';
       chip.innerHTML = `
-        <span class="m-label" style="color: black; font-weight: 600;">📝 ${escapeHtml(mod.label)}${weightBadge}</span>
+        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+          <span class="m-label" style="color: black; font-weight: 600;">📝 ${escapeHtml(mod.label)}${weightBadge}</span>
+          ${deleteBtnHtml}
+        </div>
         <span class="m-title" style="font-weight: 600; color: black;">${escapeHtml(mod.title)}</span>
       `;
     } else if (mod.isLab) {
@@ -227,12 +241,18 @@ function renderCourseCard(course, isCollapsed) {
       chip.style.background = 'rgba(6, 182, 212, 0.2)';
       const totalWeight = mod.weightPercent ? ` <span style="font-size:0.75rem; background:#0891b2; padding:1px 4px; border-radius:3px; color:#cffaffe0;">${mod.weightPercent}%</span>` : '';
       chip.innerHTML = `
-        <span class="m-label" style="color: black; font-weight: 600;">🧪 ${escapeHtml(mod.label)}${totalWeight}</span>
+        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+          <span class="m-label" style="color: black; font-weight: 600;">🧪 ${escapeHtml(mod.label)}${totalWeight}</span>
+          ${deleteBtnHtml}
+        </div>
         <span class="m-title" style="font-weight: 600; color: black;">${escapeHtml(mod.title)}</span>
       `;
     } else {
       chip.innerHTML = `
-        <span class="m-label">${escapeHtml(mod.label)}</span>
+        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+          <span class="m-label">${escapeHtml(mod.label)}</span>
+          ${deleteBtnHtml}
+        </div>
         <span class="m-title">${escapeHtml(mod.title)}</span>
       `;
     }
@@ -265,19 +285,16 @@ function openCalendarModal(course) {
     document.body.appendChild(modal);
   }
 
-  // 1. Get active schedule config or fall back to default
   const config = window.currentCourseConfig || window.defaultScheduleConfig || {
     weeksInSemester: 12,
     meetingsPerWeek: 3,
     minutesPerMeeting: 50
   };
 
-  // 2. Delegate calculation to calendarView.js
   const layout = typeof window.calculateCalendarLayout === 'function'
     ? window.calculateCalendarLayout(course, config)
     : { weeks: [] };
 
-  // 3. Render HTML using the dynamic layout slots
   let weeksHTML = '';
 
   (layout.weeks || []).forEach((week) => {
@@ -291,7 +308,6 @@ function openCalendarModal(course) {
       const weightTag = item.isExam && item.weightPercent ? ` (${item.weightPercent}%)` : '';
       const tagColor = item.isExam ? 'color: #d8b4fe;' : '';
 
-      // Displays "MOD (Lecture 2/5)" using module totals instead of topic totals
       const countLabel = item.totalInModule 
         ? ` (${item.lectureNumber}/${item.totalInModule})` 
         : '';
@@ -389,7 +405,6 @@ function renderDrawer(data, moduleId) {
   content.hidden = false;
 
   if (mod.isExam) {
-    // MIDTERM DRAWER VIEW
     const coveredMods = (mod.coveredModuleIds || [])
       .map(id => data.moduleById ? data.moduleById[id] : null)
       .filter(Boolean);
@@ -419,7 +434,6 @@ function renderDrawer(data, moduleId) {
   }
 
   if (mod.isLab) {
-    // LAB DRAWER VIEW
     const labsList = (mod.labs || []);
     const labsHtml = labsList.length > 0
       ? labsList.map((lab, i) => `
@@ -448,7 +462,6 @@ function renderDrawer(data, moduleId) {
     return;
   }
 
-  // STANDARD MODULE DRAWER VIEW
   const chaptersText = mod.chapters ? `Ch. ${mod.chapters.join(', ')}` : '';
   const formattedTb = typeof formatTextbook === 'function' ? formatTextbook(course.textbook) : '';
   const textbookText = formattedTb && formattedTb !== 'None listed' 
@@ -468,12 +481,10 @@ function renderDrawer(data, moduleId) {
 
         const titleText = t.title || t.name || 'Untitled Topic';
         
-        // Description
         const descHtml = t.description 
           ? `<div class="topic-description">${escapeHtml(t.description)}</div>` 
           : '';
 
-        // Objectives
         const rawObjectives = t.learningObjectives || t.objectives || [];
         const objectivesHtml = rawObjectives.length
           ? `
@@ -489,7 +500,6 @@ function renderDrawer(data, moduleId) {
           `
           : '';
 
-        // Questions
         const rawQuestions = t.textbookQuestions || [];
         const questionsHtml = rawQuestions.length
           ? `
@@ -533,6 +543,44 @@ function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+/**
+ * Deletes a module, exam, or lab section directly from the viewer UI.
+ * @param {string} courseId - The parent course ID
+ * @param {string} moduleId - The module ID to remove
+ * @param {Event} [event] - Optional click event to prevent card expansion
+ */
+function deleteModuleFromViewer(courseId, moduleId, event) {
+  if (event) {
+    event.stopPropagation();
+  }
+
+  const course = (window.DATA.courses || []).find((c) => c.id === courseId);
+  if (!course || !course.modules) return;
+
+  const targetModule = course.modules.find((m) => m.id === moduleId);
+  if (!targetModule) return;
+
+  const moduleName = targetModule.title || targetModule.label || 'this item';
+
+  const confirmed = window.confirm(
+    `Are you sure you want to delete "${moduleName}"?\n\nThis will remove it from the course timeline and clear its connections.`
+  );
+  if (!confirmed) return;
+
+  course.modules = course.modules.filter((m) => m.id !== moduleId);
+
+  const updatedConnections = (window.DATA.connections || []).filter(
+    (c) => c.from !== moduleId && c.to !== moduleId
+  );
+
+  if (typeof window.onCourseSave === 'function') {
+    window.onCourseSave(course, updatedConnections);
+  } else if (typeof window.renderApp === 'function') {
+    window.renderApp();
+  }
+}
+
+window.deleteModuleFromViewer = deleteModuleFromViewer;
 window.renderBoard = renderBoard;
 window.renderTierToggles = renderTierToggles;
 window.renderLegendBar = renderLegendBar;
