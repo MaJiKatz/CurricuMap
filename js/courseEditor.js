@@ -169,6 +169,10 @@ function handleModuleLecturesInputChange(modIdx, inputElement) {
   mod.lectures = newVal;
 }
 
+function handleTopicLecturesInputChange(modIdx) {
+  syncModulesFromDOM();
+}
+
 // Scrapes DOM inputs into memory before re-rendering or saving
 function syncModulesFromDOM() {
   const container = document.getElementById('moduleList');
@@ -218,6 +222,12 @@ function syncModulesFromDOM() {
 
     mod.lectureCount = explicitModLectures;
     mod.lectures = explicitModLectures;
+
+    if (modLecturesInput) {
+      modLecturesInput.value = explicitModLectures;
+      modLecturesInput.min = topicSum;
+      modLecturesInput.title = `Total Module Lectures (Min: ${topicSum} based on topics)`;
+    }
   });
 }
 
@@ -348,7 +358,7 @@ function renderModulesList() {
               </div>
               <div style="width: 90px;">
                 <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; margin-bottom: 2px;">Lectures</label>
-                <input type="number" class="input-topic-lectures" min="1" max="20" placeholder="1" value="${topic.lectureCount || 1}" style="width: 100%;">
+                <input type="number" class="input-topic-lectures" min="1" max="20" placeholder="1" value="${topic.lectureCount || 1}" onchange="handleTopicLecturesInputChange(${modIdx})" oninput="handleTopicLecturesInputChange(${modIdx})" style="width: 100%;">
               </div>
             </div>
 
@@ -555,8 +565,6 @@ function addTopicRow(modIndex) {
 
   if (!mod.topics) mod.topics = [];
 
-  // Preserve the module's existing lecture allocation.
-  // Adding a topic should never reduce the number of lectures.
   const existingLectures = getModuleLectureCount(mod);
 
   mod.topics.push({
@@ -567,8 +575,6 @@ function addTopicRow(modIndex) {
     textbookQuestions: []
   });
 
-  // Only increase the module allocation if the topics
-  // now require more lectures than were originally allocated.
   const topicSum = getModuleTopicsSum(mod);
   const finalLectures = Math.max(existingLectures, topicSum, 1);
 
@@ -797,3 +803,4 @@ window.removeConnectionRow = removeConnectionRow;
 window.saveCourseData = saveCourseData;
 window.renderModulesList = renderModulesList;
 window.handleModuleLecturesInputChange = handleModuleLecturesInputChange;
+window.handleTopicLecturesInputChange = handleTopicLecturesInputChange;
