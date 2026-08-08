@@ -1,7 +1,7 @@
 /* ============================================================
    js/courseEditor.js
    Handles course modal interactions, module/midterm/lab management, 
-   nested topics/objectives/questions editing, and connections.
+   nested topics/objectives/questions editing, and dynamic course connections.
    ============================================================ */
 
 let currentCourse = null;
@@ -81,9 +81,10 @@ function openCourseModal(courseData = null, connectionsData = []) {
       })
     : [];
 
+  // Gather connections involving this course directly or through any of its modules
   const moduleIds = editingModules.map((m) => m.id);
   editingConnections = Array.isArray(connectionsData)
-    ? connectionsData.filter(
+    ? JSON.parse(JSON.stringify(connectionsData)).filter(
         (c) =>
           c.from === currentCourse.id ||
           c.to === currentCourse.id ||
@@ -453,6 +454,7 @@ function addModuleRow() {
     isLab: false
   });
   renderModulesList();
+  renderConnectionsList(); // Refresh connection dropdown options
 }
 
 function addMidtermRow() {
@@ -472,6 +474,7 @@ function addMidtermRow() {
     coveredModuleIds: []
   });
   renderModulesList();
+  renderConnectionsList(); // Refresh connection dropdown options
 }
 
 function addLabRow() {
@@ -494,6 +497,7 @@ function addLabRow() {
     ]
   });
   renderModulesList();
+  renderConnectionsList(); // Refresh connection dropdown options
 }
 
 function addLabItem(modIdx) {
@@ -555,6 +559,7 @@ function removeModuleRow(index) {
   syncModulesFromDOM();
   editingModules.splice(index, 1);
   renderModulesList();
+  renderConnectionsList(); // Refresh connection options
 }
 
 function addTopicRow(modIndex) {
@@ -628,42 +633,224 @@ function removeTopicQuestion(modIdx, topicIdx, qIdx) {
   }
 }
 
+/* ============================================================
+   DYNAMIC CONNECTIONS EDITOR
+   Populates "From" and "To" dropdowns with actual course/module titles.
+   ============================================================ */
+
+/**
+ * Renders the connections tab with cascading dropdown creation forms and 
+ * a symmetrical table of existing links.
+ */
 function renderConnectionsList() {
   const container = document.getElementById('connectionList');
   const countEl = document.getElementById('connCount');
   if (countEl) countEl.textContent = editingConnections.length;
   if (!container) return;
 
-  container.innerHTML = '';
+  const allCourses = (window.DATA && window.DATA.courses) ? window.DATA.courses : [];
+  const moduleById = (window.DATA && window.DATA.moduleById) ? window.DATA.moduleById : {};
+  const currentModuleIds = new Set(editingModules.map((m) => m.id));
 
-  editingConnections.forEach((conn, idx) => {
-    const row = document.createElement('div');
-    row.className = 'manager-row';
-    row.innerHTML = `
-      <input type="text" placeholder="From ID" value="${conn.from || ''}" style="flex: 1;" onchange="editingConnections[${idx}].from = this.value">
-      <span style="color:#8892b0">&rarr;</span>
-      <input type="text" placeholder="To ID" value="${conn.to || ''}" style="flex: 1;" onchange="editingConnections[${idx}].to = this.value">
-      <select onchange="editingConnections[${idx}].level = this.value">
-        <option value="strong" ${conn.level === 'strong' ? 'selected' : ''}>Strong</option>
-        <option value="related" ${conn.level === 'related' ? 'selected' : ''}>Related</option>
-        <option value="weak" ${conn.level === 'weak' ? 'selected' : ''}>Weak</option>
-      </select>
-      <button type="button" class="btn btn-cancel" onclick="removeConnectionRow(${idx})">&times;</button>
-    `;
-    container.appendChild(row);
-  });
+  // Build current course options from editingModules
+  const fromModuleOptions = editingModules.length > 0
+    ? editingModules.map(m => `<option value="${m.id}">${escapeHtml(m.label)}: ${escapeHtml(m.title)}</option>`).join('')
+    : '<option value="">No modules available in this course</option>';
+
+  // Build target course options
+  const toCourseOptions = allCourses.length > 0
+    ? allCourses.map(c => `<option value="${c.id}">${escapeHtml(c.code)} - ${escapeHtml(c.name)}</option>`).join('')
+    : '<option value="">No other courses available</option>';
+
+  container.innerHTML = `
+    <div class="connection-editor-box" style="background: #1e293b; padding: 16px; border-radius: 8px; color: #f8fafc;">
+      
+      <!-- ADD NEW CONNECTION PANEL -->
+      <div class="add-connection-form" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; background: #0f172a; padding: 12px; border-radius: 6px; margin-bottom: 16px; border: 1px solid #334155;">
+        
+        <!-- FROM MODULE (Current Course) -->
+        <div style="flex: 1; min-width: 140px;">
+          <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px; font-weight:600; text-transform:uppercase;">From (This Course):</label>
+          <select id="conn-from-module" class="form-control" style="width:100%; padding:6px; border-radius:4px; background:#1e293b; color:#f8fafc; border:1px solid #334155;">
+            ${fromModuleOptions}
+          </select>
+        </div>
+
+        <div style="font-size:1.2rem; color:#64748b; padding-bottom:4px;">➔</div>
+
+        <!-- TO COURSE -->
+        <div style="flex: 1; min-width: 140px;">
+          <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px; font-weight:600; text-transform:uppercase;">To Course:</label>
+          <select id="conn-to-course" class="form-control" style="width:100%; padding:6px; border-radius:4px; background:#1e293b; color:#f8fafc; border:1px solid #334155;" onchange="handleConnectionCourseChange(this.value)">
+            <option value="">-- Select Target Course --</option>
+            ${toCourseOptions}
+          </select>
+        </div>
+
+        <!-- TO MODULE (Cascades dynamically) -->
+        <div style="flex: 1; min-width: 140px;">
+          <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px; font-weight:600; text-transform:uppercase;">To Module:</label>
+          <select id="conn-to-module" class="form-control" style="width:100%; padding:6px; border-radius:4px; background:#1e293b; color:#f8fafc; border:1px solid #334155;" disabled>
+            <option value="">Select course first...</option>
+          </select>
+        </div>
+
+        <!-- STRENGTH LEVEL -->
+        <div style="width: 110px;">
+          <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px; font-weight:600; text-transform:uppercase;">Type:</label>
+          <select id="conn-level" class="form-control" style="width:100%; padding:6px; border-radius:4px; background:#1e293b; color:#f8fafc; border:1px solid #334155;">
+            <option value="strong">Strong</option>
+            <option value="related" selected>Related</option>
+            <option value="weak">Weak</option>
+          </select>
+        </div>
+
+        <!-- ADD BUTTON -->
+        <div>
+          <button type="button" class="btn btn-primary" onclick="addConnectionFromDropdowns()" style="padding: 6px 14px; cursor:pointer;">+ Link</button>
+        </div>
+      </div>
+
+      <!-- EXISTING CONNECTIONS TABLE -->
+      <div class="existing-connections-list">
+        <table style="width:100%; border-collapse: collapse; font-size:0.85rem;">
+          <thead>
+            <tr style="border-bottom: 1px solid #334155; text-align: left; color: #94a3b8;">
+              <th style="padding: 6px;">This Course Module</th>
+              <th style="padding: 6px;">Connected Target</th>
+              <th style="padding: 6px;">Type</th>
+              <th style="padding: 6px; text-align:right;">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${renderConnectionRows(editingConnections, currentModuleIds, moduleById, allCourses)}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
 }
 
-function addConnectionRow() {
-  const courseIdEl = document.getElementById('courseId');
+/**
+ * Handles cascading when a course is chosen in the "To Course" dropdown.
+ */
+function handleConnectionCourseChange(selectedCourseId) {
+  const toModuleSelect = document.getElementById('conn-to-module');
+  if (!toModuleSelect) return;
+
+  if (!selectedCourseId) {
+    toModuleSelect.innerHTML = '<option value="">Select course first...</option>';
+    toModuleSelect.disabled = true;
+    return;
+  }
+
+  const allCourses = (window.DATA && window.DATA.courses) ? window.DATA.courses : [];
+  const targetCourse = allCourses.find((c) => c.id === selectedCourseId);
+
+  if (!targetCourse || !targetCourse.modules || targetCourse.modules.length === 0) {
+    toModuleSelect.innerHTML = '<option value="">No modules in this course</option>';
+    toModuleSelect.disabled = true;
+    return;
+  }
+
+  toModuleSelect.innerHTML = targetCourse.modules
+    .map((m) => `<option value="${m.id}">${escapeHtml(m.label)}: ${escapeHtml(m.title)}</option>`)
+    .join('');
+  toModuleSelect.disabled = false;
+}
+
+/**
+ * Validates dropdown selections and appends a new connection object.
+ */
+function addConnectionFromDropdowns() {
+  const fromModuleId = document.getElementById('conn-from-module')?.value;
+  const toModuleId = document.getElementById('conn-to-module')?.value;
+  const level = document.getElementById('conn-level')?.value || 'related';
+
+  if (!fromModuleId || !toModuleId) {
+    alert('Please select both a "From" module and a "To" module.');
+    return;
+  }
+
+  // Prevent duplicate connections (checking both directions)
+  const exists = editingConnections.some(
+    (c) => (c.from === fromModuleId && c.to === toModuleId) ||
+           (c.from === toModuleId && c.to === fromModuleId)
+  );
+
+  if (exists) {
+    alert('A connection already exists between these two items.');
+    return;
+  }
+
   editingConnections.push({
     id: `c${Date.now().toString().slice(-4)}`,
-    from: (courseIdEl && courseIdEl.value) ? courseIdEl.value : '',
-    to: '',
-    level: 'strong',
+    from: fromModuleId,
+    to: toModuleId,
+    level: level,
     note: ''
   });
+
   renderConnectionsList();
+}
+
+/**
+ * Generates symmetrical table rows for active links.
+ */
+function renderConnectionRows(connections, currentModuleIds, moduleById, allCourses) {
+  if (connections.length === 0) {
+    return `<tr><td colspan="4" style="padding:12px; text-align:center; color:#64748b;">No active connections linked to this course.</td></tr>`;
+  }
+
+  return connections.map((conn, idx) => {
+    // Detect whether 'from' or 'to' belongs to this course
+    const isFromLocal = currentModuleIds.has(conn.from) || conn.from === currentCourse.id;
+    const localModId = isFromLocal ? conn.from : conn.to;
+    const remoteModId = isFromLocal ? conn.to : conn.from;
+
+    // Resolve local display label
+    let localLabel = localModId;
+    const localMod = editingModules.find((m) => m.id === localModId) || moduleById[localModId];
+    if (localMod) {
+      localLabel = `<strong>${escapeHtml(localMod.label || localMod.id)}</strong>: ${escapeHtml(localMod.title || '')}`;
+    }
+
+    // Resolve remote display label & course code
+    let remoteLabel = remoteModId;
+    let remoteCourseCode = 'Ext';
+    
+    const remoteMod = moduleById[remoteModId];
+    const remoteCourse = (window.DATA && window.DATA.courseByModuleId) ? window.DATA.courseByModuleId[remoteModId] : null;
+
+    if (remoteMod) {
+      remoteLabel = `<strong>${escapeHtml(remoteMod.label || remoteMod.id)}</strong>: ${escapeHtml(remoteMod.title || '')}`;
+    }
+    if (remoteCourse) {
+      remoteCourseCode = remoteCourse.code;
+    } else {
+      // Fallback check across courses array
+      const matchedCourse = allCourses.find(c => c.id === remoteModId || (c.modules || []).some(m => m.id === remoteModId));
+      if (matchedCourse) remoteCourseCode = matchedCourse.code;
+    }
+
+    return `
+      <tr style="border-bottom: 1px solid #1e293b;">
+        <td style="padding: 8px; color: #f8fafc;">${localLabel}</td>
+        <td style="padding: 8px; color: #f8fafc;">
+          <span style="background:#334155; color:#cbd5e1; padding:2px 6px; border-radius:3px; font-size:0.75rem; margin-right:4px; border: 1px solid #475569;">
+            ${escapeHtml(remoteCourseCode)}
+          </span>
+          ${remoteLabel}
+        </td>
+        <td style="padding: 8px;">
+          <span class="badge tier-${conn.level}" style="padding: 2px 6px; border-radius: 3px; font-size: 0.75rem; text-transform: capitalize;">${conn.level}</span>
+        </td>
+        <td style="padding: 8px; text-align:right;">
+          <button type="button" class="btn btn-cancel btn-sm" onclick="removeConnectionRow(${idx})" title="Delete Connection">&times;</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
 }
 
 function removeConnectionRow(index) {
@@ -798,9 +985,11 @@ window.addTopicObjective = addTopicObjective;
 window.removeTopicObjective = removeTopicObjective;
 window.addTopicQuestion = addTopicQuestion;
 window.removeTopicQuestion = removeTopicQuestion;
-window.addConnectionRow = addConnectionRow;
+window.handleConnectionCourseChange = handleConnectionCourseChange;
+window.addConnectionFromDropdowns = addConnectionFromDropdowns;
 window.removeConnectionRow = removeConnectionRow;
 window.saveCourseData = saveCourseData;
 window.renderModulesList = renderModulesList;
+window.renderConnectionsList = renderConnectionsList;
 window.handleModuleLecturesInputChange = handleModuleLecturesInputChange;
 window.handleTopicLecturesInputChange = handleTopicLecturesInputChange;
