@@ -475,15 +475,26 @@ marker[id*="weak"] path { fill: var(--weak) !important; }
 .modal-container {
   background: #1e222d;
   color: #e1e6ed;
-  width: 720px;
-  max-width: 90vw;
+  
+  /* --- DEAD-CENTER POSITIONING --- */
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  
+  /* --- WIDTH & HEIGHT --- */
+  width: 880px;         /* Increased width */
+  max-width: 92vw;      /* Responsive constraint */
   max-height: 85vh;
+  
+  /* --- STYLING & LAYOUT --- */
   border-radius: 8px;
   border: 1px solid #333a4a;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+  z-index: 1001;        /* Keeps it above overlay backdrop */
 }
 
 .modal-header {

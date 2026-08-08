@@ -138,7 +138,6 @@ function calculateCourseHoursAndStats(course) {
 
       labs.push({ title: mod.title || mod.label || 'Laboratory / Practical Work', weight: w, hours: modLabHours });
     } else {
-      // Calculate topic sum for module
       let topicSum = 0;
       if (Array.isArray(mod.topics) && mod.topics.length > 0) {
         mod.topics.forEach((topic) => {
@@ -146,7 +145,6 @@ function calculateCourseHoursAndStats(course) {
         });
       }
 
-      // Module lecture count is at least topicSum, or explicit module lecture count
       const explicitModCount = parseFloat(mod.lectureCount || mod.lectures || mod.hours) || 0;
       const effectiveModLectures = Math.max(explicitModCount, topicSum);
 
@@ -154,7 +152,6 @@ function calculateCourseHoursAndStats(course) {
     }
   });
 
-  // Calculate lecture hours based on semester configuration if not explicitly counted
   const config = window.currentCourseConfig || window.defaultScheduleConfig || { weeksInSemester: 12, meetingsPerWeek: 3 };
   const meetingsPerWeek = config.meetingsPerWeek || config.lecturesPerWeek || 3;
   const weeksInSemester = config.weeksInSemester || 12;
@@ -162,7 +159,6 @@ function calculateCourseHoursAndStats(course) {
   const lectureHours = lectureCount > 0 ? lectureCount : (meetingsPerWeek * weeksInSemester);
   const totalHours = lectureHours + labHours;
 
-  // Check explicit evaluation array on course root if present
   const customEval = course.evaluationScheme || course.evaluation || course.gradingScheme;
   if (Array.isArray(customEval)) {
     let customDefinedWeight = 0;
@@ -214,7 +210,6 @@ function buildCourseSchedule(course, meetingsPerWeek, weeksInSemester) {
     } else {
       let assignedTopicLectures = 0;
 
-      // 1. Unroll defined topic slots
       if (Array.isArray(mod.topics) && mod.topics.length > 0) {
         mod.topics.forEach((topic, tIdx) => {
           const topicTitle = typeof topic === 'string' 
@@ -234,15 +229,13 @@ function buildCourseSchedule(course, meetingsPerWeek, weeksInSemester) {
         });
       }
 
-      // 2. Determine if total module lectures exceeds topic sum
       const explicitModCount = parseFloat(mod.lectureCount || mod.lectures || mod.hours) || 0;
       const totalModLectures = Math.max(explicitModCount, assignedTopicLectures);
       const remainingUnassignedSlots = totalModLectures - assignedTopicLectures;
 
-      // 3. Unroll remaining slots displaying ONLY the module name
       for (let r = 0; r < remainingUnassignedSlots; r++) {
         slots.push({
-          topicTitle: modTitle, // Displays just module name
+          topicTitle: modTitle,
           moduleLabel: modLabel,
           partInfo: '',
           isUnassignedModuleSlot: true
@@ -251,7 +244,6 @@ function buildCourseSchedule(course, meetingsPerWeek, weeksInSemester) {
     }
   });
 
-  // Distribute slots into weekly schedule
   const schedule = [];
   let currentSlotIdx = 0;
 
@@ -277,7 +269,6 @@ function buildCourseRtfContent(course, connections) {
   let rtf = '';
   const stats = calculateCourseHoursAndStats(course);
 
-  // Fetch global settings fallback if available
   const globalSettings = typeof window.getGlobalSettings === 'function' 
     ? window.getGlobalSettings() 
     : (window.DEFAULT_GLOBAL_SETTINGS || {});
@@ -304,7 +295,6 @@ function buildCourseRtfContent(course, connections) {
   rtf += `\\pard\\qj\\li360\\b Office Location:\\b0  ${escapeRtf(instOffice)}\\par\n`;
   rtf += `\\pard\\qj\\li360\\b Instructor Availability / Consultation Hours:\\b0  ${escapeRtf(officeHours)}\\par\n`;
   
-  // Prerequisites & Co-requisites
   const prereqs = course.prerequisites || course.prereqs || 'None';
   const coreqs = course.corequisites || course.coreqs || 'None';
   rtf += `\\pard\\qj\\li360\\b Required Prerequisites:\\b0  ${escapeRtf(prereqs)}\\par\n`;
@@ -354,10 +344,8 @@ function buildCourseRtfContent(course, connections) {
           } else if (lec.isLab) {
             lineText = `\\b [LAB]\\b0  ${escapeRtf(lec.title || 'Laboratory Session')}`;
           } else if (lec.isUnassignedModuleSlot) {
-            // Unassigned module lecture slot shows only the module name
             lineText = `\\b ${escapeRtf(lec.topicTitle)}\\b0`;
           } else {
-            // Render Topic Title prominently for students
             const topicName = escapeRtf(lec.topicTitle || 'Topic Lecture');
             const part = lec.partInfo ? ` \\cf2${escapeRtf(lec.partInfo)}\\cf1` : '';
             const modTag = lec.moduleLabel ? ` \\cf2[${escapeRtf(lec.moduleLabel)}]\\cf1` : '';
@@ -392,7 +380,6 @@ function buildCourseRtfContent(course, connections) {
       rtf += `\\par\n`;
     });
   } else {
-    // Dynamically breakdown midterms, labs, and calculate remaining Final Exam
     if (stats.midterms.length > 0) {
       stats.midterms.forEach((m) => {
         rtf += `\\pard\\qj\\li720\\\'95  ${escapeRtf(m.title)}: ${m.weight}%`;
@@ -433,7 +420,6 @@ function buildCourseRtfContent(course, connections) {
   (course.modules || []).forEach((mod, idx) => {
     const modNum = idx + 1;
     
-    // Sum total lectures across topics within this module
     let topicSum = 0;
     if (Array.isArray(mod.topics) && mod.topics.length > 0) {
       mod.topics.forEach((topic) => {
@@ -451,7 +437,6 @@ function buildCourseRtfContent(course, connections) {
       rtf += `\\pard\\qj\\li360\\cf2 Reading Reference: Chapter ${escapeRtf(mod.chapter)}\\cf1\\par\n`;
     }
 
-    // Per-Topic Detailed Breakdown
     if (Array.isArray(mod.topics) && mod.topics.length > 0) {
       mod.topics.forEach((topic, tIdx) => {
         const topicTitle = typeof topic === 'string' ? topic : (topic.title || topic.label || topic.name || '');
@@ -466,7 +451,6 @@ function buildCourseRtfContent(course, connections) {
           rtf += `\\pard\\qj\\li1080\\i ${escapeRtf(topic.description)}\\i0\\par\n`;
         }
 
-        // Learning Objectives
         const objs = topic.learningObjectives || topic.objectives || [];
         if (objs.length > 0) {
           rtf += `\\pard\\qj\\li1080\\b Learning Objectives:\\b0\\par\n`;
@@ -478,7 +462,6 @@ function buildCourseRtfContent(course, connections) {
           });
         }
 
-        // Recommended / Textbook Questions
         const questions = topic.textbookQuestions || topic.questions || [];
         if (questions.length > 0) {
           rtf += `\\pard\\qj\\li1080\\b Recommended Practice Questions:\\b0\\par\n`;
@@ -496,7 +479,6 @@ function buildCourseRtfContent(course, connections) {
       rtf += `\\pard\\qj\\li720\\\'95  ${escapeRtf(mod.description || 'Core topics and competencies for this unit.')}\\par\n`;
     }
 
-    // Curriculum Connections
     const modConnections = (connections || []).filter(c => c.from === mod.id || c.to === mod.id);
     if (modConnections.length > 0) {
       rtf += `\\pard\\qj\\li720\\b Curriculum Connections:\\b0\\par\n`;
@@ -578,15 +560,12 @@ function buildCourseRtfContent(course, connections) {
   rtf += `\\pard\\qj\\b\\fs28 8. University Statements & Institutional Policies\\b0\\fs22\\par\n`;
   rtf += `\\line\\par\n`;
 
-  // 8.1 Academic Integrity
   const academicIntegrity = course.academicIntegrity || globalSettings.academicIntegrity || "Students are expected to adhere strictly to standards of academic honesty. Please refer to the entry on Academic Misconduct in the University Calendar for definitions, procedures, and penalties regarding plagiarism, cheating, and misrepresentation.";
   rtf += `\\pard\\qj\\li360\\b 8.1 Academic Integrity:\\b0  ${escapeRtf(academicIntegrity)}\\par\n\n`;
 
-  // 8.2 Student Accommodations
   const accommodations = course.accommodations || globalSettings.accommodations || "The institution is committed to accommodating students with disabilities. Students requiring academic accommodations are encouraged to register with Student Accessibility Services (SAS) and inform the instructor as early as possible in the semester.";
   rtf += `\\pard\\qj\\li360\\b 8.2 Student Accommodations:\\b0  ${escapeRtf(accommodations)}\\par\n\n`;
 
-  // 8.3 Student Privacy & ATIPP
   const privacyAtipp = course.privacyAtipp || globalSettings.privacyAtipp || "Methods used for the notification of grades earned in all parts of the evaluation and for the return of graded evaluative instruments will adhere strictly to the Access to Information and Protection of Privacy Act (ATIPP) of the local Government. Grades will only be posted or communicated via secure, University-approved channels (e.g., Brightspace or official university email).";
   rtf += `\\pard\\qj\\li360\\b 8.3 Student Privacy & Grade Notification (ATIPP):\\b0  ${escapeRtf(privacyAtipp)}\\par\n`;
   

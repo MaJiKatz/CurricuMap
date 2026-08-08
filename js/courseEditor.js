@@ -1,6 +1,6 @@
 /* ============================================================
    js/courseEditor.js
-   Handles course modal interactions, module/midterm/lab management, 
+   Handles course modal interactions, module/evaluation/lab management, 
    nested topics/objectives/questions editing, and dynamic course connections.
    ============================================================ */
 
@@ -25,32 +25,40 @@ function getModuleTopicsSum(module) {
   }, 0);
 }
 
-function openCourseEditor(targetId = null) {
+function openCourseEditor(target = null) {
   let course = null;
   let connections = [];
 
-  if (targetId && window.DATA) {
-    let courseId = targetId;
+  // Handle case when target is passed as a string courseId or moduleId
+  if (typeof target === 'string') {
+    const targetId = target;
+    if (window.DATA) {
+      let courseId = targetId;
 
-    if (window.DATA.courseByModuleId && window.DATA.courseByModuleId[targetId]) {
-      courseId = window.DATA.courseByModuleId[targetId].id;
-    } else {
-      const matchedCourse = (window.DATA.courses || []).find((c) =>
-        (c.modules || []).some((m) => m.id === targetId)
-      );
-      if (matchedCourse) {
-        courseId = matchedCourse.id;
+      if (window.DATA.courseByModuleId && window.DATA.courseByModuleId[targetId]) {
+        courseId = window.DATA.courseByModuleId[targetId].id;
+      } else {
+        const matchedCourse = (window.DATA.courses || []).find((c) =>
+          c.id === targetId || (c.modules || []).some((m) => m.id === targetId)
+        );
+        if (matchedCourse) {
+          courseId = matchedCourse.id;
+        }
+      }
+
+      if (typeof window.getCourseById === 'function') {
+        const res = window.getCourseById(courseId);
+        course = res ? res.course : null;
+        connections = res ? res.connections : [];
+      } else {
+        course = (window.DATA.courses || []).find((c) => c.id === courseId);
+        connections = window.DATA.connections || [];
       }
     }
-
-    if (typeof window.getCourseById === 'function') {
-      const res = window.getCourseById(courseId);
-      course = res.course;
-      connections = res.connections;
-    } else {
-      course = (window.DATA.courses || []).find((c) => c.id === courseId);
-      connections = window.DATA.connections || [];
-    }
+  } else if (target && typeof target === 'object') {
+    // If a full course object was passed directly
+    course = target;
+    connections = window.DATA ? (window.DATA.connections || []) : [];
   } else if (window.DATA) {
     connections = window.DATA.connections || [];
   }
@@ -130,12 +138,18 @@ function openCourseModal(courseData = null, connectionsData = []) {
   switchTab('general');
 
   const modal = document.getElementById('courseModal');
-  if (modal) modal.classList.remove('hidden');
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.style.display = 'block';
+  }
 }
 
 function closeCourseModal() {
   const modal = document.getElementById('courseModal');
-  if (modal) modal.classList.add('hidden');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.style.display = 'none';
+  }
 }
 
 function switchTab(tabName) {
@@ -176,13 +190,33 @@ function handleTopicLecturesInputChange(modIdx) {
 
 // Scrapes DOM inputs into memory before re-rendering or saving
 function syncModulesFromDOM() {
-  const container = document.getElementById('moduleList');
+  const container = document.getElementById('moduleList') || document.getElementById('modulesContainer');
   if (!container) return;
 
   const moduleContainers = container.querySelectorAll('.module-row-container');
   moduleContainers.forEach((wrapper, modIdx) => {
     const mod = editingModules[modIdx];
-    if (!mod || mod.isExam || mod.isLab) return;
+    if (!mod) return;
+
+    if (mod.isExam) {
+      const evalLabelIn = wrapper.querySelector('.input-eval-label') || wrapper.querySelector('input[placeholder="Label"]');
+      const evalTitleIn = wrapper.querySelector('.input-eval-title') || wrapper.querySelector('input[placeholder="Evaluation Title"], input[placeholder="Exam Title"]');
+      const evalWeightIn = wrapper.querySelector('.input-eval-weight') || wrapper.querySelector('input[type="number"]');
+
+      if (evalLabelIn) mod.label = evalLabelIn.value;
+      if (evalTitleIn) mod.title = evalTitleIn.value;
+      if (evalWeightIn) mod.weightPercent = parseFloat(evalWeightIn.value) || 0;
+      return;
+    }
+
+    if (mod.isLab) {
+      const labLabelIn = wrapper.querySelector('.input-lab-label') || wrapper.querySelector('input[placeholder="Label"]');
+      const labTitleIn = wrapper.querySelector('.input-lab-title') || wrapper.querySelector('input[placeholder="Lab Title"], input[placeholder="Lab Section Title"]');
+      
+      if (labLabelIn) mod.label = labLabelIn.value;
+      if (labTitleIn) mod.title = labTitleIn.value;
+      return;
+    }
 
     const modLecturesInput = wrapper.querySelector('.input-module-lectures');
     const topicCards = wrapper.querySelectorAll('.topic-editor-card');
@@ -233,7 +267,7 @@ function syncModulesFromDOM() {
 }
 
 function renderModulesList() {
-  const container = document.getElementById('moduleList');
+  const container = document.getElementById('moduleList') || document.getElementById('modulesContainer');
   const countEl = document.getElementById('moduleCount');
   if (countEl) countEl.textContent = editingModules.length;
   if (!container) return;
@@ -246,6 +280,7 @@ function renderModulesList() {
   let html = '';
 
   editingModules.forEach((mod, modIdx) => {
+    // 1. EVALUATION / EXAM
     if (mod.isExam) {
       const allOtherMods = editingModules.filter((m) => !m.isExam && !m.isLab);
       const coveredSet = new Set(mod.coveredModuleIds || []);
@@ -260,17 +295,26 @@ function renderModulesList() {
         `;
       }).join(' ');
 
+      const isTakeHomeChecked = mod.isTakeHome ? 'checked' : '';
+
       html += `
         <div class="module-row-container exam-row" style="border-left: 4px solid #a855f7; background: rgba(168, 85, 247, 0.05); padding: 12px; margin-bottom: 12px; border-radius: 6px; border: 1px solid #334155;">
-          <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
-            <span style="font-weight: 700; color: #c084fc;">📝 EXAM</span>
-            <input type="text" value="${escapeHtml(mod.label || 'MIDTERM')}" onchange="editingModules[${modIdx}].label = this.value" placeholder="Label" style="width: 100px;">
-            <input type="text" value="${escapeHtml(mod.title || '')}" onchange="editingModules[${modIdx}].title = this.value" placeholder="Exam Title" style="flex: 1;">
+          <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap;">
+            <span style="font-weight: 700; color: #c084fc;">📝 EVALUATION</span>
+            <input type="text" class="input-eval-label" value="${escapeHtml(mod.label || 'EVALUATION')}" onchange="editingModules[${modIdx}].label = this.value" placeholder="Label" style="width: 100px;">
+            <input type="text" class="input-eval-title" value="${escapeHtml(mod.title || '')}" onchange="editingModules[${modIdx}].title = this.value" placeholder="Evaluation Title" style="flex: 1; min-width: 140px;">
+            
+            <!-- Take Home Toggle -->
+            <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.8rem; color: #e9d5ff; background: #581c87; padding: 3px 8px; border-radius: 4px; cursor: pointer;">
+              <input type="checkbox" ${isTakeHomeChecked} onchange="editingModules[${modIdx}].isTakeHome = this.checked">
+              🏠 Take Home
+            </label>
+
             <div style="display: flex; align-items: center; gap: 4px;">
               <label style="font-size: 0.75rem; color: #94a3b8;">Weight %:</label>
-              <input type="number" value="${mod.weightPercent ?? 20}" onchange="editingModules[${modIdx}].weightPercent = parseFloat(this.value) || 0" style="width: 60px;">
+              <input type="number" class="input-eval-weight" value="${mod.weightPercent ?? 20}" onchange="editingModules[${modIdx}].weightPercent = parseFloat(this.value) || 0" style="width: 60px;">
             </div>
-            <button type="button" class="btn btn-cancel btn-sm" onclick="removeModuleRow(${modIdx})" title="Delete Exam">&times;</button>
+            <button type="button" class="btn btn-cancel btn-sm" onclick="removeModuleRow(${modIdx})" title="Delete Evaluation">&times;</button>
           </div>
           <div>
             <div style="font-size: 0.75rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px;">Covered Modules:</div>
@@ -283,6 +327,7 @@ function renderModulesList() {
       return;
     }
 
+    // 2. LABS
     if (mod.isLab) {
       const labs = mod.labs || [];
       let labsListHtml = '';
@@ -308,8 +353,8 @@ function renderModulesList() {
         <div class="module-row-container lab-row" style="border-left: 4px solid #06b6d4; background: rgba(6, 182, 212, 0.05); padding: 12px; margin-bottom: 12px; border-radius: 6px; border: 1px solid #334155;">
           <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
             <span style="font-weight: 700; color: #67e8f9;">🧪 LABS</span>
-            <input type="text" value="${escapeHtml(mod.label || 'LABS')}" onchange="editingModules[${modIdx}].label = this.value" placeholder="Label" style="width: 90px;">
-            <input type="text" value="${escapeHtml(mod.title || '')}" onchange="editingModules[${modIdx}].title = this.value" placeholder="Lab Section Title" style="flex: 1;">
+            <input type="text" class="input-lab-label" value="${escapeHtml(mod.label || 'LABS')}" onchange="editingModules[${modIdx}].label = this.value" placeholder="Label" style="width: 90px;">
+            <input type="text" class="input-lab-title" value="${escapeHtml(mod.title || '')}" onchange="editingModules[${modIdx}].title = this.value" placeholder="Lab Section Title" style="flex: 1;">
             <div style="font-size: 0.85rem; font-weight: 600; color: #67e8f9; padding: 0 6px;">
               Total: <span id="labTotalGrade-${modIdx}">${mod.weightPercent ?? 0}%</span>
             </div>
@@ -331,6 +376,7 @@ function renderModulesList() {
       return;
     }
 
+    // 3. REGULAR MODULE
     const topicSum = getModuleTopicsSum(mod);
     const existingLec = getModuleLectureCount(mod);
     const effectiveModLectures = Math.max(existingLec, topicSum);
@@ -454,27 +500,28 @@ function addModuleRow() {
     isLab: false
   });
   renderModulesList();
-  renderConnectionsList(); // Refresh connection dropdown options
+  renderConnectionsList();
 }
 
-function addMidtermRow() {
+function addEvaluationRow() {
   syncModulesFromDOM();
   const courseIdEl = document.getElementById('courseId');
   const courseId = (courseIdEl && courseIdEl.value) ? courseIdEl.value : 'course';
   
   editingModules.push({
-    id: `${courseId}-midterm-${editingModules.length + 1}`,
-    label: `MIDTERM`,
-    title: 'Midterm Examination',
+    id: `${courseId}-eval-${editingModules.length + 1}`,
+    label: `EVALUATION`,
+    title: 'Course Evaluation',
     lectureCount: 1,
     lectures: 1,
     weightPercent: 20,
     isExam: true,
     isLab: false,
+    isTakeHome: false,
     coveredModuleIds: []
   });
   renderModulesList();
-  renderConnectionsList(); // Refresh connection dropdown options
+  renderConnectionsList();
 }
 
 function addLabRow() {
@@ -497,7 +544,7 @@ function addLabRow() {
     ]
   });
   renderModulesList();
-  renderConnectionsList(); // Refresh connection dropdown options
+  renderConnectionsList();
 }
 
 function addLabItem(modIdx) {
@@ -559,7 +606,7 @@ function removeModuleRow(index) {
   syncModulesFromDOM();
   editingModules.splice(index, 1);
   renderModulesList();
-  renderConnectionsList(); // Refresh connection options
+  renderConnectionsList();
 }
 
 function addTopicRow(modIndex) {
@@ -638,12 +685,8 @@ function removeTopicQuestion(modIdx, topicIdx, qIdx) {
    Populates "From" and "To" dropdowns with actual course/module titles.
    ============================================================ */
 
-/**
- * Renders the connections tab with cascading dropdown creation forms and 
- * a symmetrical table of existing links.
- */
 function renderConnectionsList() {
-  const container = document.getElementById('connectionList');
+  const container = document.getElementById('connectionList') || document.getElementById('connectionsContainer');
   const countEl = document.getElementById('connCount');
   if (countEl) countEl.textContent = editingConnections.length;
   if (!container) return;
@@ -652,12 +695,10 @@ function renderConnectionsList() {
   const moduleById = (window.DATA && window.DATA.moduleById) ? window.DATA.moduleById : {};
   const currentModuleIds = new Set(editingModules.map((m) => m.id));
 
-  // Build current course options from editingModules
   const fromModuleOptions = editingModules.length > 0
     ? editingModules.map(m => `<option value="${m.id}">${escapeHtml(m.label)}: ${escapeHtml(m.title)}</option>`).join('')
     : '<option value="">No modules available in this course</option>';
 
-  // Build target course options
   const toCourseOptions = allCourses.length > 0
     ? allCourses.map(c => `<option value="${c.id}">${escapeHtml(c.code)} - ${escapeHtml(c.name)}</option>`).join('')
     : '<option value="">No other courses available</option>';
@@ -676,7 +717,7 @@ function renderConnectionsList() {
           </select>
         </div>
 
-        <div style="font-size:1.2rem; color:#64748b; padding-bottom:4px;">➔</div>
+        <div style="font-size:1.2rem; color:#64748b; padding-bottom:4px;">&rarr;</div>
 
         <!-- TO COURSE -->
         <div style="flex: 1; min-width: 140px;">
@@ -731,9 +772,6 @@ function renderConnectionsList() {
   `;
 }
 
-/**
- * Handles cascading when a course is chosen in the "To Course" dropdown.
- */
 function handleConnectionCourseChange(selectedCourseId) {
   const toModuleSelect = document.getElementById('conn-to-module');
   if (!toModuleSelect) return;
@@ -759,9 +797,6 @@ function handleConnectionCourseChange(selectedCourseId) {
   toModuleSelect.disabled = false;
 }
 
-/**
- * Validates dropdown selections and appends a new connection object.
- */
 function addConnectionFromDropdowns() {
   const fromModuleId = document.getElementById('conn-from-module')?.value;
   const toModuleId = document.getElementById('conn-to-module')?.value;
@@ -772,7 +807,6 @@ function addConnectionFromDropdowns() {
     return;
   }
 
-  // Prevent duplicate connections (checking both directions)
   const exists = editingConnections.some(
     (c) => (c.from === fromModuleId && c.to === toModuleId) ||
            (c.from === toModuleId && c.to === fromModuleId)
@@ -794,28 +828,22 @@ function addConnectionFromDropdowns() {
   renderConnectionsList();
 }
 
-/**
- * Generates symmetrical table rows for active links.
- */
 function renderConnectionRows(connections, currentModuleIds, moduleById, allCourses) {
   if (connections.length === 0) {
     return `<tr><td colspan="4" style="padding:12px; text-align:center; color:#64748b;">No active connections linked to this course.</td></tr>`;
   }
 
   return connections.map((conn, idx) => {
-    // Detect whether 'from' or 'to' belongs to this course
     const isFromLocal = currentModuleIds.has(conn.from) || conn.from === currentCourse.id;
     const localModId = isFromLocal ? conn.from : conn.to;
     const remoteModId = isFromLocal ? conn.to : conn.from;
 
-    // Resolve local display label
     let localLabel = localModId;
     const localMod = editingModules.find((m) => m.id === localModId) || moduleById[localModId];
     if (localMod) {
       localLabel = `<strong>${escapeHtml(localMod.label || localMod.id)}</strong>: ${escapeHtml(localMod.title || '')}`;
     }
 
-    // Resolve remote display label & course code
     let remoteLabel = remoteModId;
     let remoteCourseCode = 'Ext';
     
@@ -828,7 +856,6 @@ function renderConnectionRows(connections, currentModuleIds, moduleById, allCour
     if (remoteCourse) {
       remoteCourseCode = remoteCourse.code;
     } else {
-      // Fallback check across courses array
       const matchedCourse = allCourses.find(c => c.id === remoteModId || (c.modules || []).some(m => m.id === remoteModId));
       if (matchedCourse) remoteCourseCode = matchedCourse.code;
     }
@@ -868,14 +895,15 @@ function saveCourseData() {
   const cleanedModules = editingModules.map((mod) => {
     if (mod.isExam) {
       return {
-        id: mod.id || `midterm-${Date.now()}`,
-        label: mod.label || 'MIDTERM',
-        title: mod.title || 'Midterm Examination',
+        id: mod.id || `eval-${Date.now()}`,
+        label: mod.label || 'EVALUATION',
+        title: mod.title || 'Course Evaluation',
         lectureCount: parseInt(mod.lectureCount, 10) || 1,
         lectures: parseInt(mod.lectureCount, 10) || 1,
         weightPercent: parseFloat(mod.weightPercent) || 0,
         isExam: true,
         isLab: false,
+        isTakeHome: !!mod.isTakeHome,
         coveredModuleIds: mod.coveredModuleIds || []
       };
     }
@@ -951,6 +979,8 @@ function saveCourseData() {
 
   if (typeof window.onCourseSave === 'function') {
     window.onCourseSave(updatedCourse, editingConnections);
+  } else if (typeof window.onSaveCourseCallback === 'function') {
+    window.onSaveCourseCallback({ id: updatedCourse.id, modules: cleanedModules, connections: editingConnections });
   }
 
   closeCourseModal();
@@ -971,7 +1001,8 @@ window.openCourseModal = openCourseModal;
 window.closeCourseModal = closeCourseModal;
 window.switchTab = switchTab;
 window.addModuleRow = addModuleRow;
-window.addMidtermRow = addMidtermRow;
+window.addEvaluationRow = addEvaluationRow;
+window.addMidtermRow = addEvaluationRow; // Alias for backward compatibility
 window.addLabRow = addLabRow;
 window.addLabItem = addLabItem;
 window.removeLabItem = removeLabItem;

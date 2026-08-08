@@ -1,6 +1,6 @@
 /* ============================================================
-   render.js
-   DOM rendering for courses, modules, midterms, and labs.
+   js/render.js
+   DOM rendering for courses, modules, midterms, labs, and calendar view.
    ============================================================ */
 
 function formatTopic(topic) {
@@ -202,7 +202,7 @@ function renderCourseCard(course, isCollapsed) {
 
   card.appendChild(head);
 
-  // Module, Midterm & Lab List Rendering
+  // Module, Evaluation & Lab List Rendering
   const list = document.createElement('div');
   list.className = 'module-list';
 
@@ -228,10 +228,11 @@ function renderCourseCard(course, isCollapsed) {
     if (mod.isExam) {
       chip.style.borderColor = '#a855f7';
       chip.style.background = 'rgba(107, 33, 168, 0.35)';
+      const takeHomeBadge = mod.isTakeHome ? ' 🏠' : '';
       const weightBadge = mod.weightPercent ? ` <span style="font-size:0.75rem; background:#6b21a8; padding:1px 4px; border-radius:3px; color:#f3e8ff;">${mod.weightPercent}%</span>` : '';
       chip.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-          <span class="m-label" style="color: black; font-weight: 600;">📝 ${escapeHtml(mod.label)}${weightBadge}</span>
+          <span class="m-label" style="color: black; font-weight: 600;">📝 ${escapeHtml(mod.label)}${takeHomeBadge}${weightBadge}</span>
           ${deleteBtnHtml}
         </div>
         <span class="m-title" style="font-weight: 600; color: black;">${escapeHtml(mod.title)}</span>
@@ -312,13 +313,11 @@ function openCalendarModal(course) {
         ? ` (${item.lectureNumber}/${item.totalInModule})` 
         : '';
 
-      // Format tag as "Module 1: Chemical Bonding"
       let tagText = item.moduleLabel || '';
       if (item.moduleTitle && !item.isExam) {
         tagText = `${item.moduleLabel}: ${item.moduleTitle}`;
       }
 
-      // If no topics exist, display module title in card body
       let displayTitle = item.title;
       if (item.isPlaceholder) {
         displayTitle = item.moduleTitle || item.title;
@@ -427,14 +426,14 @@ function renderDrawer(data, moduleId) {
             <strong>${escapeHtml(m.label)}:</strong> ${escapeHtml(m.title)}
           </div>
         `).join('')
-      : '<p class="topic-objective">No specific modules mapped to this exam yet.</p>';
+      : '<p class="topic-objective">No specific modules mapped to this evaluation yet.</p>';
 
     content.innerHTML = `
       <div class="drawer-header-actions">
         <span class="drawer-course-code">${escapeHtml(course.code)} · 📝 ${escapeHtml(mod.label)}</span>
         <button class="btn-edit-course" onclick="if(window.openCourseEditor) window.openCourseEditor('${course.id}')" title="Edit Course">✏️</button>
       </div>
-      <h2 class="drawer-title">${escapeHtml(mod.title)}</h2>
+      <h2 class="drawer-title">${escapeHtml(mod.title)} ${mod.isTakeHome ? '<span style="font-size: 0.9rem; font-weight: normal;">(🏠 Take-Home)</span>' : ''}</h2>
       <div class="drawer-banner exam-banner">
         🎯 <strong>Grade Evaluation Weight:</strong> ${mod.weightPercent ?? 0}% of final grade.<br>
         ⏱️ <strong>Schedule Allocation:</strong> ${mod.lectureCount || 1} lecture block(s).
@@ -555,12 +554,6 @@ function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-/**
- * Deletes a module, exam, or lab section directly from the viewer UI.
- * @param {string} courseId - The parent course ID
- * @param {string} moduleId - The module ID to remove
- * @param {Event} [event] - Optional click event to prevent card expansion
- */
 function deleteModuleFromViewer(courseId, moduleId, event) {
   if (event) {
     event.stopPropagation();
