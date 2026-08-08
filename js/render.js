@@ -312,12 +312,24 @@ function openCalendarModal(course) {
         ? ` (${item.lectureNumber}/${item.totalInModule})` 
         : '';
 
+      // Format tag as "Module 1: Chemical Bonding"
+      let tagText = item.moduleLabel || '';
+      if (item.moduleTitle && !item.isExam) {
+        tagText = `${item.moduleLabel}: ${item.moduleTitle}`;
+      }
+
+      // If no topics exist, display module title in card body
+      let displayTitle = item.title;
+      if (item.isPlaceholder) {
+        displayTitle = item.moduleTitle || item.title;
+      }
+
       weekLecturesHTML += `
         <div class="cal-lecture-item" style="${isExamStyle}">
           <span class="cal-lec-tag" style="${tagColor}">
-            ${escapeHtml(item.moduleLabel)}${weightTag}${countLabel}
+            ${escapeHtml(tagText)}${weightTag}${countLabel}
           </span>
-          <div class="cal-lec-title">${escapeHtml(item.title)}</div>
+          <div class="cal-lec-title">${escapeHtml(displayTitle)}</div>
         </div>
       `;
     });
