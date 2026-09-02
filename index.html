@@ -167,20 +167,16 @@
             </div>
           </div>
 
-          <h3>Textbook Information</h3>
-          <div class="form-grid">
-            <div class="form-group full-width">
-              <label for="tbTitle">Title</label>
-              <input type="text" id="tbTitle" placeholder="e.g. Chemistry: The Central Science">
+          <div class="form-group full-width" style="margin-top: 1.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <h3 style="margin: 0;">Textbook Information</h3>
+              <button type="button" id="btnAddTextbook" class="btn btn-secondary" style="font-size: 0.85em; padding: 4px 10px; cursor: pointer;">
+                + Add Textbook
+              </button>
             </div>
-            <div class="form-group">
-              <label for="tbAuthor">Author</label>
-              <input type="text" id="tbAuthor">
-            </div>
-            <div class="form-group">
-              <label for="tbEdition">Edition</label>
-              <input type="text" id="tbEdition">
-            </div>
+            
+            <!-- Dynamic textbook rows rendered here by courseEditor.js -->
+            <div id="editorTextbooksContainer"></div>
           </div>
         </div>
 

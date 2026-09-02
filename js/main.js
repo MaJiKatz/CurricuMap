@@ -171,14 +171,9 @@ window.defaultScheduleConfig = {
     });
 
     // --- BOARD POINTER DOWN ---
-    //console.log(board);
     board.addEventListener('pointerdown', (e) => {
-      //console.log("pointerdown target:", e.target);
-
-      // If in Connect Mode, prioritize finding a module chip or course card FIRST
       if (isConnectMode) {
         const node = e.target.closest('.module-chip, .course-card');
-        //console.log("Connect Mode target node:", node);
 
         if (node) {
           e.stopPropagation();
@@ -189,13 +184,11 @@ window.defaultScheduleConfig = {
 
           const nodeId = node.dataset.moduleId || node.dataset.courseId;
 
-          // Two-click connection handling
           if (connectingSource && connectingSource.id !== nodeId && !isDraggingConnection) {
             completeConnection(nodeId);
             return;
           }
 
-          // Start new connection
           cancelConnection();
 
           const svgEl = document.getElementById('connectionLayer');
@@ -230,12 +223,10 @@ window.defaultScheduleConfig = {
         }
       }
 
-      // Early exit for UI control buttons (only evaluated outside Connect Mode)
       if (e.target.closest('.collapse-btn, .btn-edit-course, .edit-course-btn, .btn-delete-course, .btn-calendar, .btn-download-outline')) {
         return;
       }
 
-      // Normal Card Dragging
       const handle = e.target.closest('.drag-handle, .course-card-head');
       if (!handle) return;
       
@@ -339,7 +330,6 @@ window.defaultScheduleConfig = {
             const targetId = targetNode.dataset.moduleId || targetNode.dataset.courseId;
             completeConnection(targetId);
           } else {
-            // Keep source active for two-click connect if mouse was released without a target
             isDraggingConnection = false;
           }
         }
@@ -413,26 +403,65 @@ window.defaultScheduleConfig = {
       const rect = dropChip ? dropChip.getBoundingClientRect() : null;
       const insertAfter = dropChip ? (e.clientY > rect.top + rect.height / 2) : false;
 
+      // Identify the exact chip being dragged by its DOM element, not by id/title.
+      // Module ids are supposed to be unique but bad data can violate that; comparing
+      // elements instead of ids means a duplicate id can no longer be mistaken for a
+      // "dropped on itself" self-drop (which was silently sending items to the bottom).
+      const sourceChip = document.querySelector('.module-chip.is-dragging-chip');
+
       try {
         const rawData = e.dataTransfer.getData('text/plain');
         if (!rawData) return;
         
-        const { moduleId, fromCourseId } = JSON.parse(rawData);
+        const payload = JSON.parse(rawData);
+        const { moduleId, fromCourseId, title } = payload;
         if (!moduleId || !targetCourseId) return; 
 
         const sourceCourse = DATA.courses.find((c) => c.id === fromCourseId);
         const targetCourse = DATA.courses.find((c) => c.id === targetCourseId);
         if (!sourceCourse || !targetCourse) return;
 
-        const moduleIndex = (sourceCourse.modules || []).findIndex((m) => m.id === moduleId);
+        // Prefer locating the dragged module by its DOM position within its source
+        // list (unambiguous even with duplicate ids). Fall back to id/title matching
+        // only if the source chip reference is unavailable for some reason.
+        let moduleIndex = -1;
+        if (sourceChip) {
+          const sourceList = sourceChip.closest('.module-list');
+          if (sourceList) {
+            moduleIndex = Array.prototype.indexOf.call(sourceList.children, sourceChip);
+          }
+        }
+        if (moduleIndex === -1 || !sourceCourse.modules[moduleIndex] || sourceCourse.modules[moduleIndex].id !== moduleId) {
+          // EXACT MATCHING LOOKUP FOR UNIQUE IDENTIFICATION ("Quiz 1" vs "Quiz 2")
+          moduleIndex = (sourceCourse.modules || []).findIndex((m) => {
+            if (m.id && m.id === moduleId) return true;
+            return m.title === title && m.id === moduleId;
+          });
+        }
+
         if (moduleIndex === -1) return;
 
         const [movedModule] = sourceCourse.modules.splice(moduleIndex, 1);
 
         if (!targetCourse.modules) targetCourse.modules = [];
         
-        if (dropChip && dropChip.dataset.moduleId !== moduleId) {
-           const dropIndex = targetCourse.modules.findIndex((m) => m.id === dropChip.dataset.moduleId);
+        // Only treat this as a self-drop if it's literally the same chip element.
+        if (dropChip && dropChip !== sourceChip) {
+           const dropList = dropChip.closest('.module-list');
+           let dropIndex = -1;
+
+           if (dropList) {
+             // DOM position of the drop target, taken before this module was spliced
+             // out above. If we removed the dragged module from earlier in this same
+             // list, everything after it shifted down by one, so adjust to match.
+             dropIndex = Array.prototype.indexOf.call(dropList.children, dropChip);
+             if (sourceCourse === targetCourse && moduleIndex !== -1 && moduleIndex < dropIndex) {
+               dropIndex -= 1;
+             }
+           } else {
+             dropIndex = targetCourse.modules.findIndex((m) => m.id === dropChip.dataset.moduleId);
+           }
+
            if (dropIndex !== -1) {
               const finalIndex = insertAfter ? dropIndex + 1 : dropIndex;
               targetCourse.modules.splice(finalIndex, 0, movedModule);

@@ -8,7 +8,6 @@
 function resolveCoveredModulesText(course, rawInput) {
   if (!rawInput) return '';
 
-  // Handle array, number, or delimited string inputs (commas, semicolons, dashes)
   let idList = [];
   if (Array.isArray(rawInput)) {
     idList = rawInput;
@@ -28,7 +27,6 @@ function resolveCoveredModulesText(course, rawInput) {
     const idStr = String(rawId).trim();
     const cleanId = idStr.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-    // 1. Search current course's modules first
     if (course && Array.isArray(course.modules)) {
       const matchedModIdx = course.modules.findIndex((m, mIdx) => {
         const mIdClean = String(m.id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -57,7 +55,6 @@ function resolveCoveredModulesText(course, rawInput) {
       }
     }
 
-    // 2. Cross-course search across window.DATA.courses for compound codes (e.g. Chem 1050-m4)
     for (const c of allCourses) {
       if (!Array.isArray(c.modules)) continue;
 
@@ -85,7 +82,6 @@ function resolveCoveredModulesText(course, rawInput) {
       }
     }
 
-    // 3. Fallback: If no match found, present the raw input string
     return idStr;
   });
 
@@ -330,7 +326,6 @@ function buildEvaluationSchemeRtf(course, config) {
     categories[typeLabel].totalWeight += weight;
     totalDefinedWeight += weight;
 
-    // Check all common property variations for covered modules
     const rawCovered = mod.coveredModuleIds || mod.coveredModules || mod.modulesCovered || mod.scope || mod.covered;
     const coveredStr = resolveCoveredModulesText(course, rawCovered);
 
@@ -561,18 +556,48 @@ function buildCourseRtfContent(course, connections) {
   rtf += `\\pard\\qj\\li360\\b Required Co-requisites:\\b0  ${escapeRtf(coreqs)}\\par\n`;
   rtf += `\\pard\\qj\\par\n\n`;
 
-  // SECTION 1. TEXTBOOKS
-  rtf += `\\pard\\qj\\b\\fs28 1. Required Textbooks & Course Resources\\b0\\fs22\\par\n`;
+  // SECTION 1. TEXTBOOKS & RESOURCES
+  rtf += `\\pard\\qj\\b\\fs28 1. Textbooks & Course Resources\\b0\\fs22\\par\n`;
   rtf += `\\line\\par\n`;
-  
-  if (course.textbook) {
-    const title = typeof course.textbook === 'string' ? course.textbook : (course.textbook.title || 'TBD');
-    rtf += `\\pard\\qj\\li360\\b Title:\\b0  ${escapeRtf(title)}\\par\n`;
-    if (course.textbook.author) rtf += `\\pard\\qj\\li360\\b Author(s):\\b0  ${escapeRtf(course.textbook.author)}\\par\n`;
-    if (course.textbook.isbn) rtf += `\\pard\\qj\\li360\\b ISBN / Edition:\\b0  ${escapeRtf(course.textbook.isbn)}\\par\n`;
-  } else {
-    rtf += `\\pard\\qj\\li360\\i [Faculty to list required textbooks or items that must be purchased]\\i0\\par\n`;
+
+  let textbookList = Array.isArray(course.textbooks) ? course.textbooks : [];
+  if (textbookList.length === 0 && course.textbook) {
+    if (typeof course.textbook === 'string') {
+      textbookList = [{ title: course.textbook, isRequired: true }];
+    } else if (typeof course.textbook === 'object') {
+      textbookList = [course.textbook];
+    }
   }
+
+  const requiredBooks = textbookList.filter(b => b.isRequired !== false);
+  const recommendedBooks = textbookList.filter(b => b.isRequired === false);
+
+  if (textbookList.length > 0) {
+    if (requiredBooks.length > 0) {
+      rtf += `\\pard\\qj\\li360\\b Required Textbooks:\\b0\\par\n`;
+      requiredBooks.forEach((tb) => {
+        const title = tb.title || 'Untitled Textbook';
+        const authorStr = tb.author ? ` by ${tb.author}` : '';
+        const isbnStr = (tb.isbn || tb.edition) ? ` (ISBN/Edition: ${tb.isbn || tb.edition})` : '';
+        rtf += `\\pard\\qj\\li720\\'95  \\b ${escapeRtf(title)}\\b0${escapeRtf(authorStr)}${escapeRtf(isbnStr)}\\par\n`;
+      });
+      rtf += `\\par\n`;
+    }
+
+    if (recommendedBooks.length > 0) {
+      rtf += `\\pard\\qj\\li360\\b Supplementary / Recommended Readings:\\b0\\par\n`;
+      recommendedBooks.forEach((tb) => {
+        const title = tb.title || 'Untitled Book';
+        const authorStr = tb.author ? ` by ${tb.author}` : '';
+        const isbnStr = (tb.isbn || tb.edition) ? ` (ISBN/Edition: ${tb.isbn || tb.edition})` : '';
+        rtf += `\\pard\\qj\\li720\\'95  ${escapeRtf(title)}${escapeRtf(authorStr)}${escapeRtf(isbnStr)}\\par\n`;
+      });
+      rtf += `\\par\n`;
+    }
+  } else {
+    rtf += `\\pard\\qj\\li360\\i [No required textbooks assigned for this course.]\\i0\\par\n\n`;
+  }
+
   if (course.software || course.otherResources) {
     if (course.software) rtf += `\\pard\\qj\\li360\\b Required Software/Tools:\\b0  ${escapeRtf(course.software)}\\par\n`;
     if (course.otherResources) rtf += `\\pard\\qj\\li360\\b Other Required Resources:\\b0  ${escapeRtf(course.otherResources)}\\par\n`;

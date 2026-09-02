@@ -1,7 +1,8 @@
 /* ============================================================
    js/courseEditor.js
    Handles course modal interactions, module/evaluation/lab management, 
-   nested topics/objectives/questions editing, and dynamic course connections.
+   nested topics/objectives/questions editing, dynamic course connections,
+   and dynamic multi-textbook management.
    ============================================================ */
 
 let currentCourse = null;
@@ -13,6 +14,96 @@ function getModuleLectureCount(mod) {
   if (!mod) return 0;
   const val = mod.lectureCount ?? mod.lectures ?? mod.totalLectures ?? mod.lecture_count;
   return parseInt(val, 10) || 0;
+}
+
+// --- HELPER: RENDER TEXTBOOK LIST IN EDIT MODAL ---
+function renderTextbookInputs(textbooks = []) {
+  const container = document.getElementById('editorTextbooksContainer');
+  if (!container) return;
+
+  // Migration fallback: Convert legacy single textbook object/string to array
+  let list = Array.isArray(textbooks) ? textbooks : [];
+  if (list.length === 0 && textbooks && typeof textbooks === 'object' && !Array.isArray(textbooks)) {
+    list = [textbooks];
+  } else if (list.length === 0 && typeof textbooks === 'string' && textbooks.trim() !== '') {
+    list = [{ title: textbooks, isRequired: true }];
+  }
+
+  container.innerHTML = '';
+
+  list.forEach((tb) => {
+    const row = document.createElement('div');
+    row.className = 'textbook-input-row';
+    row.style.cssText = 'display: grid; grid-template-columns: 2fr 1.2fr 1fr 100px 24px; gap: 6px; align-items: center; margin-bottom: 8px; width: 100%; box-sizing: border-box;';
+    
+    row.innerHTML = `
+      <input type="text" class="tb-title" placeholder="Title (e.g. Physical Chemistry)" value="${escapeHtml(tb.title || '')}">
+      <input type="text" class="tb-author" placeholder="Author(s)" value="${escapeHtml(tb.author || '')}">
+      <input type="text" class="tb-isbn" placeholder="ISBN / Edition" value="${escapeHtml(tb.isbn || tb.edition || '')}">
+      <select class="tb-status">
+        <option value="required" ${tb.isRequired !== false ? 'selected' : ''}>Required</option>
+        <option value="recommended" ${tb.isRequired === false ? 'selected' : ''}>Recommended</option>
+      </select>
+      <button type="button" class="btn-remove-tb" style="background:none; border:none; color:#ef4444; cursor:pointer; font-weight:bold;">✕</button>
+    `;
+
+    row.querySelector('.btn-remove-tb').addEventListener('click', () => {
+      row.remove();
+    });
+
+    container.appendChild(row);
+  });
+}
+
+// --- ADD NEW TEXTBOOK ROW BUTTON EVENT ---
+document.getElementById('btnAddTextbook')?.addEventListener('click', () => {
+  const container = document.getElementById('editorTextbooksContainer');
+  if (!container) return;
+
+  const row = document.createElement('div');
+  row.className = 'textbook-input-row';
+  row.style.cssText = 'display: grid; grid-template-columns: 2fr 1.2fr 1fr 100px 24px; gap: 6px; align-items: center; margin-bottom: 8px; width: 100%; box-sizing: border-box;';
+
+  row.innerHTML = `
+    <input type="text" class="tb-title" placeholder="Title">
+    <input type="text" class="tb-author" placeholder="Author(s)">
+    <input type="text" class="tb-isbn" placeholder="ISBN / Edition">
+    <select class="tb-status">
+      <option value="required" selected>Required</option>
+      <option value="recommended">Recommended</option>
+    </select>
+    <button type="button" class="btn-remove-tb" style="background:none; border:none; color:#ef4444; cursor:pointer; font-weight:bold;">✕</button>
+  `;
+
+  row.querySelector('.btn-remove-tb').addEventListener('click', () => row.remove());
+  container.appendChild(row);
+});
+
+// --- READ TEXTBOOKS FROM MODAL ON SAVE ---
+function getModalTextbooksData() {
+  const container = document.getElementById('editorTextbooksContainer');
+  if (!container) return [];
+
+  const rows = container.querySelectorAll('.textbook-input-row');
+  const textbooks = [];
+
+  rows.forEach((row) => {
+    const title = row.querySelector('.tb-title')?.value.trim();
+    const author = row.querySelector('.tb-author')?.value.trim();
+    const isbn = row.querySelector('.tb-isbn')?.value.trim();
+    const status = row.querySelector('.tb-status')?.value;
+
+    if (title) {
+      textbooks.push({
+        title,
+        author: author || '',
+        isbn: isbn || '',
+        isRequired: status === 'required'
+      });
+    }
+  });
+
+  return textbooks;
 }
 
 // Helper to calculate sum of topic lectures in a module
@@ -29,7 +120,6 @@ function openCourseEditor(target = null) {
   let course = null;
   let connections = [];
 
-  // Handle case when target is passed as a string courseId or moduleId
   if (typeof target === 'string') {
     const targetId = target;
     if (window.DATA) {
@@ -56,7 +146,6 @@ function openCourseEditor(target = null) {
       }
     }
   } else if (target && typeof target === 'object') {
-    // If a full course object was passed directly
     course = target;
     connections = window.DATA ? (window.DATA.connections || []) : [];
   } else if (window.DATA) {
@@ -73,7 +162,7 @@ function openCourseModal(courseData = null, connectionsData = []) {
     name: '',
     year: 1,
     yearLabel: 'Year 1',
-    textbook: {}
+    textbooks: []
   };
 
   editingModules = courseData && courseData.modules 
@@ -89,7 +178,6 @@ function openCourseModal(courseData = null, connectionsData = []) {
       })
     : [];
 
-  // Gather connections involving this course directly or through any of its modules
   const moduleIds = editingModules.map((m) => m.id);
   editingConnections = Array.isArray(connectionsData)
     ? JSON.parse(JSON.stringify(connectionsData)).filter(
@@ -123,15 +211,9 @@ function openCourseModal(courseData = null, connectionsData = []) {
   const yearLabelInput = document.getElementById('courseYearLabel');
   if (yearLabelInput) yearLabelInput.value = currentCourse.yearLabel || (courseYear === 0 ? 'Pre-University' : `Year ${courseYear}`);
 
-  const tb = currentCourse.textbook || {};
-  const tbTitle = document.getElementById('tbTitle');
-  if (tbTitle) tbTitle.value = typeof tb === 'string' ? tb : tb.title || '';
-
-  const tbAuthor = document.getElementById('tbAuthor');
-  if (tbAuthor) tbAuthor.value = tb.author || '';
-
-  const tbEdition = document.getElementById('tbEdition');
-  if (tbEdition) tbEdition.value = tb.edition || '';
+  // Populate dynamic textbook list
+  const booksToRender = currentCourse.textbooks || currentCourse.textbook || [];
+  renderTextbookInputs(booksToRender);
 
   renderModulesList();
   renderConnectionsList();
@@ -188,7 +270,6 @@ function handleTopicLecturesInputChange(modIdx) {
   syncModulesFromDOM();
 }
 
-// Scrapes DOM inputs into memory before re-rendering or saving
 function syncModulesFromDOM() {
   const container = document.getElementById('moduleList') || document.getElementById('modulesContainer');
   if (!container) return;
@@ -280,7 +361,6 @@ function renderModulesList() {
   let html = '';
 
   editingModules.forEach((mod, modIdx) => {
-    // 1. EVALUATION / EXAM
     if (mod.isExam) {
       const allOtherMods = editingModules.filter((m) => !m.isExam && !m.isLab);
       const coveredSet = new Set(mod.coveredModuleIds || []);
@@ -304,7 +384,6 @@ function renderModulesList() {
             <input type="text" class="input-eval-label" value="${escapeHtml(mod.label || 'EVALUATION')}" onchange="editingModules[${modIdx}].label = this.value" placeholder="Label" style="width: 100px;">
             <input type="text" class="input-eval-title" value="${escapeHtml(mod.title || '')}" onchange="editingModules[${modIdx}].title = this.value" placeholder="Evaluation Title" style="flex: 1; min-width: 140px;">
             
-            <!-- Take Home Toggle -->
             <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.8rem; color: #e9d5ff; background: #581c87; padding: 3px 8px; border-radius: 4px; cursor: pointer;">
               <input type="checkbox" ${isTakeHomeChecked} onchange="editingModules[${modIdx}].isTakeHome = this.checked">
               🏠 Take Home
@@ -327,7 +406,6 @@ function renderModulesList() {
       return;
     }
 
-    // 2. LABS
     if (mod.isLab) {
       const labs = mod.labs || [];
       let labsListHtml = '';
@@ -376,7 +454,6 @@ function renderModulesList() {
       return;
     }
 
-    // 3. REGULAR MODULE
     const topicSum = getModuleTopicsSum(mod);
     const existingLec = getModuleLectureCount(mod);
     const effectiveModLectures = Math.max(existingLec, topicSum);
@@ -705,11 +782,7 @@ function renderConnectionsList() {
 
   container.innerHTML = `
     <div class="connection-editor-box" style="background: #1e293b; padding: 16px; border-radius: 8px; color: #f8fafc;">
-      
-      <!-- ADD NEW CONNECTION PANEL -->
       <div class="add-connection-form" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; background: #0f172a; padding: 12px; border-radius: 6px; margin-bottom: 16px; border: 1px solid #334155;">
-        
-        <!-- FROM MODULE (Current Course) -->
         <div style="flex: 1; min-width: 140px;">
           <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px; font-weight:600; text-transform:uppercase;">From (This Course):</label>
           <select id="conn-from-module" class="form-control" style="width:100%; padding:6px; border-radius:4px; background:#1e293b; color:#f8fafc; border:1px solid #334155;">
@@ -719,7 +792,6 @@ function renderConnectionsList() {
 
         <div style="font-size:1.2rem; color:#64748b; padding-bottom:4px;">&rarr;</div>
 
-        <!-- TO COURSE -->
         <div style="flex: 1; min-width: 140px;">
           <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px; font-weight:600; text-transform:uppercase;">To Course:</label>
           <select id="conn-to-course" class="form-control" style="width:100%; padding:6px; border-radius:4px; background:#1e293b; color:#f8fafc; border:1px solid #334155;" onchange="handleConnectionCourseChange(this.value)">
@@ -728,7 +800,6 @@ function renderConnectionsList() {
           </select>
         </div>
 
-        <!-- TO MODULE (Cascades dynamically) -->
         <div style="flex: 1; min-width: 140px;">
           <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px; font-weight:600; text-transform:uppercase;">To Module:</label>
           <select id="conn-to-module" class="form-control" style="width:100%; padding:6px; border-radius:4px; background:#1e293b; color:#f8fafc; border:1px solid #334155;" disabled>
@@ -736,7 +807,6 @@ function renderConnectionsList() {
           </select>
         </div>
 
-        <!-- STRENGTH LEVEL -->
         <div style="width: 110px;">
           <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px; font-weight:600; text-transform:uppercase;">Type:</label>
           <select id="conn-level" class="form-control" style="width:100%; padding:6px; border-radius:4px; background:#1e293b; color:#f8fafc; border:1px solid #334155;">
@@ -746,13 +816,11 @@ function renderConnectionsList() {
           </select>
         </div>
 
-        <!-- ADD BUTTON -->
         <div>
           <button type="button" class="btn btn-primary" onclick="addConnectionFromDropdowns()" style="padding: 6px 14px; cursor:pointer;">+ Link</button>
         </div>
       </div>
 
-      <!-- EXISTING CONNECTIONS TABLE -->
       <div class="existing-connections-list">
         <table style="width:100%; border-collapse: collapse; font-size:0.85rem;">
           <thead>
@@ -959,9 +1027,6 @@ function saveCourseData() {
   const courseCodeEl = document.getElementById('courseCode');
   const courseNameEl = document.getElementById('courseName');
   const courseYearLabelEl = document.getElementById('courseYearLabel');
-  const tbTitleEl = document.getElementById('tbTitle');
-  const tbAuthorEl = document.getElementById('tbAuthor');
-  const tbEditionEl = document.getElementById('tbEdition');
 
   const updatedCourse = {
     id: (courseIdEl && courseIdEl.value) ? courseIdEl.value : `course-${Date.now()}`,
@@ -969,11 +1034,7 @@ function saveCourseData() {
     name: (courseNameEl && courseNameEl.value) ? courseNameEl.value : 'New Course',
     year: yearVal,
     yearLabel: (courseYearLabelEl && courseYearLabelEl.value) ? courseYearLabelEl.value : (yearVal === 0 ? 'Pre-University' : `Year ${yearVal}`),
-    textbook: {
-      title: tbTitleEl ? tbTitleEl.value : '',
-      author: tbAuthorEl ? tbAuthorEl.value : '',
-      edition: tbEditionEl ? tbEditionEl.value : ''
-    },
+    textbooks: getModalTextbooksData(),
     modules: cleanedModules
   };
 
@@ -1000,9 +1061,11 @@ window.openCourseEditor = openCourseEditor;
 window.openCourseModal = openCourseModal;
 window.closeCourseModal = closeCourseModal;
 window.switchTab = switchTab;
+window.renderTextbookInputs = renderTextbookInputs;
+window.getModalTextbooksData = getModalTextbooksData;
 window.addModuleRow = addModuleRow;
 window.addEvaluationRow = addEvaluationRow;
-window.addMidtermRow = addEvaluationRow; // Alias for backward compatibility
+window.addMidtermRow = addEvaluationRow;
 window.addLabRow = addLabRow;
 window.addLabItem = addLabItem;
 window.removeLabItem = removeLabItem;

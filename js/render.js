@@ -11,14 +11,24 @@ function formatTopic(topic) {
 
 function formatTextbook(tb) {
   if (!tb) return 'None listed';
+  if (Array.isArray(tb)) {
+    if (tb.length === 0) return 'None listed';
+    return tb.map(t => formatSingleTextbook(t)).join('; ');
+  }
+  return formatSingleTextbook(tb);
+}
+
+function formatSingleTextbook(tb) {
+  if (!tb) return '';
   if (typeof tb === 'string') return tb;
   
   const parts = [];
   if (tb.title) parts.push(`${tb.title}`);
   if (tb.author) parts.push(`by ${tb.author}`);
-  if (tb.edition) parts.push(`(${tb.edition} ed.)`);
+  if (tb.isbn || tb.edition) parts.push(`(${tb.isbn || tb.edition})`);
+  if (tb.isRequired === false) parts.push('[Recommended]');
 
-  return parts.length > 0 ? parts.join(' ') : 'None listed';
+  return parts.length > 0 ? parts.join(' ') : '';
 }
 
 function renderBoard(data, collapsedCourses = new Set(), positions = {}) {
@@ -211,8 +221,12 @@ function renderCourseCard(course, isCollapsed) {
     chip.type = 'button';
     chip.className = `module-chip ${mod.isExam ? 'midterm-chip' : ''} ${mod.isLab ? 'lab-chip' : ''}`;
     chip.draggable = true;
+    
+    // ATTACH DATASET FOR PRECISE UNIQUE MATCHING ON DROP
     chip.dataset.moduleId = mod.id;
     chip.dataset.courseId = course.id;
+    chip.dataset.title = mod.title || mod.label || '';
+    chip.dataset.label = mod.label || '';
 
     const deleteBtnHtml = `
       <span 
@@ -259,9 +273,12 @@ function renderCourseCard(course, isCollapsed) {
     }
 
     chip.addEventListener('dragstart', (e) => {
+      // PACK UNIQUE DATASET TO PREVENT WRONG ASSESSMENT PLACEMENT
       e.dataTransfer.setData('text/plain', JSON.stringify({
         moduleId: mod.id,
-        fromCourseId: course.id
+        fromCourseId: course.id,
+        title: mod.title,
+        label: mod.label
       }));
       e.dataTransfer.effectAllowed = 'move';
       setTimeout(() => chip.classList.add('is-dragging-chip'), 0); 
@@ -277,11 +294,6 @@ function renderCourseCard(course, isCollapsed) {
   card.appendChild(list);
   return card;
 }
-
-// ==========================================
-// CALENDAR MODAL FUNCTIONS
-// (Paste/Replace this section inside your full render.js)
-// ==========================================
 
 function openCalendarModal(course) {
   let modal = document.getElementById('calendar-modal');
@@ -311,7 +323,6 @@ function openCalendarModal(course) {
       const item = slot.lectureData;
       if (!item) return;
 
-      // Handle In-Class Assessments inside class meeting slots
       if (item.isExam) {
         const weightText = item.weightPercent ? ` (${item.weightPercent}%)` : '';
         weekLecturesHTML += `
@@ -325,7 +336,6 @@ function openCalendarModal(course) {
           </div>
         `;
       } else {
-        // Standard Lecture Topic Slot
         const countLabel = item.totalInModule 
           ? ` (${item.lectureNumber}/${item.totalInModule})` 
           : '';
@@ -351,7 +361,6 @@ function openCalendarModal(course) {
       }
     });
 
-    // Render Take-Home Assessments attached to this week
     let assessmentsHTML = '';
     if (week.assessments && week.assessments.length > 0) {
       const itemsList = week.assessments.map(asm => {
@@ -414,8 +423,6 @@ function closeCalendarModal() {
     modal.classList.add('hidden');
   }
 }
-
-
 
 function renderTierToggles(legend, activeTiers) {
   const container = document.getElementById('tierToggles');
@@ -530,9 +537,10 @@ function renderDrawer(data, moduleId) {
   }
 
   const chaptersText = mod.chapters ? `Ch. ${mod.chapters.join(', ')}` : '';
-  const formattedTb = typeof formatTextbook === 'function' ? formatTextbook(course.textbook) : '';
+  const booksToFormat = course.textbooks || course.textbook;
+  const formattedTb = typeof formatTextbook === 'function' ? formatTextbook(booksToFormat) : '';
   const textbookText = formattedTb && formattedTb !== 'None listed' 
-    ? `<div class="drawer-textbook">📖 <strong>Textbook:</strong> ${escapeHtml(formattedTb)}</div>` 
+    ? `<div class="drawer-textbook">📖 <strong>Textbook(s):</strong> ${escapeHtml(formattedTb)}</div>` 
     : '';
 
   const topicsHtml = mod.topics && mod.topics.length
@@ -547,7 +555,6 @@ function renderDrawer(data, moduleId) {
         }
 
         const titleText = t.title || t.name || 'Untitled Topic';
-        
         const descHtml = t.description 
           ? `<div class="topic-description">${escapeHtml(t.description)}</div>` 
           : '';
