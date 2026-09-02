@@ -83,6 +83,47 @@ window.defaultScheduleConfig = {
           document.querySelectorAll('.year-canvas').forEach((canvas) => fitCanvasToContent(canvas));
           refreshVisuals();
         });
+      },
+      ({ coursesToImport, connectionsToImport, legend }) => {
+        // PARTIAL IMPORT: merge only the courses the user selected into the
+        // existing board instead of replacing everything.
+        (coursesToImport || []).forEach((course) => {
+          const existingIndex = DATA.courses.findIndex((c) => c.id === course.id);
+          if (existingIndex >= 0) {
+            DATA.courses[existingIndex] = course; // same id already on board -> overwrite
+          } else {
+            DATA.courses.push(course);
+          }
+
+          state.collapsedCourses.add(course.id);
+          if (course.x !== undefined && course.y !== undefined) {
+            state.positions[course.id] = { x: course.x, y: course.y };
+          }
+        });
+
+        if (!Array.isArray(DATA.connections)) DATA.connections = [];
+        (connectionsToImport || []).forEach((conn) => {
+          const isDuplicate = DATA.connections.some(
+            (c) => c.id === conn.id ||
+                   (c.from === conn.from && c.to === conn.to) ||
+                   (c.from === conn.to && c.to === conn.from)
+          );
+          if (!isDuplicate) DATA.connections.push(conn);
+        });
+
+        // Bring in any legend tiers the file defines that the board doesn't have yet,
+        // without clobbering the board's existing legend entries/colors.
+        if (legend) {
+          DATA.legend = { ...legend, ...DATA.legend };
+        }
+
+        reindexData();
+        renderBoard(DATA, state.collapsedCourses, state.positions);
+
+        requestAnimationFrame(() => {
+          document.querySelectorAll('.year-canvas').forEach((canvas) => fitCanvasToContent(canvas));
+          refreshVisuals();
+        });
       }
     );
 

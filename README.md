@@ -16,6 +16,7 @@
   * Per-topic lecture scheduling & calendar calculation.
   * Hierarchical allocation of marks and assessment scopes with smart resolution for compound IDs (e.g., `Chem 1050-m4`).
 * **Local & File Storage:** Export curriculum data to JSON or save/restore state locally.
+  * **Selective Import:** Loading a JSON file when courses are already on the board prompts a choice — replace the entire workspace, or pick specific course(s) from the file to merge in. Merged courses overwrite any existing course with a matching ID; connections are only merged in when both endpoints belong to the imported course(s), so nothing dangles.
 
 ---
 
