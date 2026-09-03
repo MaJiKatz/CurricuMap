@@ -420,7 +420,7 @@ function renderModulesList() {
             </div>
             <div style="display: flex; align-items: center; gap: 4px;">
               <label style="font-size: 0.7rem; color: #94a3b8;">Weight %:</label>
-              <input type="number" value="${lab.weightPercent ?? 0}" step="0.5" onchange="editingModules[${modIdx}].labs[${labIdx}].weightPercent = parseFloat(this.value) || 0; updateLabTotalGrade(${modIdx});" style="width: 60px; font-size: 0.85rem;">
+              <input type="number" value="${lab.weightPercent ?? 0}" step="0.5" onchange="editingModules[${modIdx}].labs[${labIdx}].weightPercent = parseFloat(this.value) || 0; refreshLabWeightSumIndicator(${modIdx});" style="width: 60px; font-size: 0.85rem;">
             </div>
             <button type="button" class="btn btn-cancel btn-sm" onclick="removeLabItem(${modIdx}, ${labIdx})" title="Delete Lab">&times;</button>
           </div>
@@ -433,9 +433,18 @@ function renderModulesList() {
             <span style="font-weight: 700; color: #67e8f9;">🧪 LABS</span>
             <input type="text" class="input-lab-label" value="${escapeHtml(mod.label || 'LABS')}" onchange="editingModules[${modIdx}].label = this.value" placeholder="Label" style="width: 90px;">
             <input type="text" class="input-lab-title" value="${escapeHtml(mod.title || '')}" onchange="editingModules[${modIdx}].title = this.value" placeholder="Lab Section Title" style="flex: 1;">
-            <div style="font-size: 0.85rem; font-weight: 600; color: #67e8f9; padding: 0 6px;">
-              Total: <span id="labTotalGrade-${modIdx}">${mod.weightPercent ?? 0}%</span>
+            <div style="display: flex; align-items: center; gap: 4px; padding: 0 4px;">
+              <label style="font-size: 0.75rem; color: #94a3b8;">Section Weight %:</label>
+              <input
+                type="number"
+                step="0.5"
+                value="${mod.weightPercent ?? 0}"
+                onchange="editingModules[${modIdx}].weightPercent = parseFloat(this.value) || 0; refreshLabWeightSumIndicator(${modIdx});"
+                style="width: 60px; font-size: 0.85rem; font-weight: 600; color: #67e8f9;"
+                title="Total grade weight for the whole lab section. Set this independently of individual experiment weights below."
+              >
             </div>
+            <span id="labWeightSumIndicator-${modIdx}" style="font-size: 0.7rem; color: #94a3b8; white-space: nowrap;"></span>
             <button type="button" class="btn btn-cancel btn-sm" onclick="removeModuleRow(${modIdx})" title="Delete Lab Section">&times;</button>
           </div>
 
@@ -559,6 +568,10 @@ function renderModulesList() {
   });
 
   container.innerHTML = html;
+
+  editingModules.forEach((mod, modIdx) => {
+    if (mod.isLab) refreshLabWeightSumIndicator(modIdx);
+  });
 }
 
 function addModuleRow() {
@@ -638,7 +651,6 @@ function addLabItem(modIdx) {
 function removeLabItem(modIdx, labIdx) {
   syncModulesFromDOM();
   editingModules[modIdx].labs.splice(labIdx, 1);
-  updateLabTotalGrade(modIdx);
   renderModulesList();
 }
 
@@ -657,13 +669,34 @@ function equalizeLabWeights(modIdx) {
   renderModulesList();
 }
 
-function updateLabTotalGrade(modIdx) {
-  const labs = editingModules[modIdx].labs || [];
-  const total = labs.reduce((sum, l) => sum + (parseFloat(l.weightPercent) || 0), 0);
-  editingModules[modIdx].weightPercent = parseFloat(total.toFixed(2));
-  
-  const labelEl = document.getElementById(`labTotalGrade-${modIdx}`);
-  if (labelEl) labelEl.textContent = `${editingModules[modIdx].weightPercent}%`;
+function refreshLabWeightSumIndicator(modIdx) {
+  const mod = editingModules[modIdx];
+  if (!mod) return;
+
+  const labs = mod.labs || [];
+  const target = parseFloat(mod.weightPercent) || 0;
+  const el = document.getElementById(`labWeightSumIndicator-${modIdx}`);
+  if (!el) return;
+
+  if (labs.length === 0) {
+    el.textContent = '(no experiments defined yet — section weight still applies)';
+    el.style.color = '#94a3b8';
+    return;
+  }
+
+  const sum = parseFloat(labs.reduce((total, l) => total + (parseFloat(l.weightPercent) || 0), 0).toFixed(2));
+  const diff = parseFloat((target - sum).toFixed(2));
+
+  if (Math.abs(diff) < 0.01) {
+    el.textContent = `(experiments sum to ${sum}% ✓)`;
+    el.style.color = '#4ade80';
+  } else if (diff > 0) {
+    el.textContent = `(experiments sum to ${sum}% — ${diff}% unassigned)`;
+    el.style.color = '#fbbf24';
+  } else {
+    el.textContent = `(experiments sum to ${sum}% — ${Math.abs(diff)}% over)`;
+    el.style.color = '#f87171';
+  }
 }
 
 function toggleMidtermModule(midtermIdx, moduleId, isChecked) {
@@ -1070,7 +1103,7 @@ window.addLabRow = addLabRow;
 window.addLabItem = addLabItem;
 window.removeLabItem = removeLabItem;
 window.equalizeLabWeights = equalizeLabWeights;
-window.updateLabTotalGrade = updateLabTotalGrade;
+window.refreshLabWeightSumIndicator = refreshLabWeightSumIndicator;
 window.toggleMidtermModule = toggleMidtermModule;
 window.removeModuleRow = removeModuleRow;
 window.addTopicRow = addTopicRow;
