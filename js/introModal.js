@@ -16,12 +16,12 @@ const INTRO_STEPS = [
   },
   {
     title: "1. Adding Courses & Degree Years",
-    content: "Get started by clicking <b>+ Add Course</b> or double-clicking an existing course card if you loaded a previous workspace. Define the course code, assign it to an academic year column (e.g., Year 1 Fall), set the semester length (10–16 weeks), and configure weekly lecture schedules (3x50m, 2x90m, or 1x3h).",
+    content: "Get started by clicking <b>+ Add Course</b> or double-clicking an existing course card if you loaded a previous workspace. Define the course code, assign it to an academic year column (e.g., Year 1 Fall), set the number of teaching weeks, and pick a weekly class pattern (3×50 min, 2×75 min, a 3 h block, or a custom mix such as a 1 h and a 2 h class).",
     badge: "2 of 7"
   },
   {
     title: "2. Modules, Objectives, Books & Labs",
-    content: "Inside the Course Editor's <b>Modules tab</b>, build out the detailed syllabus content: add unit modules, granular learning objectives, required textbook details, laboratory practical hours, and midterm evaluation schemes.",
+    content: "Inside the Course Editor's <b>Modules tab</b>, build out the detailed syllabus content: add modules and topics (in lecture hours — 1.5 is fine), learning objectives, assessments and labs. A live time budget at the top shows what fits in the term and flags anything that doesn't. Details for the printed outline (instructor, prerequisites, policies) live in the <b>Outline &amp; Policies</b> tab.",
     badge: "3 of 7"
   },
   {

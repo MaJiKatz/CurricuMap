@@ -27,9 +27,75 @@ window.defaultScheduleConfig = {
 
   let draggingState = null;
 
+  const AUTOSAVE_KEY = 'currimap_autosave_v1';
+  let autosaveTimer = null;
+
+  /** Copies card positions from view state onto the course objects so they persist in files. */
+  function stampPositions() {
+    (DATA.courses || []).forEach((c) => {
+      const p = state.positions[c.id];
+      if (p) { c.x = Math.round(p.x); c.y = Math.round(p.y); }
+    });
+  }
+
+  function snapshot() {
+    stampPositions();
+    return {
+      meta: { savedAt: new Date().toISOString(), version: '1.1' },
+      courses: DATA.courses,
+      connections: { legend: DATA.legend, connections: DATA.connections },
+    };
+  }
+
+  function scheduleAutosave() {
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(() => {
+      try {
+        localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(snapshot()));
+      } catch (e) {
+        console.warn('Autosave failed (storage full?):', e);
+      }
+    }, 400);
+  }
+  window.scheduleAutosave = scheduleAutosave;
+
+  function readAutosave() {
+    try {
+      const raw = localStorage.getItem(AUTOSAVE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || !Array.isArray(parsed.courses) || !parsed.courses.length) return null;
+      return parsed;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function showToast(html, ms = 6000) {
+    const t = document.createElement('div');
+    t.className = 'toast';
+    t.innerHTML = html;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), ms);
+    return t;
+  }
+
   async function init() {
     try {
       DATA = await loadCurriculumData();
+      const saved = readAutosave();
+      if (saved) {
+        DATA.courses = saved.courses;
+        DATA.connections = (saved.connections && saved.connections.connections) || [];
+        if (saved.connections && saved.connections.legend) DATA.legend = saved.connections.legend;
+        const when = new Date(saved.meta && saved.meta.savedAt);
+        const toast = showToast(`Restored your last session${isNaN(when) ? '' : ` from ${when.toLocaleString()}`}. <button type="button" class="toast-btn">Start with an empty board</button>`, 9000);
+        toast.querySelector('.toast-btn').addEventListener('click', () => {
+          if (!confirm('Clear the board? Save your workspace first if you want to keep it.')) return;
+          localStorage.removeItem(AUTOSAVE_KEY);
+          location.reload();
+        });
+      }
       window.DATA = DATA;
     } catch (err) {
       document.getElementById('board').innerHTML = `<p style="padding:20px;color:#a33;">Failed to load curriculum data.</p>`;
@@ -56,10 +122,13 @@ window.defaultScheduleConfig = {
 
     // 3. WIRE STORAGE SAVE / LOAD BUTTONS
     initStorageUI(
-      () => ({ 
-        courses: DATA.courses, 
-        connectionsData: { legend: DATA.legend, connections: DATA.connections } 
-      }),
+      () => {
+        stampPositions();
+        return {
+          courses: DATA.courses,
+          connectionsData: { legend: DATA.legend, connections: DATA.connections }
+        };
+      },
       ({ courses, connections }) => {
         DATA.courses = courses;
         if (connections) {
@@ -78,7 +147,8 @@ window.defaultScheduleConfig = {
 
         reindexData();
         renderBoard(DATA, state.collapsedCourses, state.positions);
-        
+        scheduleAutosave();
+
         requestAnimationFrame(() => {
           document.querySelectorAll('.year-canvas').forEach((canvas) => fitCanvasToContent(canvas));
           refreshVisuals();
@@ -119,6 +189,7 @@ window.defaultScheduleConfig = {
 
         reindexData();
         renderBoard(DATA, state.collapsedCourses, state.positions);
+        scheduleAutosave();
 
         requestAnimationFrame(() => {
           document.querySelectorAll('.year-canvas').forEach((canvas) => fitCanvasToContent(canvas));
@@ -337,17 +408,28 @@ window.defaultScheduleConfig = {
         const selectedLevel = document.getElementById('connectionTypeSelect')?.value || 'related';
         state.activeTiers.add(selectedLevel);
 
+        // Earlier-year course is always the "from" end, whichever you clicked first,
+        // so outlines read "Builds upon" / "Leads to" the right way round.
+        const yearOf = (id) => {
+          const c = DATA.courseByModuleId[id] || DATA.courses.find((x) => x.id === id);
+          return c ? Number(c.year) || 0 : 0;
+        };
+        let from = connectingSource.id;
+        let to = targetId;
+        if (yearOf(from) > yearOf(to)) [from, to] = [to, from];
+
         const newConn = {
           id: `conn-${Date.now()}`,
-          from: connectingSource.id,
-          to: targetId,
+          from,
+          to,
           level: selectedLevel,
-          note: 'Created via Connect Mode'
+          note: ''
         };
 
         if (!Array.isArray(DATA.connections)) DATA.connections = [];
         DATA.connections.push(newConn);
         refreshVisuals();
+        scheduleAutosave();
       }
 
       cancelConnection();
@@ -382,6 +464,7 @@ window.defaultScheduleConfig = {
         draggingState.card.classList.remove('is-dragging');
         draggingState = null;
         refreshVisuals();
+        scheduleAutosave();
       }
     };
 
@@ -515,6 +598,7 @@ window.defaultScheduleConfig = {
 
         reindexData();
         renderBoard(DATA, state.collapsedCourses, state.positions);
+        scheduleAutosave();
 
         requestAnimationFrame(() => {
           document.querySelectorAll('.year-canvas').forEach((canvas) => fitCanvasToContent(canvas));
@@ -653,6 +737,7 @@ window.defaultScheduleConfig = {
 
     reindexData();
     renderBoard(DATA, state.collapsedCourses, state.positions);
+    scheduleAutosave();
 
     requestAnimationFrame(() => {
       document.querySelectorAll('.year-canvas').forEach((canvas) => fitCanvasToContent(canvas));
@@ -684,8 +769,16 @@ window.defaultScheduleConfig = {
     return { course, connections: DATA.connections || [] };
   };
 
-  window.onCourseSave = function (updatedCourse, updatedConnections) {
-    const existingIndex = DATA.courses.findIndex((c) => c.id === updatedCourse.id);
+  /**
+   * Called by the course editor.
+   * opts.originalId       — the course's ID before editing (handles ID renames)
+   * opts.replaceConnections — the editor passes the COMPLETE set of connections for
+   *                           this course, so anything missing was deleted.
+   */
+  window.onCourseSave = function (updatedCourse, updatedConnections, opts = {}) {
+    const lookupId = opts.originalId || updatedCourse.id;
+    const existingIndex = DATA.courses.findIndex((c) => c.id === lookupId);
+    const previous = existingIndex >= 0 ? DATA.courses[existingIndex] : null;
 
     if (existingIndex >= 0) {
       DATA.courses[existingIndex] = updatedCourse;
@@ -693,19 +786,31 @@ window.defaultScheduleConfig = {
       DATA.courses.push(updatedCourse);
     }
 
-    if (Array.isArray(updatedConnections)) {
+    // Carry view state across an ID rename
+    if (previous && previous.id !== updatedCourse.id) {
+      if (state.positions[previous.id]) state.positions[updatedCourse.id] = state.positions[previous.id];
+      delete state.positions[previous.id];
+      if (state.collapsedCourses.delete(previous.id)) state.collapsedCourses.add(updatedCourse.id);
+    }
+    if (!previous) state.collapsedCourses.delete(updatedCourse.id); // show new courses expanded
+
+    if (!Array.isArray(DATA.connections)) DATA.connections = [];
+    if (opts.replaceConnections) {
+      const touched = new Set([lookupId, updatedCourse.id]);
+      (previous ? previous.modules || [] : []).forEach((m) => touched.add(m.id));
+      (updatedCourse.modules || []).forEach((m) => touched.add(m.id));
+      DATA.connections = DATA.connections.filter((c) => !touched.has(c.from) && !touched.has(c.to));
+      (updatedConnections || []).forEach((c) => DATA.connections.push(c));
+    } else if (Array.isArray(updatedConnections)) {
       updatedConnections.forEach((newConn) => {
-        const connIdx = DATA.connections.findIndex((c) => c.id === newConn.id);
-        if (connIdx >= 0) {
-          DATA.connections[connIdx] = newConn;
-        } else {
-          DATA.connections.push(newConn);
-        }
+        const i = DATA.connections.findIndex((c) => c.id === newConn.id);
+        if (i >= 0) DATA.connections[i] = newConn; else DATA.connections.push(newConn);
       });
     }
 
     reindexData();
     renderBoard(DATA, state.collapsedCourses, state.positions);
+    scheduleAutosave();
 
     requestAnimationFrame(() => {
       document.querySelectorAll('.year-canvas').forEach((canvas) => fitCanvasToContent(canvas));

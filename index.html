@@ -116,6 +116,7 @@
         <button class="tab-btn active" onclick="switchTab('general')">General Info</button>
         <button class="tab-btn" onclick="switchTab('modules')">Modules (<span id="moduleCount">0</span>)</button>
         <button class="tab-btn" onclick="switchTab('connections')">Connections (<span id="connCount">0</span>)</button>
+        <button class="tab-btn" onclick="switchTab('outline')">Outline &amp; Policies</button>
       </div>
 
       <div class="modal-body">
@@ -147,24 +148,26 @@
           <h3>Schedule Configuration</h3>
           <div class="form-grid">
             <div class="form-group">
-              <label for="weeksInSemester">Semester Duration</label>
-              <select id="weeksInSemester">
-                <option value="10">10 Weeks (Quarter/Term)</option>
-                <option value="12" selected>12 Weeks (Standard)</option>
-                <option value="14">14 Weeks</option>
-                <option value="15">15 Weeks</option>
-                <option value="16">16 Weeks</option>
-              </select>
+              <label for="weeksInSemester">Teaching weeks</label>
+              <input type="number" id="weeksInSemester" min="1" max="20" value="12">
             </div>
 
             <div class="form-group">
-              <label for="weeklyFormat">Weekly Format</label>
-              <select id="weeklyFormat" onchange="typeof handleFormatChange === 'function' && handleFormatChange(this.value)">
-                <option value="3x50" selected>3 Lectures / week (50 mins each)</option>
-                <option value="2x90">2 Lectures / week (~90 mins each)</option>
-                <option value="1x180">1 Seminar / week (3 hours)</option>
+              <label for="weeklyFormat">Weekly class pattern</label>
+              <select id="weeklyFormat">
+                <option value="3x50" selected>3 classes / week (50 min each)</option>
+                <option value="2x75">2 classes / week (75 min each)</option>
+                <option value="1x180">1 class / week (3 h block)</option>
+                <option value="custom">Custom pattern…</option>
               </select>
             </div>
+
+            <div class="form-group full-width" id="customPatternGroup" hidden>
+              <label for="customPattern">Lecture hours in each class, in weekly order (e.g. "1, 2" for a 1 h and a 2 h block)</label>
+              <input type="text" id="customPattern" placeholder="1, 2">
+            </div>
+
+            <p class="schedule-capacity full-width" id="scheduleCapacityNote"></p>
           </div>
 
           <div class="form-group full-width" style="margin-top: 1.5rem;">
@@ -182,6 +185,7 @@
 
         <!-- TAB 2: Modules Manager -->
         <div id="tab-modules" class="tab-content">
+          <div id="budgetPanel" class="budget-panel"></div>
           <div class="tab-actions" style="display: flex; gap: 8px; flex-wrap: wrap;">
             <button class="btn btn-secondary" onclick="addModuleRow()">+ Add Module</button>
             <button type="button" class="btn btn-secondary" onclick="addMidtermRow()" style="border-color: #a855f7; color: #c084fc;">+ Add Assessment</button>
@@ -192,11 +196,11 @@
           </div>
         </div>
 
+        <!-- TAB 4: Outline & Policies (rendered by courseEditor.js) -->
+        <div id="tab-outline" class="tab-content"></div>
+
         <!-- TAB 3: Connections Manager -->
         <div id="tab-connections" class="tab-content">
-          <div class="tab-actions">
-            <button class="btn btn-secondary" onclick="addConnectionRow()">+ Add Connection</button>
-          </div>
           <div id="connectionList" class="manager-list">
             <!-- Dynamic Connection Rows inserted here -->
           </div>
@@ -227,46 +231,15 @@
   <div id="settings-modal" class="modal-overlay hidden">
     <div class="modal-container">
       <div class="modal-header">
-        <h2>Department & Institutional Policy Defaults</h2>
+        <h2>Outline defaults</h2>
         <button class="close-btn" onclick="closeSettingsModal()">&times;</button>
       </div>
 
       <div class="modal-body">
-        <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 1rem; font-style: italic;">
-          These defaults auto-populate Sections 3.2, 3.3, and 8 across all exported RTF course outlines unless overridden within a specific course.
+        <p class="settings-intro">
+          These defaults fill in every exported outline. Anything you enter in a course's Outline &amp; Policies tab overrides them for that course.
         </p>
-
-        <div class="form-grid">
-          <!-- Section 3.2 -->
-          <div class="form-group full-width">
-            <label for="setting-gradingSystem">Section 3.2: Grading System</label>
-            <textarea id="setting-gradingSystem" rows="2" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 4px; padding: 8px; font-family: inherit; font-size: 0.9rem;"></textarea>
-          </div>
-
-          <!-- Section 3.3 -->
-          <div class="form-group full-width">
-            <label for="setting-missedWorkPolicy">Section 3.3: Alternate Evaluation & Missed Work Policy</label>
-            <textarea id="setting-missedWorkPolicy" rows="3" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 4px; padding: 8px; font-family: inherit; font-size: 0.9rem;"></textarea>
-          </div>
-
-          <!-- Section 8.1 -->
-          <div class="form-group full-width">
-            <label for="setting-academicIntegrity">Section 8.1: Academic Integrity Statement</label>
-            <textarea id="setting-academicIntegrity" rows="3" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 4px; padding: 8px; font-family: inherit; font-size: 0.9rem;"></textarea>
-          </div>
-
-          <!-- Section 8.2 -->
-          <div class="form-group full-width">
-            <label for="setting-accommodations">Section 8.2: Student Accommodations Statement</label>
-            <textarea id="setting-accommodations" rows="3" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 4px; padding: 8px; font-family: inherit; font-size: 0.9rem;"></textarea>
-          </div>
-
-          <!-- Section 8.3 -->
-          <div class="form-group full-width">
-            <label for="setting-privacyAtipp">Section 8.3: Student Privacy & ATIPP Statement</label>
-            <textarea id="setting-privacyAtipp" rows="3" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 4px; padding: 8px; font-family: inherit; font-size: 0.9rem;"></textarea>
-          </div>
-        </div>
+        <div class="form-grid" id="settingsFields"></div>
       </div>
 
       <div class="modal-footer">
@@ -288,6 +261,7 @@
   </footer>
 
   <script src="js/data-loader.js"></script>
+  <script src="js/scheduler.js"></script>
   <script src="js/render.js"></script>
   <script src="js/connections.js"></script>
   <script src="js/courseEditor.js"></script>

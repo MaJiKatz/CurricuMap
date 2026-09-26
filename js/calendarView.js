@@ -1,317 +1,134 @@
-// js/calendarView.js
+/* ============================================================
+   js/calendarView.js
+   Week-by-week term calendar, driven by window.Scheduler.
+   Shows split topics, partial classes, catch-up time, take-home
+   due dates, and anything that doesn't fit in the term.
+   ============================================================ */
 
-/**
- * Helper to safely retrieve configured lecture count across various potential property names.
- */
-function getModuleLecturesCount(mod) {
-  if (!mod) return 0;
-  const val = mod.lectureCount ?? mod.lectures ?? mod.totalLectures ?? mod.lecture_count;
-  return parseInt(val, 10) || 0;
-}
+(function () {
+  const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-/**
- * Dynamically computes the full calendar layout.
- * - In-Class Assessments (isTakeHome: false) occupy standard class slots.
- * - Take-Home Assessments (isTakeHome: true) sit in the week's due box without taking class slots.
- */
-window.calculateCalendarLayout = function (course, config) {
-  console.log('CALCULATE CALENDAR CALLED', course, config);
-  const { weeksInSemester, meetingsPerWeek, minutesPerMeeting } = config;
-  const totalSlots = weeksInSemester * meetingsPerWeek;
+  function teachingNumbers(course) {
+    const map = {};
+    let n = 0;
+    (course.modules || []).forEach((m) => { if (!m.isExam && !m.isLab) map[m.id] = ++n; });
+    return map;
+  }
 
-  const allLectures = [];
-  const weekAssessments = {}; // Maps week number -> array of take-home assessment items
-
-  (course.modules || []).forEach((mod) => {
-    if (mod.isLab) return;
-
-    // -------------------------------------------------------------
-    // 1. Handle Exams / Assessments
-    // -------------------------------------------------------------
-    if (mod.isExam) {
-      const examTitle = mod.title || mod.label || 'Midterm Examination';
-
-      if (mod.isTakeHome) {
-        // TAKE-HOME: Attach to the current week, do NOT consume a class slot
-        const currentLectureCount = allLectures.length;
-        const mappedWeek = Math.min(
-          weeksInSemester,
-          Math.max(1, Math.ceil((currentLectureCount + 1) / meetingsPerWeek))
-        );
-
-        if (!weekAssessments[mappedWeek]) {
-          weekAssessments[mappedWeek] = [];
-        }
-
-        weekAssessments[mappedWeek].push({
-          id: mod.id,
-          moduleId: mod.id,
-          label: mod.label || 'Midterm',
-          title: examTitle,
-          weightPercent: mod.weightPercent || 0,
-          isTakeHome: true,
-          coveredModuleIds: mod.coveredModuleIds || [],
-          description: `Covers: ${(mod.coveredModuleIds || []).join(', ')}`
-        });
-
-        return; // Early return: no class meeting slot consumed
-      } else {
-        // IN-CLASS: Consumes 1 (or configured) class meeting slot in the sequence
-        const examSlotsCount = getModuleLecturesCount(mod) || 1;
-        for (let e = 0; e < examSlotsCount; e++) {
-          allLectures.push({
-            moduleId: mod.id,
-            moduleLabel: mod.label || 'EXAM',
-            moduleTitle: mod.title || 'In-Class Assessment',
-            lectureNumber: e + 1,
-            totalInModule: examSlotsCount,
-            title: examSlotsCount > 1 ? `${examTitle} (Part ${e + 1})` : examTitle,
-            topicTitle: examTitle,
-            description: `In-Class Assessment. Covers: ${(mod.coveredModuleIds || []).join(', ')}`,
-            topicDescription: `In-Class Assessment. Covers: ${(mod.coveredModuleIds || []).join(', ')}`,
-            learningObjectives: [],
-            textbookQuestions: [],
-            isPlaceholder: false,
-            isExam: true,
-            isTakeHome: false,
-            weightPercent: mod.weightPercent || 0
-          });
-        }
-        return;
-      }
+  function segHtml(seg, nums, fmt) {
+    if (seg.kind === 'exam') {
+      const w = seg.weightPercent ? ` · ${fmt(seg.weightPercent)}%` : '';
+      return `<div class="cal-seg cal-seg-exam"><span class="cal-seg-tag">${esc(seg.moduleLabel)}${w}</span><span class="cal-seg-title">${esc(seg.title)}</span></div>`;
     }
+    if (seg.kind === 'buffer') {
+      return `<div class="cal-seg cal-seg-buffer"><span class="cal-seg-title">Catch-up / review · ${fmt(seg.hours)} h</span></div>`;
+    }
+    const partial = seg.meeting && !seg.fillsClass;
+    const bits = [];
+    if (seg.parts > 1) bits.push(`${seg.part}/${seg.parts}`);
+    if (partial) bits.push(`${fmt(seg.hours)} h`);
+    const modTag = nums[seg.moduleId] ? `Module ${nums[seg.moduleId]}` : seg.moduleLabel;
+    const cls = ['cal-seg', seg.kind === 'unassigned' ? 'cal-seg-unassigned' : '', seg.optional ? 'cal-seg-optional' : ''].join(' ');
+    return `<div class="${cls}">
+      <span class="cal-seg-tag">${esc(modTag)}${seg.optional ? ' · time permitting' : ''}</span>
+      <span class="cal-seg-title">${esc(seg.title)}${bits.length ? ` <span class="cal-seg-part">(${bits.join(', ')})</span>` : ''}</span>
+    </div>`;
+  }
 
-    // -------------------------------------------------------------
-    // 2. Expand topics within teaching modules
-    // -------------------------------------------------------------
-    const expandedTopicSlots = [];
-    (mod.topics || []).forEach((topic) => {
-      let tObj = topic;
-      if (typeof topic === 'string') {
-        tObj = { 
-          title: topic, 
-          description: '', 
-          lectureCount: 1, 
-          learningObjectives: [], 
-          textbookQuestions: [] 
-        };
-      }
-      const tLectures = parseInt(tObj.lectureCount ?? tObj.lectures ?? tObj.hours, 10) || 1;
-      for (let k = 0; k < tLectures; k++) {
-        expandedTopicSlots.push({
-          topic: tObj,
-          partIndex: tLectures > 1 ? k + 1 : null,
-          totalParts: tLectures > 1 ? tLectures : null
-        });
-      }
+  function mergePieces(segs) {
+    const out = [];
+    const seen = new Map();
+    segs.forEach((s) => {
+      const key = `${s.moduleId}|${s.kind}|${s.topicIndex ?? ''}|${s.title}`;
+      if (seen.has(key)) { seen.get(key).hours += s.hours; return; }
+      const row = { ...s };
+      seen.set(key, row);
+      out.push(row);
     });
+    return out;
+  }
 
-    const configuredLectures = getModuleLecturesCount(mod);
-    const targetModuleLectures = Math.max(configuredLectures, expandedTopicSlots.length);
+  function openCalendarModal(course) {
+    const S = window.Scheduler;
+    const fmt = S.formatHours;
+    const r = S.build(course);
+    const cfg = r.config;
+    const nums = teachingNumbers(course);
 
-    // Build module lecture stream
-    for (let i = 0; i < targetModuleLectures; i++) {
-      const slotTopicInfo = expandedTopicSlots[i] || null;
-
-      if (slotTopicInfo) {
-        const { topic, partIndex, totalParts } = slotTopicInfo;
-        const displayTitle = partIndex 
-          ? `${topic.title || 'Untitled Topic'} (${partIndex}/${totalParts})`
-          : (topic.title || 'Untitled Topic');
-
-        allLectures.push({
-          moduleId: mod.id,
-          moduleLabel: mod.label || '',
-          moduleTitle: mod.title || '',
-          lectureNumber: i + 1,
-          totalInModule: targetModuleLectures,
-          title: displayTitle,
-          topicTitle: displayTitle,
-          description: topic.description || '',
-          topicDescription: topic.description || '',
-          learningObjectives: topic.learningObjectives || [],
-          textbookQuestions: topic.textbookQuestions || [],
-          isPlaceholder: false,
-          isExam: false,
-          topic: topic,
-          rawTopic: topic
-        });
-      } else {
-        const placeholderTitle = `${mod.label || 'MOD'} - Lecture ${i + 1}`;
-        const placeholderTopic = {
-          title: placeholderTitle,
-          description: 'Unassigned lecture slot',
-          learningObjectives: [],
-          textbookQuestions: []
-        };
-
-        allLectures.push({
-          moduleId: mod.id,
-          moduleLabel: mod.label || '',
-          moduleTitle: mod.title || '',
-          lectureNumber: i + 1,
-          totalInModule: targetModuleLectures,
-          title: placeholderTitle,
-          topicTitle: placeholderTitle,
-          description: 'Unassigned lecture slot',
-          topicDescription: 'Unassigned lecture slot',
-          learningObjectives: [],
-          textbookQuestions: [],
-          isPlaceholder: true,
-          isExam: false,
-          topic: placeholderTopic,
-          rawTopic: placeholderTopic
-        });
-      }
+    let modal = document.getElementById('calendar-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'calendar-modal';
+      modal.className = 'modal-overlay hidden';
+      document.body.appendChild(modal);
     }
+
+    const weeksHtml = r.weeks.map((week) => {
+      const meetings = week.meetings.map((m) => `
+        <div class="cal-meeting">
+          <div class="cal-meeting-label">Class ${m.day}${cfg.uniform ? '' : ` · ${fmt(m.hours)} h`}</div>
+          ${m.segs.length ? m.segs.map((s) => segHtml(s, nums, fmt)).join('') : '<div class="cal-seg cal-seg-buffer"><span class="cal-seg-title">Open</span></div>'}
+        </div>`).join('');
+      const due = week.takeHome.map((mod) => `
+        <div class="cal-seg cal-seg-due"><span class="cal-seg-tag">Due this week${mod.weightPercent ? ` · ${fmt(mod.weightPercent)}%` : ''}</span><span class="cal-seg-title">${esc(mod.title || mod.label)}</span></div>`).join('');
+      return `
+        <div class="cal-week-card">
+          <div class="cal-week-header">Week ${week.weekNumber}</div>
+          <div class="cal-week-body">${meetings}${due}</div>
+        </div>`;
+    }).join('');
+
+    const listRows = (segs) => mergePieces(segs).map((s) => {
+      const tag = s.kind === 'exam' ? s.moduleLabel : (nums[s.moduleId] ? `Module ${nums[s.moduleId]}` : s.moduleLabel);
+      return `<li><span class="cal-seg-tag">${esc(tag)}</span> ${esc(s.title)} <span class="cal-seg-part">(${fmt(s.hours)} h)</span></li>`;
+    }).join('');
+
+    const overflowHtml = r.overflow.length ? `
+      <section class="cal-leftover cal-leftover-over">
+        <h3>Doesn't fit in the term — ${fmt(r.overByHours)} h over</h3>
+        <p>Shorten topics, mark a module as time permitting, move an assessment to take-home, or add class time.</p>
+        <ul>${listRows(r.overflow)}</ul>
+      </section>` : '';
+
+    const optionalHtml = r.unreachedOptional.length ? `
+      <section class="cal-leftover cal-leftover-optional">
+        <h3>Time permitting — not reached</h3>
+        <ul>${listRows(r.unreachedOptional)}</ul>
+      </section>` : '';
+
+    const summaryCls = r.isOver ? 'is-over' : 'is-ok';
+    const summary = `${esc(cfg.label)} · ${cfg.weeks} weeks · ${fmt(r.requiredHours)} h required${r.optionalHours ? ` + ${fmt(r.optionalHours)} h time permitting` : ''} of ${fmt(cfg.capacityHours)} h` +
+      (r.isOver ? ` · <strong>${fmt(r.overByHours)} h over</strong>` : '');
+
+    modal.innerHTML = `
+      <div class="calendar-modal-card" role="dialog" aria-label="${esc(course.code)} term calendar">
+        <div class="calendar-header">
+          <div>
+            <h2 class="calendar-title">${esc(course.code)}: ${esc(course.name)}</h2>
+            <p class="calendar-summary ${summaryCls}">${summary}</p>
+          </div>
+          <button type="button" class="close-modal-btn" onclick="closeCalendarModal()" aria-label="Close">&times;</button>
+        </div>
+        <div class="calendar-scroll">
+          ${overflowHtml}
+          <div class="calendar-grid">${weeksHtml}</div>
+          ${optionalHtml}
+        </div>
+      </div>`;
+
+    modal.classList.remove('hidden');
+    modal.onclick = (e) => { if (e.target === modal) closeCalendarModal(); };
+  }
+
+  function closeCalendarModal() {
+    const modal = document.getElementById('calendar-modal');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeCalendarModal();
   });
 
-  // -------------------------------------------------------------
-  // 3. Assemble weekly calendar structure
-  // -------------------------------------------------------------
-  const weeks = [];
-  let lectureIdx = 0;
-
-  for (let w = 1; w <= weeksInSemester; w++) {
-    const weekSlots = [];
-    for (let m = 1; m <= meetingsPerWeek; m++) {
-      const lecture = allLectures[lectureIdx] || null;
-      weekSlots.push({
-        slotNumber: lectureIdx + 1,
-        dayLabel: meetingsPerWeek === 2 ? `Day ${m}` : `Class ${m}`,
-        durationMin: minutesPerMeeting,
-        lectureData: lecture
-      });
-      lectureIdx++;
-    }
-    weeks.push({ 
-      weekNumber: w, 
-      slots: weekSlots,
-      assessments: weekAssessments[w] || []
-    });
-  }
-
-  return { 
-    weeks, 
-    totalCapacity: totalSlots, 
-    totalAssigned: allLectures.length 
-  };
-};
-
-/**
- * Format change handler for modal config dropdowns.
- */
-window.handleFormatChange = function (value) {
-  let meetings = 3;
-  let minutes = 50;
-
-  if (value === '2x90') {
-    meetings = 2;
-    minutes = 90;
-  } else if (value === '1x180') {
-    meetings = 1;
-    minutes = 180;
-  }
-
-  if (!window.currentCourseConfig) {
-    window.currentCourseConfig = Object.assign({}, window.defaultScheduleConfig);
-  }
-
-  window.currentCourseConfig.meetingsPerWeek = meetings;
-  window.currentCourseConfig.minutesPerMeeting = minutes;
-};
-
-/**
- * Fallback schedule generator.
- */
-window.generateCalendarSchedule = function (course, lecturesPerWeek = 3, totalWeeks = 12) {
-  const lectureStream = [];
-  const weekAssessments = {};
-
-  (course.modules || []).forEach((mod) => {
-    if (mod.isLab) return;
-
-    if (mod.isExam) {
-      const examTitle = mod.title || mod.label || 'Midterm Examination';
-      if (mod.isTakeHome) {
-        const mappedWeek = Math.min(
-          totalWeeks,
-          Math.max(1, Math.ceil((lectureStream.length + 1) / lecturesPerWeek))
-        );
-        if (!weekAssessments[mappedWeek]) weekAssessments[mappedWeek] = [];
-        weekAssessments[mappedWeek].push({
-          label: mod.label || 'Midterm',
-          title: examTitle,
-          weightPercent: mod.weightPercent || 0
-        });
-      } else {
-        lectureStream.push({
-          moduleLabel: mod.label || 'EXAM',
-          moduleTitle: mod.title || 'In-Class Exam',
-          topicTitle: examTitle,
-          title: examTitle,
-          isExam: true,
-          weightPercent: mod.weightPercent || 0
-        });
-      }
-      return;
-    }
-
-    const topicSlots = [];
-    (mod.topics || []).forEach((t) => {
-      let tObj = t;
-      if (typeof t === 'string') {
-        tObj = { title: t, description: '', lectureCount: 1 };
-      }
-      const tCount = parseInt(tObj.lectureCount ?? tObj.lectures ?? tObj.hours, 10) || 1;
-      for (let tc = 0; tc < tCount; tc++) {
-        topicSlots.push(tObj);
-      }
-    });
-
-    const configuredLectures = getModuleLecturesCount(mod);
-    const targetCount = Math.max(configuredLectures, topicSlots.length);
-
-    for (let i = 0; i < targetCount; i++) {
-      const topic = topicSlots[i] || null;
-      const titleText = topic 
-        ? (topic.title || `Lecture ${i + 1}`)
-        : `${mod.label || 'MOD'} - Lecture ${i + 1}`;
-
-      lectureStream.push({
-        moduleLabel: mod.label,
-        moduleTitle: mod.title,
-        moduleId: mod.id,
-        lectureNumber: i + 1,
-        totalInModule: targetCount,
-        topicTitle: titleText,
-        title: titleText,
-        topicDescription: topic ? topic.description : 'Unassigned lecture slot',
-        learningObjectives: topic ? topic.learningObjectives || [] : [],
-        textbookQuestions: topic ? topic.textbookQuestions || [] : [],
-        isPlaceholder: !topic,
-        isExam: false
-      });
-    }
-  });
-
-  const weeks = [];
-  let currentLectureIdx = 0;
-
-  for (let w = 1; w <= totalWeeks; w++) {
-    const weekLectures = [];
-    for (let l = 0; l < lecturesPerWeek; l++) {
-      if (currentLectureIdx < lectureStream.length) {
-        weekLectures.push(lectureStream[currentLectureIdx]);
-        currentLectureIdx++;
-      }
-    }
-    weeks.push({ 
-      weekNumber: w, 
-      lectures: weekLectures, 
-      assessments: weekAssessments[w] || [] 
-    });
-  }
-
-  return weeks;
-};
+  window.openCalendarModal = openCalendarModal;
+  window.closeCalendarModal = closeCalendarModal;
+})();

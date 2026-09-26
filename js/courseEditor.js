@@ -1,593 +1,598 @@
 /* ============================================================
    js/courseEditor.js
-   Handles course modal interactions, module/evaluation/lab management, 
-   nested topics/objectives/questions editing, dynamic course connections,
-   and dynamic multi-textbook management.
+   Course modal: general info + schedule pattern, modules/topics
+   (fractional lecture hours), assessments, labs, connections, and
+   the Outline & Policies tab. A live time budget shows exactly what
+   fits in the term, using the same Scheduler as the calendar & RTF.
    ============================================================ */
 
-let currentCourse = null;
+let currentCourse = null;       // the course as it was when the editor opened
+let originalCourseId = null;    // so an edited ID replaces rather than duplicates
 let editingModules = [];
 let editingConnections = [];
+let editingOutline = {};
 
-// Helper to reliably read total lecture count across property variations
-function getModuleLectureCount(mod) {
-  if (!mod) return 0;
-  const val = mod.lectureCount ?? mod.lectures ?? mod.totalLectures ?? mod.lecture_count;
-  return parseInt(val, 10) || 0;
+const S = () => window.Scheduler;
+
+// ------------------------------------------------------------
+// Small helpers
+// ------------------------------------------------------------
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
-// --- HELPER: RENDER TEXTBOOK LIST IN EDIT MODAL ---
+function hoursVal(v, fallback = 1) {
+  const n = parseFloat(v);
+  return n > 0 ? Math.round(n * 100) / 100 : fallback;
+}
+
+function fmtH(h) { return S().formatHours(h); }
+
+function uniqueId(prefix) {
+  const taken = new Set();
+  (window.DATA && window.DATA.courses || []).forEach((c) => (c.modules || []).forEach((m) => taken.add(m.id)));
+  editingModules.forEach((m) => taken.add(m.id));
+  let id;
+  do { id = `${prefix}-${Math.random().toString(36).slice(2, 7)}`; } while (taken.has(id));
+  return id;
+}
+
+function courseIdValue() {
+  const el = document.getElementById('courseId');
+  return (el && el.value.trim()) || (currentCourse && currentCourse.id) || 'course';
+}
+
+// ------------------------------------------------------------
+// Textbooks (unchanged behaviour)
+// ------------------------------------------------------------
+function textbookRowHtml(tb = {}) {
+  return `
+    <input type="text" class="tb-title" placeholder="Title" value="${escapeHtml(tb.title || '')}">
+    <input type="text" class="tb-author" placeholder="Author(s)" value="${escapeHtml(tb.author || '')}">
+    <input type="text" class="tb-isbn" placeholder="ISBN / Edition" value="${escapeHtml(tb.isbn || tb.edition || '')}">
+    <select class="tb-status">
+      <option value="required" ${tb.isRequired !== false ? 'selected' : ''}>Required</option>
+      <option value="recommended" ${tb.isRequired === false ? 'selected' : ''}>Recommended</option>
+    </select>
+    <button type="button" class="btn-remove-tb" title="Remove textbook">✕</button>`;
+}
+
+function appendTextbookRow(container, tb) {
+  const row = document.createElement('div');
+  row.className = 'textbook-input-row';
+  row.innerHTML = textbookRowHtml(tb);
+  row.querySelector('.btn-remove-tb').addEventListener('click', () => row.remove());
+  container.appendChild(row);
+}
+
 function renderTextbookInputs(textbooks = []) {
   const container = document.getElementById('editorTextbooksContainer');
   if (!container) return;
-
-  // Migration fallback: Convert legacy single textbook object/string to array
   let list = Array.isArray(textbooks) ? textbooks : [];
-  if (list.length === 0 && textbooks && typeof textbooks === 'object' && !Array.isArray(textbooks)) {
-    list = [textbooks];
-  } else if (list.length === 0 && typeof textbooks === 'string' && textbooks.trim() !== '') {
-    list = [{ title: textbooks, isRequired: true }];
-  }
-
+  if (!list.length && textbooks && typeof textbooks === 'object' && !Array.isArray(textbooks)) list = [textbooks];
+  else if (!list.length && typeof textbooks === 'string' && textbooks.trim()) list = [{ title: textbooks, isRequired: true }];
   container.innerHTML = '';
-
-  list.forEach((tb) => {
-    const row = document.createElement('div');
-    row.className = 'textbook-input-row';
-    row.style.cssText = 'display: grid; grid-template-columns: 2fr 1.2fr 1fr 100px 24px; gap: 6px; align-items: center; margin-bottom: 8px; width: 100%; box-sizing: border-box;';
-    
-    row.innerHTML = `
-      <input type="text" class="tb-title" placeholder="Title (e.g. Physical Chemistry)" value="${escapeHtml(tb.title || '')}">
-      <input type="text" class="tb-author" placeholder="Author(s)" value="${escapeHtml(tb.author || '')}">
-      <input type="text" class="tb-isbn" placeholder="ISBN / Edition" value="${escapeHtml(tb.isbn || tb.edition || '')}">
-      <select class="tb-status">
-        <option value="required" ${tb.isRequired !== false ? 'selected' : ''}>Required</option>
-        <option value="recommended" ${tb.isRequired === false ? 'selected' : ''}>Recommended</option>
-      </select>
-      <button type="button" class="btn-remove-tb" style="background:none; border:none; color:#ef4444; cursor:pointer; font-weight:bold;">✕</button>
-    `;
-
-    row.querySelector('.btn-remove-tb').addEventListener('click', () => {
-      row.remove();
-    });
-
-    container.appendChild(row);
-  });
+  list.forEach((tb) => appendTextbookRow(container, tb));
 }
 
-// --- ADD NEW TEXTBOOK ROW BUTTON EVENT ---
 document.getElementById('btnAddTextbook')?.addEventListener('click', () => {
   const container = document.getElementById('editorTextbooksContainer');
-  if (!container) return;
-
-  const row = document.createElement('div');
-  row.className = 'textbook-input-row';
-  row.style.cssText = 'display: grid; grid-template-columns: 2fr 1.2fr 1fr 100px 24px; gap: 6px; align-items: center; margin-bottom: 8px; width: 100%; box-sizing: border-box;';
-
-  row.innerHTML = `
-    <input type="text" class="tb-title" placeholder="Title">
-    <input type="text" class="tb-author" placeholder="Author(s)">
-    <input type="text" class="tb-isbn" placeholder="ISBN / Edition">
-    <select class="tb-status">
-      <option value="required" selected>Required</option>
-      <option value="recommended">Recommended</option>
-    </select>
-    <button type="button" class="btn-remove-tb" style="background:none; border:none; color:#ef4444; cursor:pointer; font-weight:bold;">✕</button>
-  `;
-
-  row.querySelector('.btn-remove-tb').addEventListener('click', () => row.remove());
-  container.appendChild(row);
+  if (container) appendTextbookRow(container, {});
 });
 
-// --- READ TEXTBOOKS FROM MODAL ON SAVE ---
 function getModalTextbooksData() {
-  const container = document.getElementById('editorTextbooksContainer');
-  if (!container) return [];
-
-  const rows = container.querySelectorAll('.textbook-input-row');
-  const textbooks = [];
-
+  const rows = document.querySelectorAll('#editorTextbooksContainer .textbook-input-row');
+  const out = [];
   rows.forEach((row) => {
     const title = row.querySelector('.tb-title')?.value.trim();
-    const author = row.querySelector('.tb-author')?.value.trim();
-    const isbn = row.querySelector('.tb-isbn')?.value.trim();
-    const status = row.querySelector('.tb-status')?.value;
-
-    if (title) {
-      textbooks.push({
-        title,
-        author: author || '',
-        isbn: isbn || '',
-        isRequired: status === 'required'
-      });
-    }
+    if (!title) return;
+    out.push({
+      title,
+      author: row.querySelector('.tb-author')?.value.trim() || '',
+      isbn: row.querySelector('.tb-isbn')?.value.trim() || '',
+      isRequired: row.querySelector('.tb-status')?.value === 'required',
+    });
   });
-
-  return textbooks;
+  return out;
 }
 
-// Helper to calculate sum of topic lectures in a module
-function getModuleTopicsSum(module) {
-  if (!module || !Array.isArray(module.topics)) return 0;
-  return module.topics.reduce((sum, topic) => {
-    if (typeof topic === 'string') return sum + 1;
-    const val = parseFloat(topic.lectureCount ?? topic.lectures ?? topic.hours) || 1;
-    return sum + val;
-  }, 0);
+// ------------------------------------------------------------
+// Schedule config (per course)
+// ------------------------------------------------------------
+function readScheduleFromForm() {
+  const weeks = parseInt(document.getElementById('weeksInSemester')?.value, 10) || 12;
+  const format = document.getElementById('weeklyFormat')?.value || '3x50';
+  const schedule = { weeks, format };
+  if (format === 'custom') schedule.pattern = S().parsePattern(document.getElementById('customPattern')?.value || '');
+  return schedule;
 }
 
+function writeScheduleToForm(course) {
+  const cfg = S().getCourseSchedule(course);
+  const weeksEl = document.getElementById('weeksInSemester');
+  const fmtEl = document.getElementById('weeklyFormat');
+  const patEl = document.getElementById('customPattern');
+  if (weeksEl) weeksEl.value = cfg.weeks;
+  if (fmtEl) fmtEl.value = cfg.format;
+  if (patEl) patEl.value = cfg.format === 'custom' ? cfg.pattern.join(', ') : '';
+  updateScheduleUi();
+}
+
+function updateScheduleUi() {
+  const fmtEl = document.getElementById('weeklyFormat');
+  const group = document.getElementById('customPatternGroup');
+  if (group && fmtEl) group.hidden = fmtEl.value !== 'custom';
+  const note = document.getElementById('scheduleCapacityNote');
+  if (note) {
+    const cfg = S().getCourseSchedule({ schedule: readScheduleFromForm() });
+    note.textContent = `${cfg.weeks} weeks × ${fmtH(cfg.hoursPerWeek)} lecture h/week = ${fmtH(cfg.capacityHours)} lecture hours of class time.`;
+  }
+  refreshBudget();
+}
+
+['weeksInSemester', 'weeklyFormat', 'customPattern'].forEach((id) => {
+  const el = document.getElementById(id);
+  if (el) {
+    el.addEventListener('input', updateScheduleUi);
+    el.addEventListener('change', updateScheduleUi);
+  }
+});
+
+// ------------------------------------------------------------
+// Open / close
+// ------------------------------------------------------------
 function openCourseEditor(target = null) {
   let course = null;
-  let connections = [];
-
-  if (typeof target === 'string') {
-    const targetId = target;
-    if (window.DATA) {
-      let courseId = targetId;
-
-      if (window.DATA.courseByModuleId && window.DATA.courseByModuleId[targetId]) {
-        courseId = window.DATA.courseByModuleId[targetId].id;
-      } else {
-        const matchedCourse = (window.DATA.courses || []).find((c) =>
-          c.id === targetId || (c.modules || []).some((m) => m.id === targetId)
-        );
-        if (matchedCourse) {
-          courseId = matchedCourse.id;
-        }
-      }
-
-      if (typeof window.getCourseById === 'function') {
-        const res = window.getCourseById(courseId);
-        course = res ? res.course : null;
-        connections = res ? res.connections : [];
-      } else {
-        course = (window.DATA.courses || []).find((c) => c.id === courseId);
-        connections = window.DATA.connections || [];
-      }
-    }
+  const data = window.DATA;
+  if (typeof target === 'string' && data) {
+    let courseId = target;
+    const owner = data.courseByModuleId && data.courseByModuleId[target];
+    if (owner) courseId = owner.id;
+    course = (data.courses || []).find((c) => c.id === courseId) || null;
   } else if (target && typeof target === 'object') {
     course = target;
-    connections = window.DATA ? (window.DATA.connections || []) : [];
-  } else if (window.DATA) {
-    connections = window.DATA.connections || [];
   }
-
-  openCourseModal(course, connections);
+  openCourseModal(course, (data && data.connections) || []);
 }
 
 function openCourseModal(courseData = null, connectionsData = []) {
-  currentCourse = courseData || {
-    id: `course-${Date.now()}`,
-    code: '',
-    name: '',
-    year: 1,
-    yearLabel: 'Year 1',
-    textbooks: []
-  };
+  currentCourse = courseData
+    ? JSON.parse(JSON.stringify(courseData))
+    : { id: `course-${Date.now()}`, code: '', name: '', year: 1, yearLabel: 'Year 1', textbooks: [], modules: [] };
+  originalCourseId = courseData ? courseData.id : null;
 
-  editingModules = courseData && courseData.modules 
-    ? JSON.parse(JSON.stringify(courseData.modules)).map(mod => {
-        const topicSum = getModuleTopicsSum(mod);
-        const existingLec = getModuleLectureCount(mod);
-        const targetLec = Math.max(existingLec, topicSum, 1);
-        return {
-          ...mod,
-          lectureCount: targetLec,
-          lectures: targetLec
-        };
-      })
-    : [];
+  editingModules = JSON.parse(JSON.stringify(currentCourse.modules || [])).map((mod) => {
+    if (mod.isExam || mod.isLab) return mod;
+    const target = S().moduleHours(mod);
+    return { ...mod, lectureCount: target, lectures: target };
+  });
 
-  const moduleIds = editingModules.map((m) => m.id);
-  editingConnections = Array.isArray(connectionsData)
-    ? JSON.parse(JSON.stringify(connectionsData)).filter(
-        (c) =>
-          c.from === currentCourse.id ||
-          c.to === currentCourse.id ||
-          moduleIds.includes(c.from) ||
-          moduleIds.includes(c.to)
-      )
-    : [];
+  const moduleIds = new Set(editingModules.map((m) => m.id));
+  editingConnections = JSON.parse(JSON.stringify(connectionsData || [])).filter(
+    (c) => c.from === currentCourse.id || c.to === currentCourse.id || moduleIds.has(c.from) || moduleIds.has(c.to)
+  );
 
-  const titleEl = document.getElementById('modalTitle');
-  if (titleEl) titleEl.textContent = courseData ? 'Edit Course' : 'Add Course';
+  editingOutline = extractOutline(currentCourse);
 
-  const courseYear = (currentCourse.year !== undefined && currentCourse.year !== null) 
-    ? currentCourse.year 
-    : 1;
+  document.getElementById('modalTitle').textContent = courseData ? `Edit ${courseData.code || 'Course'}` : 'Add Course';
+  const year = currentCourse.year ?? 1;
+  document.getElementById('courseId').value = currentCourse.id || '';
+  document.getElementById('courseCode').value = currentCourse.code || '';
+  document.getElementById('courseName').value = currentCourse.name || '';
+  document.getElementById('courseYear').value = year;
+  document.getElementById('courseYearLabel').value = currentCourse.yearLabel || (year === 0 ? 'Pre-University' : `Year ${year}`);
 
-  const idInput = document.getElementById('courseId');
-  if (idInput) idInput.value = currentCourse.id || '';
-
-  const codeInput = document.getElementById('courseCode');
-  if (codeInput) codeInput.value = currentCourse.code || '';
-
-  const nameInput = document.getElementById('courseName');
-  if (nameInput) nameInput.value = currentCourse.name || '';
-  
-  const yearInput = document.getElementById('courseYear');
-  if (yearInput) yearInput.value = courseYear;
-
-  const yearLabelInput = document.getElementById('courseYearLabel');
-  if (yearLabelInput) yearLabelInput.value = currentCourse.yearLabel || (courseYear === 0 ? 'Pre-University' : `Year ${courseYear}`);
-
-  // Populate dynamic textbook list
-  const booksToRender = currentCourse.textbooks || currentCourse.textbook || [];
-  renderTextbookInputs(booksToRender);
-
+  renderTextbookInputs(currentCourse.textbooks || currentCourse.textbook || []);
+  writeScheduleToForm(currentCourse);
   renderModulesList();
   renderConnectionsList();
+  renderOutlineTab();
   switchTab('general');
 
   const modal = document.getElementById('courseModal');
-  if (modal) {
-    modal.classList.remove('hidden');
-    modal.style.display = 'block';
-  }
+  if (modal) { modal.classList.remove('hidden'); modal.style.display = 'block'; }
 }
 
 function closeCourseModal() {
   const modal = document.getElementById('courseModal');
-  if (modal) {
-    modal.classList.add('hidden');
-    modal.style.display = 'none';
-  }
+  if (modal) { modal.classList.add('hidden'); modal.style.display = 'none'; }
 }
 
 function switchTab(tabName) {
-  document.querySelectorAll('.tab-btn').forEach((btn) => btn.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach((content) => content.classList.remove('active'));
-
-  const activeBtns = document.querySelectorAll('.tab-btn');
-  activeBtns.forEach((btn) => {
-    if (btn.getAttribute('onclick') && btn.getAttribute('onclick').includes(tabName)) {
-      btn.classList.add('active');
-    }
+  if (document.getElementById('moduleList')) syncModulesFromDOM();
+  document.querySelectorAll('#courseModal .tab-btn').forEach((btn) => {
+    btn.classList.toggle('active', (btn.getAttribute('onclick') || '').includes(`'${tabName}'`));
   });
-
-  const activeTab = document.getElementById(`tab-${tabName}`);
-  if (activeTab) activeTab.classList.add('active');
+  document.querySelectorAll('#courseModal .tab-content').forEach((c) => c.classList.remove('active'));
+  const active = document.getElementById(`tab-${tabName}`);
+  if (active) active.classList.add('active');
+  if (tabName === 'modules') refreshBudget();
+  if (tabName === 'outline') renderOutlineTab();
 }
 
-function handleModuleLecturesInputChange(modIdx, inputElement) {
-  syncModulesFromDOM();
-  const mod = editingModules[modIdx];
-  if (!mod) return;
-
-  const topicSum = getModuleTopicsSum(mod);
-  let newVal = parseInt(inputElement.value, 10) || 0;
-
-  if (newVal < topicSum) {
-    newVal = topicSum;
-    inputElement.value = newVal;
-  }
-
-  mod.lectureCount = newVal;
-  mod.lectures = newVal;
-}
-
-function handleTopicLecturesInputChange(modIdx) {
-  syncModulesFromDOM();
-}
-
+// ------------------------------------------------------------
+// DOM -> editingModules
+// ------------------------------------------------------------
 function syncModulesFromDOM() {
-  const container = document.getElementById('moduleList') || document.getElementById('modulesContainer');
+  const container = document.getElementById('moduleList');
   if (!container) return;
 
-  const moduleContainers = container.querySelectorAll('.module-row-container');
-  moduleContainers.forEach((wrapper, modIdx) => {
+  container.querySelectorAll('.module-row-container').forEach((wrapper) => {
+    const modIdx = parseInt(wrapper.dataset.modIdx, 10);
     const mod = editingModules[modIdx];
     if (!mod) return;
 
-    if (mod.isExam) {
-      const evalLabelIn = wrapper.querySelector('.input-eval-label') || wrapper.querySelector('input[placeholder="Label"]');
-      const evalTitleIn = wrapper.querySelector('.input-eval-title') || wrapper.querySelector('input[placeholder="Evaluation Title"], input[placeholder="Exam Title"]');
-      const evalWeightIn = wrapper.querySelector('.input-eval-weight') || wrapper.querySelector('input[type="number"]');
+    const val = (sel) => wrapper.querySelector(sel);
 
-      if (evalLabelIn) mod.label = evalLabelIn.value;
-      if (evalTitleIn) mod.title = evalTitleIn.value;
-      if (evalWeightIn) mod.weightPercent = parseFloat(evalWeightIn.value) || 0;
+    if (mod.isExam) {
+      if (val('.input-eval-label')) mod.label = val('.input-eval-label').value;
+      if (val('.input-eval-title')) mod.title = val('.input-eval-title').value;
+      if (val('.input-eval-weight')) mod.weightPercent = parseFloat(val('.input-eval-weight').value) || 0;
+      if (val('.input-eval-classes')) mod.lectureCount = mod.lectures = Math.max(1, parseInt(val('.input-eval-classes').value, 10) || 1);
+      if (val('.input-eval-when')) mod.scheduleNote = val('.input-eval-when').value;
+      if (val('.input-eval-scope')) mod.scopeNote = val('.input-eval-scope').value;
+      if (val('.input-eval-takehome')) mod.isTakeHome = val('.input-eval-takehome').checked;
       return;
     }
 
     if (mod.isLab) {
-      const labLabelIn = wrapper.querySelector('.input-lab-label') || wrapper.querySelector('input[placeholder="Label"]');
-      const labTitleIn = wrapper.querySelector('.input-lab-title') || wrapper.querySelector('input[placeholder="Lab Title"], input[placeholder="Lab Section Title"]');
-      
-      if (labLabelIn) mod.label = labLabelIn.value;
-      if (labTitleIn) mod.title = labTitleIn.value;
+      if (val('.input-lab-label')) mod.label = val('.input-lab-label').value;
+      if (val('.input-lab-title')) mod.title = val('.input-lab-title').value;
       return;
     }
 
-    const modLecturesInput = wrapper.querySelector('.input-module-lectures');
-    const topicCards = wrapper.querySelectorAll('.topic-editor-card');
-    const updatedTopics = [];
+    if (val('.input-module-label')) mod.label = val('.input-module-label').value;
+    if (val('.input-module-title')) mod.title = val('.input-module-title').value;
+    if (val('.input-module-tp')) mod.timePermitting = val('.input-module-tp').checked;
+    if (val('.input-module-fresh')) mod.startsFreshClass = val('.input-module-fresh').checked;
 
-    topicCards.forEach((card) => {
-      const titleIn = card.querySelector('.input-topic-title');
-      const descIn = card.querySelector('.input-topic-desc');
-      const lecIn = card.querySelector('.input-topic-lectures');
+    // If the module total was simply the sum of its topics, keep it tracking that sum.
+    const prevSum = S().topicsHours(mod);
+    const prevTotal = parseFloat(mod.lectureCount) || 0;
+    const wasAuto = Math.abs(prevTotal - prevSum) < 0.001;
 
-      const objInputs = card.querySelectorAll('.input-topic-obj');
-      const objectives = [];
-      objInputs.forEach((i) => objectives.push(i.value));
-
-      const questInputs = card.querySelectorAll('.input-topic-quest');
-      const questions = [];
-      questInputs.forEach((i) => questions.push(i.value));
-
-      updatedTopics.push({
-        title: titleIn ? titleIn.value : '',
-        description: descIn ? descIn.value : '',
-        lectureCount: lecIn ? (parseInt(lecIn.value, 10) || 1) : 1,
-        learningObjectives: objectives,
-        textbookQuestions: questions
+    const topics = [];
+    wrapper.querySelectorAll('.topic-editor-card').forEach((card) => {
+      topics.push({
+        title: card.querySelector('.input-topic-title')?.value || '',
+        description: card.querySelector('.input-topic-desc')?.value || '',
+        lectureCount: hoursVal(card.querySelector('.input-topic-lectures')?.value, 1),
+        learningObjectives: Array.from(card.querySelectorAll('.input-topic-obj')).map((i) => i.value),
+        textbookQuestions: Array.from(card.querySelectorAll('.input-topic-quest')).map((i) => i.value),
       });
     });
+    mod.topics = topics;
 
-    mod.topics = updatedTopics;
-
-    const topicSum = getModuleTopicsSum(mod);
-    const existingVal = getModuleLectureCount(mod);
-    const domVal = modLecturesInput ? parseInt(modLecturesInput.value, 10) : NaN;
-    
-    let explicitModLectures = !isNaN(domVal) ? domVal : existingVal;
-    if (explicitModLectures < topicSum) {
-      explicitModLectures = topicSum;
-    }
-
-    mod.lectureCount = explicitModLectures;
-    mod.lectures = explicitModLectures;
-
-    if (modLecturesInput) {
-      modLecturesInput.value = explicitModLectures;
-      modLecturesInput.min = topicSum;
-      modLecturesInput.title = `Total Module Lectures (Min: ${topicSum} based on topics)`;
+    const topicSum = S().topicsHours(mod);
+    const modIn = val('.input-module-lectures');
+    let total = modIn ? parseFloat(modIn.value) : NaN;
+    const userEditedTotal = modIn && Math.abs((parseFloat(modIn.value) || 0) - prevTotal) > 0.001;
+    if (wasAuto && !userEditedTotal) total = topicSum;
+    if (!(total > 0)) total = topicSum;
+    if (total < topicSum) total = topicSum;
+    total = Math.round(total * 100) / 100;
+    mod.lectureCount = mod.lectures = total;
+    if (modIn && document.activeElement !== modIn) {
+      modIn.value = total;
+      modIn.min = topicSum;
     }
   });
 }
 
+// ------------------------------------------------------------
+// Module list rendering
+// ------------------------------------------------------------
 function renderModulesList() {
-  const container = document.getElementById('moduleList') || document.getElementById('modulesContainer');
+  const container = document.getElementById('moduleList');
   const countEl = document.getElementById('moduleCount');
   if (countEl) countEl.textContent = editingModules.length;
   if (!container) return;
 
-  if (editingModules.length === 0) {
-    container.innerHTML = '<p style="color: #94a3b8; font-size: 0.85rem; padding: 12px; text-align: center;">No modules added yet. Click a button above to add one.</p>';
+  if (!editingModules.length) {
+    container.innerHTML = '<p class="empty-note">No modules yet. Add a module, an assessment, or a lab section above.</p>';
+    refreshBudget();
     return;
   }
 
-  let html = '';
+  container.innerHTML = editingModules.map((mod, modIdx) => {
+    if (mod.isExam) return examRowHtml(mod, modIdx);
+    if (mod.isLab) return labRowHtml(mod, modIdx);
+    return moduleRowHtml(mod, modIdx);
+  }).join('');
 
-  editingModules.forEach((mod, modIdx) => {
-    if (mod.isExam) {
-      const allOtherMods = editingModules.filter((m) => !m.isExam && !m.isLab);
-      const coveredSet = new Set(mod.coveredModuleIds || []);
+  editingModules.forEach((mod, modIdx) => { if (mod.isLab) refreshLabWeightSumIndicator(modIdx); });
+  refreshBudget();
+}
 
-      const coveredCheckboxesHtml = allOtherMods.map((m) => {
-        const isChecked = coveredSet.has(m.id) ? 'checked' : '';
-        return `
-          <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.8rem; color: #cbd5e1; background: #1e293b; padding: 2px 6px; border-radius: 4px; border: 1px solid #334155;">
-            <input type="checkbox" ${isChecked} onchange="toggleMidtermModule(${modIdx}, '${m.id}', this.checked)">
-            ${escapeHtml(m.label || m.id)}
-          </label>
-        `;
-      }).join(' ');
+function examRowHtml(mod, modIdx) {
+  const covered = new Set(mod.coveredModuleIds || []);
+  const boxes = editingModules.filter((m) => !m.isExam && !m.isLab).map((m) => `
+    <label class="chip-check">
+      <input type="checkbox" ${covered.has(m.id) ? 'checked' : ''} onchange="toggleMidtermModule(${modIdx}, '${m.id}', this.checked)">
+      ${escapeHtml(m.label || m.id)}
+    </label>`).join('');
 
-      const isTakeHomeChecked = mod.isTakeHome ? 'checked' : '';
-
-      html += `
-        <div class="module-row-container exam-row" style="border-left: 4px solid #a855f7; background: rgba(168, 85, 247, 0.05); padding: 12px; margin-bottom: 12px; border-radius: 6px; border: 1px solid #334155;">
-          <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap;">
-            <span style="font-weight: 700; color: #c084fc;">📝 EVALUATION</span>
-            <input type="text" class="input-eval-label" value="${escapeHtml(mod.label || 'EVALUATION')}" onchange="editingModules[${modIdx}].label = this.value" placeholder="Label" style="width: 100px;">
-            <input type="text" class="input-eval-title" value="${escapeHtml(mod.title || '')}" onchange="editingModules[${modIdx}].title = this.value" placeholder="Evaluation Title" style="flex: 1; min-width: 140px;">
-            
-            <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.8rem; color: #e9d5ff; background: #581c87; padding: 3px 8px; border-radius: 4px; cursor: pointer;">
-              <input type="checkbox" ${isTakeHomeChecked} onchange="editingModules[${modIdx}].isTakeHome = this.checked">
-              🏠 Take Home
-            </label>
-
-            <div style="display: flex; align-items: center; gap: 4px;">
-              <label style="font-size: 0.75rem; color: #94a3b8;">Weight %:</label>
-              <input type="number" class="input-eval-weight" value="${mod.weightPercent ?? 20}" onchange="editingModules[${modIdx}].weightPercent = parseFloat(this.value) || 0" style="width: 60px;">
-            </div>
-            <button type="button" class="btn btn-cancel btn-sm" onclick="removeModuleRow(${modIdx})" title="Delete Evaluation">&times;</button>
-          </div>
-          <div>
-            <div style="font-size: 0.75rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px;">Covered Modules:</div>
-            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-              ${coveredCheckboxesHtml || '<span style="font-size: 0.75rem; color: #64748b;">No regular modules available to map yet.</span>'}
-            </div>
-          </div>
-        </div>
-      `;
-      return;
-    }
-
-    if (mod.isLab) {
-      const labs = mod.labs || [];
-      let labsListHtml = '';
-
-      labs.forEach((lab, labIdx) => {
-        labsListHtml += `
-          <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 6px; background: #0f172a; padding: 6px; border-radius: 4px; border: 1px solid #334155;">
-            <input type="text" value="${escapeHtml(lab.title || '')}" onchange="editingModules[${modIdx}].labs[${labIdx}].title = this.value" placeholder="Lab Title" style="flex: 1; font-size: 0.85rem;">
-            <div style="display: flex; align-items: center; gap: 4px;">
-              <label style="font-size: 0.7rem; color: #94a3b8;">Hours:</label>
-              <input type="number" value="${lab.hours ?? 3}" onchange="editingModules[${modIdx}].labs[${labIdx}].hours = parseFloat(this.value) || 0" style="width: 50px; font-size: 0.85rem;">
-            </div>
-            <div style="display: flex; align-items: center; gap: 4px;">
-              <label style="font-size: 0.7rem; color: #94a3b8;">Weight %:</label>
-              <input type="number" value="${lab.weightPercent ?? 0}" step="0.5" onchange="editingModules[${modIdx}].labs[${labIdx}].weightPercent = parseFloat(this.value) || 0; refreshLabWeightSumIndicator(${modIdx});" style="width: 60px; font-size: 0.85rem;">
-            </div>
-            <button type="button" class="btn btn-cancel btn-sm" onclick="removeLabItem(${modIdx}, ${labIdx})" title="Delete Lab">&times;</button>
-          </div>
-        `;
-      });
-
-      html += `
-        <div class="module-row-container lab-row" style="border-left: 4px solid #06b6d4; background: rgba(6, 182, 212, 0.05); padding: 12px; margin-bottom: 12px; border-radius: 6px; border: 1px solid #334155;">
-          <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
-            <span style="font-weight: 700; color: #67e8f9;">🧪 LABS</span>
-            <input type="text" class="input-lab-label" value="${escapeHtml(mod.label || 'LABS')}" onchange="editingModules[${modIdx}].label = this.value" placeholder="Label" style="width: 90px;">
-            <input type="text" class="input-lab-title" value="${escapeHtml(mod.title || '')}" onchange="editingModules[${modIdx}].title = this.value" placeholder="Lab Section Title" style="flex: 1;">
-            <div style="display: flex; align-items: center; gap: 4px; padding: 0 4px;">
-              <label style="font-size: 0.75rem; color: #94a3b8;">Section Weight %:</label>
-              <input
-                type="number"
-                step="0.5"
-                value="${mod.weightPercent ?? 0}"
-                onchange="editingModules[${modIdx}].weightPercent = parseFloat(this.value) || 0; refreshLabWeightSumIndicator(${modIdx});"
-                style="width: 60px; font-size: 0.85rem; font-weight: 600; color: #67e8f9;"
-                title="Total grade weight for the whole lab section. Set this independently of individual experiment weights below."
-              >
-            </div>
-            <span id="labWeightSumIndicator-${modIdx}" style="font-size: 0.7rem; color: #94a3b8; white-space: nowrap;"></span>
-            <button type="button" class="btn btn-cancel btn-sm" onclick="removeModuleRow(${modIdx})" title="Delete Lab Section">&times;</button>
-          </div>
-
-          <div style="margin-top: 8px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <span style="font-size: 0.75rem; font-weight: 600; color: #94a3b8; text-transform: uppercase;">Experiments / Modules</span>
-              <div style="display: flex; gap: 6px;">
-                <button type="button" class="btn btn-secondary btn-sm" onclick="equalizeLabWeights(${modIdx})" style="font-size: 0.7rem;">Equalize Weights</button>
-                <button type="button" class="btn btn-secondary btn-sm" onclick="addLabItem(${modIdx})" style="font-size: 0.7rem;">+ Add Experiment</button>
-              </div>
-            </div>
-            ${labsListHtml || '<p style="font-size: 0.8rem; color: #64748b;">No experiments added yet.</p>'}
-          </div>
-        </div>
-      `;
-      return;
-    }
-
-    const topicSum = getModuleTopicsSum(mod);
-    const existingLec = getModuleLectureCount(mod);
-    const effectiveModLectures = Math.max(existingLec, topicSum);
-
-    mod.lectureCount = effectiveModLectures;
-    mod.lectures = effectiveModLectures;
-
-    let topicsHtml = '';
-    if (Array.isArray(mod.topics)) {
-      mod.topics.forEach((topic, tIdx) => {
-        if (typeof topic !== 'object' || topic === null) {
-          topic = { title: typeof topic === 'string' ? topic : '', description: '', lectureCount: 1, learningObjectives: [], textbookQuestions: [] };
-          mod.topics[tIdx] = topic;
-        }
-        if (!Array.isArray(topic.learningObjectives)) topic.learningObjectives = [];
-        if (!Array.isArray(topic.textbookQuestions)) topic.textbookQuestions = [];
-
-        topicsHtml += `
-          <div class="topic-editor-card" style="background: rgba(15, 23, 42, 0.5); border: 1px solid #334155; border-radius: 6px; padding: 10px; margin-bottom: 12px; position: relative;">
-            <button type="button" class="btn btn-cancel btn-sm" style="position: absolute; top: 8px; right: 8px;" onclick="removeTopicRow(${modIdx}, ${tIdx})" title="Delete Topic">&times;</button>
-            
-            <div style="display: flex; gap: 8px; margin-bottom: 8px; padding-right: 28px;">
-              <div style="flex: 1;">
-                <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; margin-bottom: 2px;">Topic Title</label>
-                <input type="text" class="input-topic-title" placeholder="e.g. First Law of Thermodynamics" value="${escapeHtml(topic.title || '')}" style="width: 100%;">
-              </div>
-              <div style="width: 90px;">
-                <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; margin-bottom: 2px;">Lectures</label>
-                <input type="number" class="input-topic-lectures" min="1" max="20" placeholder="1" value="${topic.lectureCount || 1}" onchange="handleTopicLecturesInputChange(${modIdx})" oninput="handleTopicLecturesInputChange(${modIdx})" style="width: 100%;">
-              </div>
-            </div>
-
-            <div style="margin-bottom: 8px;">
-              <label style="display: block; font-size: 0.75rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; margin-bottom: 2px;">Description</label>
-              <textarea class="input-topic-desc" placeholder="Brief overview of topic..." rows="2" style="width: 100%; font-size: 0.85rem; padding: 4px 6px; background: #0f172a; border: 1px solid #334155; color: #f8fafc; border-radius: 4px;">${escapeHtml(topic.description || '')}</textarea>
-            </div>
-
-            <div style="margin-bottom: 8px; padding: 6px; background: rgba(0, 0, 0, 0.2); border-radius: 4px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                <span style="font-size: 0.75rem; font-weight: 700; color: #38bdf8;">🎯 Learning Objectives</span>
-                <button type="button" class="btn btn-secondary btn-sm" style="font-size: 0.7rem; padding: 1px 6px;" onclick="addTopicObjective(${modIdx}, ${tIdx})">+ Add</button>
-              </div>
-              <div id="topic-objectives-${modIdx}-${tIdx}">
-                ${topic.learningObjectives.map((obj, oIdx) => `
-                  <div class="nested-item-row" style="display: flex; margin-bottom: 4px; gap: 4px;">
-                    <input type="text" class="input-topic-obj" placeholder="Objective..." value="${escapeHtml(obj || '')}" style="flex: 1; font-size: 0.8rem;">
-                    <button type="button" class="btn btn-cancel btn-sm" onclick="removeTopicObjective(${modIdx}, ${tIdx}, ${oIdx})">&times;</button>
-                  </div>
-                `).join('')}
-              </div>
-            </div>
-
-            <div style="padding: 6px; background: rgba(0, 0, 0, 0.2); border-radius: 4px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                <span style="font-size: 0.75rem; font-weight: 700; color: #a7f3d0;">📖 Recommended Questions</span>
-                <button type="button" class="btn btn-secondary btn-sm" style="font-size: 0.7rem; padding: 1px 6px;" onclick="addTopicQuestion(${modIdx}, ${tIdx})">+ Add</button>
-              </div>
-              <div id="topic-questions-${modIdx}-${tIdx}">
-                ${topic.textbookQuestions.map((quest, qIdx) => `
-                  <div class="nested-item-row" style="display: flex; margin-bottom: 4px; gap: 4px;">
-                    <input type="text" class="input-topic-quest" placeholder="e.g., Ch. 5, #12, #18..." value="${escapeHtml(quest || '')}" style="flex: 1; font-size: 0.8rem;">
-                    <button type="button" class="btn btn-cancel btn-sm" onclick="removeTopicQuestion(${modIdx}, ${tIdx}, ${qIdx})">&times;</button>
-                  </div>
-                `).join('')}
-              </div>
-            </div>
-          </div>
-        `;
-      });
-    }
-
-    html += `
-      <div class="module-row-container" style="background: #1e293b; padding: 12px; margin-bottom: 12px; border-radius: 6px; border: 1px solid #334155;">
-        <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
-          <input type="text" value="${escapeHtml(mod.label || '')}" onchange="editingModules[${modIdx}].label = this.value" placeholder="MOD 01" style="width: 90px;">
-          <input type="text" value="${escapeHtml(mod.title || '')}" onchange="editingModules[${modIdx}].title = this.value" placeholder="Module Title" style="flex: 1;">
-          
-          <div style="display: flex; align-items: center; gap: 4px;">
-            <label style="font-size: 0.72rem; color: #94a3b8; font-weight: 600; text-transform: uppercase;">Total Lectures:</label>
-            <input 
-              type="number" 
-              class="input-module-lectures" 
-              min="${topicSum}" 
-              value="${effectiveModLectures}" 
-              onchange="handleModuleLecturesInputChange(${modIdx}, this)" 
-              style="width: 65px;"
-              title="Total Module Lectures (Min: ${topicSum} based on topics)"
-            />
-          </div>
-
-          <button type="button" class="btn btn-cancel btn-sm" onclick="removeModuleRow(${modIdx})" title="Delete Module">&times;</button>
-        </div>
-
-        <div style="margin-top: 10px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <span style="font-size: 0.75rem; font-weight: 600; color: #94a3b8; text-transform: uppercase;">Topics (${(mod.topics || []).length})</span>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="addTopicRow(${modIdx})" style="font-size: 0.7rem;">+ Add Topic</button>
-          </div>
-          ${topicsHtml || '<p style="font-size: 0.8rem; color: #64748b; margin-bottom: 8px;">No topics defined for this module.</p>'}
-        </div>
+  return `
+    <div class="module-row-container exam-row" data-mod-idx="${modIdx}">
+      <div class="row-line">
+        <span class="row-kind kind-exam">Assessment</span>
+        <input type="text" class="input-eval-label" value="${escapeHtml(mod.label || '')}" placeholder="Category (e.g. Quiz)" title="Category — assessments with the same category are grouped in the outline" style="width: 130px;">
+        <input type="text" class="input-eval-title" value="${escapeHtml(mod.title || '')}" placeholder="Title" style="flex: 1; min-width: 140px;">
+        <label class="inline-field">Weight %
+          <input type="number" class="input-eval-weight" step="0.5" min="0" value="${mod.weightPercent ?? 0}" style="width: 70px;">
+        </label>
+        <button type="button" class="btn btn-cancel btn-sm" onclick="removeModuleRow(${modIdx})" title="Delete assessment">&times;</button>
       </div>
-    `;
+      <div class="row-line">
+        <label class="inline-field">
+          <input type="checkbox" class="input-eval-takehome" ${mod.isTakeHome ? 'checked' : ''} onchange="syncModulesFromDOM(); renderModulesList();">
+          Take-home (doesn't use class time)
+        </label>
+        ${mod.isTakeHome ? '' : `
+        <label class="inline-field">Classes used
+          <input type="number" class="input-eval-classes" min="1" step="1" value="${S().examClasses(mod)}" style="width: 60px;">
+        </label>`}
+        <label class="inline-field grow">"Scheduled" text
+          <input type="text" class="input-eval-when" value="${escapeHtml(mod.scheduleNote || '')}" placeholder="Leave blank to use the computed week (e.g. October 21, TBD)">
+        </label>
+        <span class="sched-badge" data-mod="${escapeHtml(mod.id)}"></span>
+      </div>
+      <div class="row-line">
+        <span class="field-caption">Covers</span>
+        <div class="chip-check-group">${boxes || '<span class="empty-note">Add teaching modules to map scope.</span>'}</div>
+      </div>
+      <div class="row-line">
+        <label class="inline-field grow">Scope text (optional)
+          <input type="text" class="input-eval-scope" value="${escapeHtml(mod.scopeNote || '')}" placeholder="Overrides the auto-generated scope line in the outline">
+        </label>
+      </div>
+    </div>`;
+}
+
+function labRowHtml(mod, modIdx) {
+  const labs = mod.labs || [];
+  const items = labs.map((lab, labIdx) => `
+    <div class="lab-item-row">
+      <input type="text" value="${escapeHtml(lab.title || '')}" onchange="editingModules[${modIdx}].labs[${labIdx}].title = this.value" placeholder="Lab title" style="flex: 1;">
+      <label class="inline-field">Hours
+        <input type="number" step="0.5" min="0" value="${lab.hours ?? 3}" onchange="editingModules[${modIdx}].labs[${labIdx}].hours = parseFloat(this.value) || 0; refreshBudget();" style="width: 60px;">
+      </label>
+      <label class="inline-field">Weight %
+        <input type="number" step="0.25" min="0" value="${lab.weightPercent ?? 0}" onchange="editingModules[${modIdx}].labs[${labIdx}].weightPercent = parseFloat(this.value) || 0; refreshLabWeightSumIndicator(${modIdx}); refreshBudget();" style="width: 70px;">
+      </label>
+      <button type="button" class="btn btn-cancel btn-sm" onclick="removeLabItem(${modIdx}, ${labIdx})" title="Delete lab">&times;</button>
+    </div>`).join('');
+
+  return `
+    <div class="module-row-container lab-row" data-mod-idx="${modIdx}">
+      <div class="row-line">
+        <span class="row-kind kind-lab">Labs</span>
+        <input type="text" class="input-lab-label" value="${escapeHtml(mod.label || 'LABS')}" placeholder="Category" style="width: 110px;">
+        <input type="text" class="input-lab-title" value="${escapeHtml(mod.title || '')}" placeholder="Lab section title" style="flex: 1;">
+        <label class="inline-field">Section weight %
+          <input type="number" step="0.5" value="${mod.weightPercent ?? 0}" onchange="editingModules[${modIdx}].weightPercent = parseFloat(this.value) || 0; refreshLabWeightSumIndicator(${modIdx});" style="width: 70px;">
+        </label>
+        <button type="button" class="btn btn-cancel btn-sm" onclick="removeModuleRow(${modIdx})" title="Delete lab section">&times;</button>
+      </div>
+      <div class="row-line">
+        <span id="labWeightSumIndicator-${modIdx}" class="field-caption"></span>
+        <span style="flex:1"></span>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="equalizeLabWeights(${modIdx})">Equalize weights</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="addLabItem(${modIdx})">+ Add experiment</button>
+      </div>
+      ${items || '<p class="empty-note">No experiments yet.</p>'}
+    </div>`;
+}
+
+function moduleRowHtml(mod, modIdx) {
+  const topicSum = S().topicsHours(mod);
+  const total = Math.max(S().moduleHours(mod), topicSum);
+  mod.lectureCount = mod.lectures = total;
+
+  const topics = (mod.topics || []).map((topic, tIdx) => {
+    if (typeof topic !== 'object' || topic === null) {
+      topic = { title: typeof topic === 'string' ? topic : '', description: '', lectureCount: 1, learningObjectives: [], textbookQuestions: [] };
+      mod.topics[tIdx] = topic;
+    }
+    const objs = Array.isArray(topic.learningObjectives) ? topic.learningObjectives : [];
+    const qs = Array.isArray(topic.textbookQuestions) ? topic.textbookQuestions : [];
+    return `
+      <div class="topic-editor-card">
+        <button type="button" class="btn btn-cancel btn-sm topic-remove" onclick="removeTopicRow(${modIdx}, ${tIdx})" title="Delete topic">&times;</button>
+        <div class="row-line">
+          <label class="stack-field grow">Topic title
+            <input type="text" class="input-topic-title" value="${escapeHtml(topic.title || '')}" placeholder="e.g. First Law of Thermodynamics">
+          </label>
+          <label class="stack-field" style="width: 96px;" title="In lecture hours: 1 = one 50-minute lecture. Fractions like 1.5 or 0.5 are fine.">Lecture hrs
+            <input type="number" class="input-topic-lectures" min="0.25" step="0.25" value="${S().topicHours(topic)}">
+          </label>
+          <span class="sched-badge topic-badge" data-key="${escapeHtml(mod.id)}::${tIdx}"></span>
+        </div>
+        <label class="stack-field">Description
+          <textarea class="input-topic-desc" rows="2" placeholder="Brief overview of the topic">${escapeHtml(topic.description || '')}</textarea>
+        </label>
+        <div class="nested-block">
+          <div class="nested-head"><span class="nested-title obj">Learning objectives</span>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="addTopicObjective(${modIdx}, ${tIdx})">+ Add</button></div>
+          ${objs.map((o, oIdx) => `
+            <div class="nested-item-row">
+              <input type="text" class="input-topic-obj" value="${escapeHtml(o || '')}" placeholder="Objective" style="flex: 1;">
+              <button type="button" class="btn btn-cancel btn-sm" onclick="removeTopicObjective(${modIdx}, ${tIdx}, ${oIdx})">&times;</button>
+            </div>`).join('')}
+        </div>
+        <div class="nested-block">
+          <div class="nested-head"><span class="nested-title q">Recommended questions &amp; resources</span>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="addTopicQuestion(${modIdx}, ${tIdx})">+ Add</button></div>
+          ${qs.map((q, qIdx) => `
+            <div class="nested-item-row">
+              <input type="text" class="input-topic-quest" value="${escapeHtml(q || '')}" placeholder="e.g. Ch. 5, #12, #18" style="flex: 1;">
+              <button type="button" class="btn btn-cancel btn-sm" onclick="removeTopicQuestion(${modIdx}, ${tIdx}, ${qIdx})">&times;</button>
+            </div>`).join('')}
+        </div>
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="module-row-container ${mod.timePermitting ? 'is-time-permitting' : ''}" data-mod-idx="${modIdx}">
+      <div class="row-line">
+        <input type="text" class="input-module-label" value="${escapeHtml(mod.label || '')}" placeholder="Module 1" style="width: 100px;">
+        <input type="text" class="input-module-title" value="${escapeHtml(mod.title || '')}" placeholder="Module title" style="flex: 1;">
+        <label class="inline-field" title="Anything above the sum of the topics becomes unassigned class time for this module.">Total lecture hrs
+          <input type="number" class="input-module-lectures" min="${topicSum}" step="0.25" value="${total}" style="width: 72px;">
+        </label>
+        <button type="button" class="btn btn-cancel btn-sm" onclick="removeModuleRow(${modIdx})" title="Delete module">&times;</button>
+      </div>
+      <div class="row-line">
+        <label class="inline-field" title="Scheduled after all required content, in whatever class time is left. Never counted as over budget.">
+          <input type="checkbox" class="input-module-tp" ${mod.timePermitting ? 'checked' : ''}> Time permitting
+        </label>
+        <label class="inline-field" title="If the previous topic ends part-way through a class, the rest of that class is left as catch-up time.">
+          <input type="checkbox" class="input-module-fresh" ${mod.startsFreshClass ? 'checked' : ''}> Start in a fresh class
+        </label>
+        <span style="flex:1"></span>
+        <span class="sched-badge" data-mod="${escapeHtml(mod.id)}"></span>
+      </div>
+      <div class="row-line">
+        <span class="field-caption">Topics (${(mod.topics || []).length})</span>
+        <span style="flex:1"></span>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="addTopicRow(${modIdx})">+ Add topic</button>
+      </div>
+      ${topics || '<p class="empty-note">No topics yet.</p>'}
+    </div>`;
+}
+
+// Live updates without re-rendering (keeps focus while typing)
+(function wireModuleListEvents() {
+  const list = document.getElementById('moduleList');
+  if (!list) return;
+  let t = null;
+  const kick = () => { clearTimeout(t); t = setTimeout(() => { syncModulesFromDOM(); refreshBudget(); }, 150); };
+  list.addEventListener('input', kick);
+  list.addEventListener('change', kick);
+})();
+
+// ------------------------------------------------------------
+// Time budget + checks
+// ------------------------------------------------------------
+function draftCourse() {
+  return {
+    ...currentCourse,
+    id: courseIdValue(),
+    schedule: readScheduleFromForm(),
+    noFinalExam: !!editingOutline.noFinalExam,
+    modules: editingModules,
+  };
+}
+
+function refreshBudget() {
+  const panel = document.getElementById('budgetPanel');
+  if (!panel || !currentCourse || !window.Scheduler) return;
+
+  const course = draftCourse();
+  const r = S().build(course);
+  const ws = S().weightSummary(course);
+  const cap = r.capacityHours;
+  const req = r.requiredHours;
+  const opt = r.optionalHours;
+  const scale = Math.max(cap, req + opt, 1);
+  const pct = (h) => `${(h / scale) * 100}%`;
+  const fitReq = Math.min(req, cap);
+  const overReq = Math.max(0, req - cap);
+  const optFit = Math.max(0, Math.min(opt, cap - req));
+  const optOut = Math.max(0, opt - optFit);
+
+  let status;
+  const gap = r.catchUpHours > 0 ? ` (${fmtH(r.catchUpHours)} h of class time is left as catch-up where a topic ends mid-class before an exam or fresh start)` : '';
+  if (r.isOver) status = `<span class="bad">${fmtH(r.overByHours)} h doesn't fit</span>${gap}.`;
+  else if (r.unreachedOptional.length) status = `<span class="ok">Required content fits.</span> Some time-permitting material won't be reached.`;
+  else status = `<span class="ok">Everything fits</span> with ${fmtH(Math.max(0, cap - req - opt))} h to spare.`;
+
+  const checks = [];
+  if (ws.isOver) checks.push(`<li class="bad">Assessment weights add up to ${fmtH(ws.defined)}% — over 100%.</li>`);
+  editingModules.forEach((m) => {
+    if (m.isExam && !(m.coveredModuleIds || []).length && !m.scopeNote && (parseFloat(m.weightPercent) || 0) > 0) {
+      checks.push(`<li>"${escapeHtml(m.title || m.label)}" is worth ${fmtH(m.weightPercent)}% but covers no modules.</li>`);
+    }
+    if (!m.isExam && !m.isLab) {
+      (m.topics || []).forEach((t) => {
+        const objs = (t.learningObjectives || []).map((o) => String(o).trim().toLowerCase()).filter(Boolean);
+        const dup = objs.find((o, i) => objs.indexOf(o) !== i);
+        if (dup) checks.push(`<li>"${escapeHtml(t.title)}" lists the same learning objective twice.</li>`);
+      });
+    }
   });
 
-  container.innerHTML = html;
+  panel.innerHTML = `
+    <div class="budget-head">
+      <strong>Class time</strong>
+      <span>${fmtH(req)} h required${opt ? ` + ${fmtH(opt)} h time permitting` : ''} of ${fmtH(cap)} h available · ${status}</span>
+    </div>
+    <div class="budget-bar" role="img" aria-label="${fmtH(req + opt)} of ${fmtH(cap)} lecture hours used">
+      <span class="seg fit" style="width:${pct(fitReq)}"></span>
+      <span class="seg opt" style="width:${pct(optFit)}"></span>
+      <span class="seg free" style="width:${pct(Math.max(0, cap - fitReq - optFit))}"></span>
+      <span class="seg over" style="width:${pct(overReq)}"></span>
+      <span class="seg opt-out" style="width:${pct(optOut)}"></span>
+      <span class="cap-mark" style="left:${pct(cap)}"></span>
+    </div>
+    <div class="budget-weights ${ws.isOver ? 'bad' : ''}">
+      Grades: assessments ${fmtH(ws.assessments)}% + labs ${fmtH(ws.labs)}% = ${fmtH(ws.defined)}%
+      ${ws.hasFinal ? `→ final exam ${fmtH(ws.finalExam)}%` : '(no final exam)'}
+    </div>
+    ${checks.length ? `<ul class="budget-checks">${checks.join('')}</ul>` : ''}`;
 
-  editingModules.forEach((mod, modIdx) => {
-    if (mod.isLab) refreshLabWeightSumIndicator(modIdx);
+  // Per-topic / per-module / per-assessment badges
+  document.querySelectorAll('#moduleList .sched-badge').forEach((el) => {
+    el.className = el.className.replace(/\bst-\S+/g, '').trim();
+    let text = '';
+    let cls = '';
+    if (el.dataset.key) {
+      const st = r.topicStatus[el.dataset.key];
+      if (st) ({ text, cls } = badgeFor(st));
+    } else if (el.dataset.mod) {
+      const id = el.dataset.mod;
+      const mod = editingModules.find((m) => m.id === id);
+      if (mod && mod.isExam) {
+        const wk = r.assessmentWeek[id];
+        if (wk) { text = `Week ${wk}`; cls = 'st-ok'; }
+        else if (!mod.isTakeHome) { text = "Doesn't fit in term"; cls = 'st-overflow'; }
+      } else {
+        const ms = r.moduleStatus[id];
+        const map = { overflow: ["Doesn't fit", 'st-overflow'], partial: ['Runs past term', 'st-partial'], 'optional-unreached': ['Not reached', 'st-optional'], 'optional-partial': ['Partly reached', 'st-optional'] };
+        if (map[ms]) [text, cls] = map[ms];
+      }
+    }
+    el.textContent = text;
+    if (cls) el.classList.add(cls);
+    el.closest('.topic-editor-card')?.classList.toggle('is-overflow', cls === 'st-overflow' || cls === 'st-partial');
   });
 }
 
+function badgeFor(st) {
+  if (st.status === 'ok') {
+    return { text: st.startWeek === st.endWeek ? `Wk ${st.startWeek}` : `Wk ${st.startWeek}–${st.endWeek}`, cls: 'st-ok' };
+  }
+  if (st.status === 'partial') return { text: `${fmtH(st.overHours)} h past term`, cls: 'st-partial' };
+  if (st.status === 'overflow') return { text: "Doesn't fit", cls: 'st-overflow' };
+  if (st.status === 'optional-partial') return { text: 'Partly reached', cls: 'st-optional' };
+  return { text: 'Not reached', cls: 'st-optional' };
+}
+
+// ------------------------------------------------------------
+// Add / remove rows
+// ------------------------------------------------------------
 function addModuleRow() {
   syncModulesFromDOM();
-  const courseIdEl = document.getElementById('courseId');
-  const courseId = (courseIdEl && courseIdEl.value) ? courseIdEl.value : 'course';
-  
+  const n = editingModules.filter((m) => !m.isExam && !m.isLab).length + 1;
   editingModules.push({
-    id: `${courseId}-m${editingModules.length + 1}`,
-    label: `MOD 0${editingModules.length + 1}`,
-    title: 'New Module',
-    lectureCount: 3,
-    lectures: 3,
-    topics: [],
-    isExam: false,
-    isLab: false
+    id: uniqueId(`${courseIdValue()}-m`), label: `Module ${n}`, title: 'New Module',
+    lectureCount: 1, lectures: 1, topics: [], isExam: false, isLab: false,
   });
   renderModulesList();
   renderConnectionsList();
@@ -595,20 +600,10 @@ function addModuleRow() {
 
 function addEvaluationRow() {
   syncModulesFromDOM();
-  const courseIdEl = document.getElementById('courseId');
-  const courseId = (courseIdEl && courseIdEl.value) ? courseIdEl.value : 'course';
-  
   editingModules.push({
-    id: `${courseId}-eval-${editingModules.length + 1}`,
-    label: `EVALUATION`,
-    title: 'Course Evaluation',
-    lectureCount: 1,
-    lectures: 1,
-    weightPercent: 20,
-    isExam: true,
-    isLab: false,
-    isTakeHome: false,
-    coveredModuleIds: []
+    id: uniqueId(`${courseIdValue()}-eval`), label: 'Quiz', title: 'New Assessment',
+    lectureCount: 1, lectures: 1, weightPercent: 0,
+    isExam: true, isLab: false, isTakeHome: false, coveredModuleIds: [],
   });
   renderModulesList();
   renderConnectionsList();
@@ -616,22 +611,10 @@ function addEvaluationRow() {
 
 function addLabRow() {
   syncModulesFromDOM();
-  const courseIdEl = document.getElementById('courseId');
-  const courseId = (courseIdEl && courseIdEl.value) ? courseIdEl.value : 'course';
-
   editingModules.push({
-    id: `${courseId}-labs`,
-    label: `LABS`,
-    title: 'Laboratory Component',
-    isLab: true,
-    isExam: false,
-    weightPercent: 20,
-    labs: [
-      { title: 'Lab 1: Safety & Techniques', hours: 3, weightPercent: 5 },
-      { title: 'Lab 2: Gravimetric Analysis', hours: 3, weightPercent: 5 },
-      { title: 'Lab 3: Titration Practice', hours: 3, weightPercent: 5 },
-      { title: 'Lab 4: Spectroscopy', hours: 3, weightPercent: 5 }
-    ]
+    id: uniqueId(`${courseIdValue()}-labs`), label: 'LABS', title: 'Laboratory Component',
+    isLab: true, isExam: false, weightPercent: 20,
+    labs: [1, 2, 3, 4].map((i) => ({ title: `Lab ${i}`, hours: 3, weightPercent: 5 })),
   });
   renderModulesList();
   renderConnectionsList();
@@ -639,12 +622,9 @@ function addLabRow() {
 
 function addLabItem(modIdx) {
   syncModulesFromDOM();
-  if (!editingModules[modIdx].labs) editingModules[modIdx].labs = [];
-  editingModules[modIdx].labs.push({
-    title: `Lab ${editingModules[modIdx].labs.length + 1}`,
-    hours: 3,
-    weightPercent: 0
-  });
+  const m = editingModules[modIdx];
+  m.labs = m.labs || [];
+  m.labs.push({ title: `Lab ${m.labs.length + 1}`, hours: 3, weightPercent: 0 });
   renderModulesList();
 }
 
@@ -656,93 +636,58 @@ function removeLabItem(modIdx, labIdx) {
 
 function equalizeLabWeights(modIdx) {
   syncModulesFromDOM();
-  const labs = editingModules[modIdx].labs || [];
-  if (labs.length === 0) return;
-
-  const total = editingModules[modIdx].weightPercent || 20;
-  const equalWeight = parseFloat((total / labs.length).toFixed(2));
-
-  labs.forEach(lab => {
-    lab.weightPercent = equalWeight;
-  });
-
+  const m = editingModules[modIdx];
+  const labs = m.labs || [];
+  if (!labs.length) return;
+  const each = Math.round(((parseFloat(m.weightPercent) || 0) / labs.length) * 100) / 100;
+  labs.forEach((l) => { l.weightPercent = each; });
   renderModulesList();
 }
 
 function refreshLabWeightSumIndicator(modIdx) {
   const mod = editingModules[modIdx];
-  if (!mod) return;
-
+  const el = document.getElementById(`labWeightSumIndicator-${modIdx}`);
+  if (!mod || !el) return;
   const labs = mod.labs || [];
   const target = parseFloat(mod.weightPercent) || 0;
-  const el = document.getElementById(`labWeightSumIndicator-${modIdx}`);
-  if (!el) return;
-
-  if (labs.length === 0) {
-    el.textContent = '(no experiments defined yet — section weight still applies)';
-    el.style.color = '#94a3b8';
-    return;
-  }
-
-  const sum = parseFloat(labs.reduce((total, l) => total + (parseFloat(l.weightPercent) || 0), 0).toFixed(2));
-  const diff = parseFloat((target - sum).toFixed(2));
-
-  if (Math.abs(diff) < 0.01) {
-    el.textContent = `(experiments sum to ${sum}% ✓)`;
-    el.style.color = '#4ade80';
-  } else if (diff > 0) {
-    el.textContent = `(experiments sum to ${sum}% — ${diff}% unassigned)`;
-    el.style.color = '#fbbf24';
-  } else {
-    el.textContent = `(experiments sum to ${sum}% — ${Math.abs(diff)}% over)`;
-    el.style.color = '#f87171';
-  }
+  if (!labs.length) { el.textContent = 'No experiments yet — section weight still applies.'; el.style.color = ''; return; }
+  const sum = Math.round(labs.reduce((t, l) => t + (parseFloat(l.weightPercent) || 0), 0) * 100) / 100;
+  const diff = Math.round((target - sum) * 100) / 100;
+  if (Math.abs(diff) < 0.01) { el.textContent = `Experiments sum to ${sum}% ✓`; el.style.color = '#4ade80'; }
+  else if (diff > 0) { el.textContent = `Experiments sum to ${sum}% — ${diff}% unassigned`; el.style.color = '#fbbf24'; }
+  else { el.textContent = `Experiments sum to ${sum}% — ${Math.abs(diff)}% over`; el.style.color = '#f87171'; }
 }
 
 function toggleMidtermModule(midtermIdx, moduleId, isChecked) {
-  if (!editingModules[midtermIdx].coveredModuleIds) {
-    editingModules[midtermIdx].coveredModuleIds = [];
-  }
-  const set = new Set(editingModules[midtermIdx].coveredModuleIds);
-  if (isChecked) {
-    set.add(moduleId);
-  } else {
-    set.delete(moduleId);
-  }
-  editingModules[midtermIdx].coveredModuleIds = Array.from(set);
+  const m = editingModules[midtermIdx];
+  const set = new Set(m.coveredModuleIds || []);
+  if (isChecked) set.add(moduleId); else set.delete(moduleId);
+  // keep course order
+  m.coveredModuleIds = editingModules.map((x) => x.id).filter((id) => set.has(id));
+  refreshBudget();
 }
 
 function removeModuleRow(index) {
   syncModulesFromDOM();
-  editingModules.splice(index, 1);
+  const removed = editingModules.splice(index, 1)[0];
+  if (removed) {
+    editingConnections = editingConnections.filter((c) => c.from !== removed.id && c.to !== removed.id);
+    editingModules.forEach((m) => {
+      if (m.coveredModuleIds) m.coveredModuleIds = m.coveredModuleIds.filter((id) => id !== removed.id);
+    });
+  }
   renderModulesList();
   renderConnectionsList();
 }
 
 function addTopicRow(modIndex) {
   syncModulesFromDOM();
-
   const mod = editingModules[modIndex];
   if (!mod) return;
-
-  if (!mod.topics) mod.topics = [];
-
-  const existingLectures = getModuleLectureCount(mod);
-
-  mod.topics.push({
-    title: '',
-    description: '',
-    lectureCount: 1,
-    learningObjectives: [],
-    textbookQuestions: []
-  });
-
-  const topicSum = getModuleTopicsSum(mod);
-  const finalLectures = Math.max(existingLectures, topicSum, 1);
-
-  mod.lectureCount = finalLectures;
-  mod.lectures = finalLectures;
-
+  mod.topics = mod.topics || [];
+  mod.topics.push({ title: '', description: '', lectureCount: 1, learningObjectives: [], textbookQuestions: [] });
+  const sum = S().topicsHours(mod);
+  mod.lectureCount = mod.lectures = Math.max(parseFloat(mod.lectureCount) || 0, sum);
   renderModulesList();
 }
 
@@ -754,231 +699,262 @@ function removeTopicRow(modIndex, topicIndex) {
 
 function addTopicObjective(modIdx, topicIdx) {
   syncModulesFromDOM();
-  const topic = editingModules[modIdx].topics[topicIdx];
-  if (topic) {
-    if (!Array.isArray(topic.learningObjectives)) topic.learningObjectives = [];
-    topic.learningObjectives.push('');
-    renderModulesList();
-  }
+  const t = editingModules[modIdx].topics[topicIdx];
+  if (!t) return;
+  t.learningObjectives = t.learningObjectives || [];
+  t.learningObjectives.push('');
+  renderModulesList();
 }
 
 function removeTopicObjective(modIdx, topicIdx, objIdx) {
   syncModulesFromDOM();
-  const topic = editingModules[modIdx].topics[topicIdx];
-  if (topic && topic.learningObjectives) {
-    topic.learningObjectives.splice(objIdx, 1);
-    renderModulesList();
-  }
+  const t = editingModules[modIdx].topics[topicIdx];
+  if (t && t.learningObjectives) { t.learningObjectives.splice(objIdx, 1); renderModulesList(); }
 }
 
 function addTopicQuestion(modIdx, topicIdx) {
   syncModulesFromDOM();
-  const topic = editingModules[modIdx].topics[topicIdx];
-  if (topic) {
-    if (!Array.isArray(topic.textbookQuestions)) topic.textbookQuestions = [];
-    topic.textbookQuestions.push('');
-    renderModulesList();
-  }
+  const t = editingModules[modIdx].topics[topicIdx];
+  if (!t) return;
+  t.textbookQuestions = t.textbookQuestions || [];
+  t.textbookQuestions.push('');
+  renderModulesList();
 }
 
 function removeTopicQuestion(modIdx, topicIdx, qIdx) {
   syncModulesFromDOM();
-  const topic = editingModules[modIdx].topics[topicIdx];
-  if (topic && topic.textbookQuestions) {
-    topic.textbookQuestions.splice(qIdx, 1);
-    renderModulesList();
-  }
+  const t = editingModules[modIdx].topics[topicIdx];
+  if (t && t.textbookQuestions) { t.textbookQuestions.splice(qIdx, 1); renderModulesList(); }
 }
 
-/* ============================================================
-   DYNAMIC CONNECTIONS EDITOR
-   Populates "From" and "To" dropdowns with actual course/module titles.
-   ============================================================ */
+// ------------------------------------------------------------
+// Outline & Policies tab
+// ------------------------------------------------------------
+const OUTLINE_FIELDS = [
+  { group: 'Header & instructor', hint: 'Blank fields use the defaults from ⚙️ Settings.' },
+  { key: 'term', label: 'Term (page header)', half: true, def: 'term', ph: 'e.g. Fall 2026' },
+  { key: 'version', label: 'Version (page header)', half: true, def: 'version', ph: 'e.g. V1.0' },
+  { key: 'instructor.name', label: 'Instructor name', half: true, def: 'instructorName' },
+  { key: 'instructor.email', label: 'Instructor email', half: true, def: 'instructorEmail' },
+  { key: 'instructor.office', label: 'Office location', half: true, def: 'instructorOffice' },
+  { key: 'credits', label: 'Credit hours (optional)', half: true },
+  { key: 'instructor.officeHours', label: 'Availability / consultation hours', rows: 2, def: 'officeHours' },
+  { key: 'prerequisites', label: 'Required prerequisites', rows: 2, ph: 'None' },
+  { key: 'corequisites', label: 'Required co-requisites', half: true, ph: 'None' },
+  { key: 'software', label: 'Required software / tools', half: true },
+  { key: 'otherResources', label: 'Other resources (section 1)', rows: 2 },
+  { group: 'Sections 5 and 7' },
+  { key: 'labInfo', label: 'Section 5: Laboratory information & safety', rows: 2, ph: 'This information will be provided by your laboratory instructor.' },
+  { key: 'additionalInfo', label: 'Section 7: Additional course information', rows: 4 },
+  { group: 'Policy overrides', hint: 'Only fill these in if this course differs from the department default.' },
+  { key: 'gradingSystem', label: 'Section 3.2: Grading system', rows: 2, def: 'gradingSystem' },
+  { key: 'missedWorkPolicy', label: 'Section 3.3: Alternate evaluation & missed work', rows: 3, def: 'missedWorkPolicy' },
+  { key: 'aiPolicy', label: 'Section 6: Assistive tools & generative AI', rows: 3, def: 'aiPolicy' },
+  { key: 'academicIntegrity', label: 'Section 8.1: Academic integrity', rows: 3, def: 'academicIntegrity' },
+  { key: 'accommodations', label: 'Section 8.2: Student accommodations', rows: 3, def: 'accommodations' },
+  { key: 'privacyAtipp', label: 'Section 8.3: Student privacy & ATIPP', rows: 3, def: 'privacyAtipp' },
+];
+
+const getPath = (o, p) => p.split('.').reduce((a, k) => (a && typeof a === 'object' ? a[k] : undefined), o);
+function setPath(o, p, v) {
+  const keys = p.split('.');
+  let cur = o;
+  keys.slice(0, -1).forEach((k) => { if (!cur[k] || typeof cur[k] !== 'object') cur[k] = {}; cur = cur[k]; });
+  cur[keys[keys.length - 1]] = v;
+}
+
+function extractOutline(course) {
+  const o = {};
+  OUTLINE_FIELDS.forEach((f) => {
+    if (!f.key) return;
+    let v = getPath(course, f.key);
+    if (f.key === 'instructor.name' && typeof course.instructor === 'string') v = course.instructor;
+    if (f.key === 'missedWorkPolicy' && !v) v = course.alternateEvaluationPolicy;
+    if (f.key === 'prerequisites' && !v) v = course.prereqs;
+    if (f.key === 'corequisites' && !v) v = course.coreqs;
+    if (f.key === 'labInfo' && v && typeof v === 'object') v = [v.schedule, v.location, v.safety, v.description].filter(Boolean).join('\n');
+    setPath(o, f.key, v === undefined || v === null ? '' : String(v));
+  });
+  o.assessmentNotes = { ...(course.assessmentNotes || {}) };
+  o.noFinalExam = !!course.noFinalExam;
+  return o;
+}
+
+function renderOutlineTab() {
+  const host = document.getElementById('tab-outline');
+  if (!host || !currentCourse) return;
+  const g = typeof window.getGlobalSettings === 'function' ? window.getGlobalSettings() : {};
+
+  const fieldHtml = OUTLINE_FIELDS.map((f) => {
+    if (f.group) return `<h3 class="outline-group full-width">${f.group}${f.hint ? `<small>${f.hint}</small>` : ''}</h3>`;
+    const val = getPath(editingOutline, f.key) || '';
+    const defText = f.def && g[f.def] ? `Default: ${g[f.def]}` : (f.ph || '');
+    const ph = escapeHtml(defText.length > 140 ? defText.slice(0, 137) + '…' : defText);
+    const id = `outline-${f.key.replace('.', '-')}`;
+    const control = f.rows
+      ? `<textarea id="${id}" data-key="${f.key}" rows="${f.rows}" placeholder="${ph}">${escapeHtml(val)}</textarea>`
+      : `<input type="text" id="${id}" data-key="${f.key}" value="${escapeHtml(val)}" placeholder="${ph}">`;
+    return `<div class="form-group ${f.half ? '' : 'full-width'}"><label for="${id}">${f.label}</label>${control}</div>`;
+  }).join('');
+
+  // Assessment category descriptions — one per distinct category label
+  const labels = [];
+  editingModules.forEach((m) => {
+    if (!(m.isExam || m.isLab)) return;
+    const l = (m.label || (m.isLab ? 'Laboratory' : 'Assessment')).trim();
+    if (!labels.includes(l)) labels.push(l);
+  });
+  if (!editingOutline.noFinalExam) labels.push('Final Examination');
+  const notesHtml = labels.map((l) => `
+    <div class="form-group full-width">
+      <label>${escapeHtml(l)}</label>
+      <textarea data-note="${escapeHtml(l)}" rows="2" placeholder="Optional paragraph shown under this category in 3.1">${escapeHtml(editingOutline.assessmentNotes[l] || '')}</textarea>
+    </div>`).join('');
+
+  host.innerHTML = `
+    <div class="form-grid outline-grid">
+      ${fieldHtml}
+      <h3 class="outline-group full-width">Section 3.1 category descriptions<small>Categories come from the assessment and lab labels on the Modules tab.</small></h3>
+      <div class="form-group full-width">
+        <label class="inline-field"><input type="checkbox" id="outline-noFinal" ${editingOutline.noFinalExam ? 'checked' : ''}> This course has no final exam</label>
+      </div>
+      ${notesHtml || '<p class="empty-note full-width">Add assessments on the Modules tab to describe them here.</p>'}
+    </div>`;
+
+  host.querySelectorAll('[data-key]').forEach((el) => {
+    el.addEventListener('input', () => setPath(editingOutline, el.dataset.key, el.value));
+  });
+  host.querySelectorAll('[data-note]').forEach((el) => {
+    el.addEventListener('input', () => { editingOutline.assessmentNotes[el.dataset.note] = el.value; });
+  });
+  host.querySelector('#outline-noFinal')?.addEventListener('change', (e) => {
+    editingOutline.noFinalExam = e.target.checked;
+    renderOutlineTab();
+  });
+}
+
+function applyOutline(course) {
+  OUTLINE_FIELDS.forEach((f) => {
+    if (!f.key) return;
+    const v = String(getPath(editingOutline, f.key) || '').trim();
+    if (f.key.startsWith('instructor.')) {
+      if (typeof course.instructor !== 'object' || course.instructor === null) course.instructor = {};
+      const k = f.key.split('.')[1];
+      if (v) course.instructor[k] = v; else delete course.instructor[k];
+    } else if (v) {
+      course[f.key] = v;
+    } else {
+      delete course[f.key];
+    }
+  });
+  if (course.instructor && !Object.keys(course.instructor).length) delete course.instructor;
+  // legacy aliases the old exporter used
+  ['alternateEvaluationPolicy', 'prereqs', 'coreqs', 'lab'].forEach((k) => delete course[k]);
+
+  const notes = {};
+  Object.entries(editingOutline.assessmentNotes || {}).forEach(([k, v]) => { if (String(v).trim()) notes[k] = String(v).trim(); });
+  if (Object.keys(notes).length) course.assessmentNotes = notes; else delete course.assessmentNotes;
+  if (editingOutline.noFinalExam) course.noFinalExam = true; else delete course.noFinalExam;
+}
+
+// ------------------------------------------------------------
+// Connections tab
+// ------------------------------------------------------------
+function courseYearOf(moduleOrCourseId) {
+  const data = window.DATA || {};
+  if (editingModules.some((m) => m.id === moduleOrCourseId)) return parseInt(document.getElementById('courseYear')?.value, 10) || 0;
+  const c = (data.courseByModuleId && data.courseByModuleId[moduleOrCourseId]) || (data.courses || []).find((x) => x.id === moduleOrCourseId);
+  return c ? Number(c.year) || 0 : 0;
+}
+
+/** Earlier year → later year, so "Builds upon / Leads to" reads correctly. */
+function orientConnection(from, to) {
+  return courseYearOf(from) > courseYearOf(to) ? [to, from] : [from, to];
+}
 
 function renderConnectionsList() {
-  const container = document.getElementById('connectionList') || document.getElementById('connectionsContainer');
+  const container = document.getElementById('connectionList');
   const countEl = document.getElementById('connCount');
   if (countEl) countEl.textContent = editingConnections.length;
   if (!container) return;
 
-  const allCourses = (window.DATA && window.DATA.courses) ? window.DATA.courses : [];
-  const moduleById = (window.DATA && window.DATA.moduleById) ? window.DATA.moduleById : {};
-  const currentModuleIds = new Set(editingModules.map((m) => m.id));
+  const allCourses = (window.DATA && window.DATA.courses) || [];
+  const moduleById = (window.DATA && window.DATA.moduleById) || {};
+  const localIds = new Set(editingModules.map((m) => m.id));
 
-  const fromModuleOptions = editingModules.length > 0
-    ? editingModules.map(m => `<option value="${m.id}">${escapeHtml(m.label)}: ${escapeHtml(m.title)}</option>`).join('')
-    : '<option value="">No modules available in this course</option>';
+  const fromOptions = editingModules.filter((m) => !m.isLab).map((m) => `<option value="${m.id}">${escapeHtml(m.label)}: ${escapeHtml(m.title)}</option>`).join('')
+    || '<option value="">No modules in this course yet</option>';
+  const courseOptions = allCourses.filter((c) => c.id !== originalCourseId)
+    .map((c) => `<option value="${c.id}">${escapeHtml(c.code)} — ${escapeHtml(c.name)}</option>`).join('');
 
-  const toCourseOptions = allCourses.length > 0
-    ? allCourses.map(c => `<option value="${c.id}">${escapeHtml(c.code)} - ${escapeHtml(c.name)}</option>`).join('')
-    : '<option value="">No other courses available</option>';
+  const rows = editingConnections.length ? editingConnections.map((conn, idx) => {
+    const fromLocal = localIds.has(conn.from) || conn.from === currentCourse.id;
+    const localId = fromLocal ? conn.from : conn.to;
+    const remoteId = fromLocal ? conn.to : conn.from;
+    const localMod = editingModules.find((m) => m.id === localId) || moduleById[localId];
+    const remoteMod = moduleById[remoteId];
+    const remoteCourse = (window.DATA && window.DATA.courseByModuleId && window.DATA.courseByModuleId[remoteId])
+      || allCourses.find((c) => c.id === remoteId);
+    const dir = courseYearOf(remoteId) < courseYearOf(localId) ? 'Builds upon' : courseYearOf(remoteId) > courseYearOf(localId) ? 'Leads to' : 'Same year';
+    return `
+      <tr>
+        <td>${localMod ? `<strong>${escapeHtml(localMod.label || '')}</strong>: ${escapeHtml(localMod.title || '')}` : escapeHtml(localId)}</td>
+        <td class="conn-dir">${dir}</td>
+        <td><span class="course-pill">${escapeHtml(remoteCourse ? remoteCourse.code : 'Missing')}</span>
+          ${remoteMod ? `<strong>${escapeHtml(remoteMod.label || '')}</strong>: ${escapeHtml(remoteMod.title || '')}` : escapeHtml(remoteId)}</td>
+        <td><span class="badge tier-${conn.level}">${escapeHtml(conn.level)}</span></td>
+        <td style="text-align:right;"><button type="button" class="btn btn-cancel btn-sm" onclick="removeConnectionRow(${idx})" title="Delete connection">&times;</button></td>
+      </tr>`;
+  }).join('') : '<tr><td colspan="5" class="empty-note" style="text-align:center;">No connections for this course yet.</td></tr>';
 
   container.innerHTML = `
-    <div class="connection-editor-box" style="background: #1e293b; padding: 16px; border-radius: 8px; color: #f8fafc;">
-      <div class="add-connection-form" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; background: #0f172a; padding: 12px; border-radius: 6px; margin-bottom: 16px; border: 1px solid #334155;">
-        <div style="flex: 1; min-width: 140px;">
-          <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px; font-weight:600; text-transform:uppercase;">From (This Course):</label>
-          <select id="conn-from-module" class="form-control" style="width:100%; padding:6px; border-radius:4px; background:#1e293b; color:#f8fafc; border:1px solid #334155;">
-            ${fromModuleOptions}
-          </select>
-        </div>
-
-        <div style="font-size:1.2rem; color:#64748b; padding-bottom:4px;">&rarr;</div>
-
-        <div style="flex: 1; min-width: 140px;">
-          <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px; font-weight:600; text-transform:uppercase;">To Course:</label>
-          <select id="conn-to-course" class="form-control" style="width:100%; padding:6px; border-radius:4px; background:#1e293b; color:#f8fafc; border:1px solid #334155;" onchange="handleConnectionCourseChange(this.value)">
-            <option value="">-- Select Target Course --</option>
-            ${toCourseOptions}
-          </select>
-        </div>
-
-        <div style="flex: 1; min-width: 140px;">
-          <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px; font-weight:600; text-transform:uppercase;">To Module:</label>
-          <select id="conn-to-module" class="form-control" style="width:100%; padding:6px; border-radius:4px; background:#1e293b; color:#f8fafc; border:1px solid #334155;" disabled>
-            <option value="">Select course first...</option>
-          </select>
-        </div>
-
-        <div style="width: 110px;">
-          <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px; font-weight:600; text-transform:uppercase;">Type:</label>
-          <select id="conn-level" class="form-control" style="width:100%; padding:6px; border-radius:4px; background:#1e293b; color:#f8fafc; border:1px solid #334155;">
+    <div class="connection-editor-box">
+      <div class="add-connection-form">
+        <label class="stack-field grow">From (this course)
+          <select id="conn-from-module">${fromOptions}</select></label>
+        <label class="stack-field grow">To course
+          <select id="conn-to-course" onchange="handleConnectionCourseChange(this.value)">
+            <option value="">Select a course…</option>${courseOptions}</select></label>
+        <label class="stack-field grow">To module
+          <select id="conn-to-module" disabled><option value="">Select a course first</option></select></label>
+        <label class="stack-field" style="width: 110px;">Type
+          <select id="conn-level">
             <option value="strong">Strong</option>
             <option value="related" selected>Related</option>
             <option value="weak">Weak</option>
-          </select>
-        </div>
-
-        <div>
-          <button type="button" class="btn btn-primary" onclick="addConnectionFromDropdowns()" style="padding: 6px 14px; cursor:pointer;">+ Link</button>
-        </div>
+          </select></label>
+        <button type="button" class="btn btn-primary" onclick="addConnectionFromDropdowns()">Add link</button>
       </div>
-
-      <div class="existing-connections-list">
-        <table style="width:100%; border-collapse: collapse; font-size:0.85rem;">
-          <thead>
-            <tr style="border-bottom: 1px solid #334155; text-align: left; color: #94a3b8;">
-              <th style="padding: 6px;">This Course Module</th>
-              <th style="padding: 6px;">Connected Target</th>
-              <th style="padding: 6px;">Type</th>
-              <th style="padding: 6px; text-align:right;">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${renderConnectionRows(editingConnections, currentModuleIds, moduleById, allCourses)}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  `;
+      <table class="conn-table">
+        <thead><tr><th>This course</th><th></th><th>Connected to</th><th>Type</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
 }
 
-function handleConnectionCourseChange(selectedCourseId) {
-  const toModuleSelect = document.getElementById('conn-to-module');
-  if (!toModuleSelect) return;
-
-  if (!selectedCourseId) {
-    toModuleSelect.innerHTML = '<option value="">Select course first...</option>';
-    toModuleSelect.disabled = true;
-    return;
-  }
-
-  const allCourses = (window.DATA && window.DATA.courses) ? window.DATA.courses : [];
-  const targetCourse = allCourses.find((c) => c.id === selectedCourseId);
-
-  if (!targetCourse || !targetCourse.modules || targetCourse.modules.length === 0) {
-    toModuleSelect.innerHTML = '<option value="">No modules in this course</option>';
-    toModuleSelect.disabled = true;
-    return;
-  }
-
-  toModuleSelect.innerHTML = targetCourse.modules
-    .map((m) => `<option value="${m.id}">${escapeHtml(m.label)}: ${escapeHtml(m.title)}</option>`)
-    .join('');
-  toModuleSelect.disabled = false;
+function handleConnectionCourseChange(courseId) {
+  const sel = document.getElementById('conn-to-module');
+  if (!sel) return;
+  const course = ((window.DATA && window.DATA.courses) || []).find((c) => c.id === courseId);
+  const mods = course ? (course.modules || []).filter((m) => !m.isLab) : [];
+  sel.innerHTML = mods.length
+    ? mods.map((m) => `<option value="${m.id}">${escapeHtml(m.label)}: ${escapeHtml(m.title)}</option>`).join('')
+    : `<option value="">${courseId ? 'No modules in this course' : 'Select a course first'}</option>`;
+  sel.disabled = !mods.length;
 }
 
 function addConnectionFromDropdowns() {
-  const fromModuleId = document.getElementById('conn-from-module')?.value;
-  const toModuleId = document.getElementById('conn-to-module')?.value;
+  const a = document.getElementById('conn-from-module')?.value;
+  const b = document.getElementById('conn-to-module')?.value;
   const level = document.getElementById('conn-level')?.value || 'related';
-
-  if (!fromModuleId || !toModuleId) {
-    alert('Please select both a "From" module and a "To" module.');
+  if (!a || !b) { alert('Choose a module in this course and a module to connect it to.'); return; }
+  if (editingConnections.some((c) => (c.from === a && c.to === b) || (c.from === b && c.to === a))) {
+    alert('These two modules are already connected.');
     return;
   }
-
-  const exists = editingConnections.some(
-    (c) => (c.from === fromModuleId && c.to === toModuleId) ||
-           (c.from === toModuleId && c.to === fromModuleId)
-  );
-
-  if (exists) {
-    alert('A connection already exists between these two items.');
-    return;
-  }
-
-  editingConnections.push({
-    id: `c${Date.now().toString().slice(-4)}`,
-    from: fromModuleId,
-    to: toModuleId,
-    level: level,
-    note: ''
-  });
-
+  const [from, to] = orientConnection(a, b);
+  editingConnections.push({ id: `conn-${Date.now()}`, from, to, level, note: '' });
   renderConnectionsList();
-}
-
-function renderConnectionRows(connections, currentModuleIds, moduleById, allCourses) {
-  if (connections.length === 0) {
-    return `<tr><td colspan="4" style="padding:12px; text-align:center; color:#64748b;">No active connections linked to this course.</td></tr>`;
-  }
-
-  return connections.map((conn, idx) => {
-    const isFromLocal = currentModuleIds.has(conn.from) || conn.from === currentCourse.id;
-    const localModId = isFromLocal ? conn.from : conn.to;
-    const remoteModId = isFromLocal ? conn.to : conn.from;
-
-    let localLabel = localModId;
-    const localMod = editingModules.find((m) => m.id === localModId) || moduleById[localModId];
-    if (localMod) {
-      localLabel = `<strong>${escapeHtml(localMod.label || localMod.id)}</strong>: ${escapeHtml(localMod.title || '')}`;
-    }
-
-    let remoteLabel = remoteModId;
-    let remoteCourseCode = 'Ext';
-    
-    const remoteMod = moduleById[remoteModId];
-    const remoteCourse = (window.DATA && window.DATA.courseByModuleId) ? window.DATA.courseByModuleId[remoteModId] : null;
-
-    if (remoteMod) {
-      remoteLabel = `<strong>${escapeHtml(remoteMod.label || remoteMod.id)}</strong>: ${escapeHtml(remoteMod.title || '')}`;
-    }
-    if (remoteCourse) {
-      remoteCourseCode = remoteCourse.code;
-    } else {
-      const matchedCourse = allCourses.find(c => c.id === remoteModId || (c.modules || []).some(m => m.id === remoteModId));
-      if (matchedCourse) remoteCourseCode = matchedCourse.code;
-    }
-
-    return `
-      <tr style="border-bottom: 1px solid #1e293b;">
-        <td style="padding: 8px; color: #f8fafc;">${localLabel}</td>
-        <td style="padding: 8px; color: #f8fafc;">
-          <span style="background:#334155; color:#cbd5e1; padding:2px 6px; border-radius:3px; font-size:0.75rem; margin-right:4px; border: 1px solid #475569;">
-            ${escapeHtml(remoteCourseCode)}
-          </span>
-          ${remoteLabel}
-        </td>
-        <td style="padding: 8px;">
-          <span class="badge tier-${conn.level}" style="padding: 2px 6px; border-radius: 3px; font-size: 0.75rem; text-transform: capitalize;">${conn.level}</span>
-        </td>
-        <td style="padding: 8px; text-align:right;">
-          <button type="button" class="btn btn-cancel btn-sm" onclick="removeConnectionRow(${idx})" title="Delete Connection">&times;</button>
-        </td>
-      </tr>
-    `;
-  }).join('');
 }
 
 function removeConnectionRow(index) {
@@ -986,137 +962,107 @@ function removeConnectionRow(index) {
   renderConnectionsList();
 }
 
+// ------------------------------------------------------------
+// Save
+// ------------------------------------------------------------
 function saveCourseData() {
   syncModulesFromDOM();
 
-  const yearEl = document.getElementById('courseYear');
-  const rawYear = yearEl ? yearEl.value : '';
+  const rawYear = document.getElementById('courseYear')?.value;
   const yearVal = rawYear !== '' && !isNaN(rawYear) ? parseInt(rawYear, 10) : 1;
 
   const cleanedModules = editingModules.map((mod) => {
     if (mod.isExam) {
-      return {
-        id: mod.id || `eval-${Date.now()}`,
-        label: mod.label || 'EVALUATION',
-        title: mod.title || 'Course Evaluation',
-        lectureCount: parseInt(mod.lectureCount, 10) || 1,
-        lectures: parseInt(mod.lectureCount, 10) || 1,
+      const out = {
+        ...mod,
+        label: mod.label || 'Assessment',
+        title: mod.title || 'Assessment',
+        lectureCount: S().examClasses(mod),
+        lectures: S().examClasses(mod),
         weightPercent: parseFloat(mod.weightPercent) || 0,
-        isExam: true,
-        isLab: false,
+        isExam: true, isLab: false,
         isTakeHome: !!mod.isTakeHome,
-        coveredModuleIds: mod.coveredModuleIds || []
+        coveredModuleIds: mod.coveredModuleIds || [],
       };
+      ['scheduleNote', 'scopeNote'].forEach((k) => { if (!String(out[k] || '').trim()) delete out[k]; });
+      return out;
     }
     if (mod.isLab) {
-      const labs = (mod.labs || []).map(l => ({
+      const labs = (mod.labs || []).map((l) => ({
+        ...l,
         title: l.title || 'Lab Experiment',
-        hours: parseFloat(l.hours) || 3,
-        weightPercent: parseFloat(l.weightPercent) || 0
+        hours: parseFloat(l.hours) >= 0 ? parseFloat(l.hours) : 3,
+        weightPercent: parseFloat(l.weightPercent) || 0,
       }));
-      const totalWeight = labs.reduce((sum, l) => sum + l.weightPercent, 0);
-
+      const sum = labs.reduce((s, l) => s + l.weightPercent, 0);
       return {
-        id: mod.id || `labs-${Date.now()}`,
+        ...mod,
         label: mod.label || 'LABS',
         title: mod.title || 'Laboratory Component',
-        weightPercent: parseFloat(totalWeight.toFixed(2)),
-        isLab: true,
-        isExam: false,
-        labs: labs
+        weightPercent: labs.length ? Math.round(sum * 100) / 100 : (parseFloat(mod.weightPercent) || 0),
+        isLab: true, isExam: false, labs,
       };
     }
-
-    const cleanedTopics = (mod.topics || [])
-      .map((t) => {
-        if (typeof t === 'string') {
-          return { title: t, description: '', lectureCount: 1, learningObjectives: [], textbookQuestions: [] };
-        }
-        return {
+    const topics = (mod.topics || [])
+      .map((t) => (typeof t === 'string'
+        ? { title: t, description: '', lectureCount: 1, learningObjectives: [], textbookQuestions: [] }
+        : {
+          ...t,
           title: t.title || '',
           description: t.description || '',
-          lectureCount: parseInt(t.lectureCount, 10) || 1,
-          learningObjectives: (t.learningObjectives || []).filter((o) => typeof o === 'string' && o.trim() !== ''),
-          textbookQuestions: (t.textbookQuestions || []).filter((q) => typeof q === 'string' && q.trim() !== '')
-        };
-      })
-      .filter((t) => t.title.trim() !== '' || t.description.trim() !== '' || t.learningObjectives.length > 0 || t.textbookQuestions.length > 0);
-
-    const topicSum = getModuleTopicsSum({ topics: cleanedTopics });
-    const existingLec = getModuleLectureCount(mod);
-    const finalLec = Math.max(existingLec, topicSum);
-
-    return {
-      ...mod,
-      lectureCount: finalLec,
-      lectures: finalLec,
-      isExam: false,
-      isLab: false,
-      topics: cleanedTopics
-    };
+          lectureCount: hoursVal(t.lectureCount, 1),
+          learningObjectives: (t.learningObjectives || []).filter((o) => typeof o === 'string' && o.trim()),
+          textbookQuestions: (t.textbookQuestions || []).filter((q) => typeof q === 'string' && q.trim()),
+        }))
+      .filter((t) => t.title.trim() || t.description.trim() || t.learningObjectives.length || t.textbookQuestions.length);
+    const total = Math.max(parseFloat(mod.lectureCount) || 0, S().topicsHours({ topics }));
+    const out = { ...mod, lectureCount: total, lectures: total, isExam: false, isLab: false, topics };
+    if (!out.timePermitting) delete out.timePermitting;
+    if (!out.startsFreshClass) delete out.startsFreshClass;
+    return out;
   });
 
-  const courseIdEl = document.getElementById('courseId');
-  const courseCodeEl = document.getElementById('courseCode');
-  const courseNameEl = document.getElementById('courseName');
-  const courseYearLabelEl = document.getElementById('courseYearLabel');
-
+  // Start from the original course so fields this editor doesn't show (positions,
+  // custom keys from other tools) survive a save.
   const updatedCourse = {
-    id: (courseIdEl && courseIdEl.value) ? courseIdEl.value : `course-${Date.now()}`,
-    code: (courseCodeEl && courseCodeEl.value) ? courseCodeEl.value : 'NEW 100',
-    name: (courseNameEl && courseNameEl.value) ? courseNameEl.value : 'New Course',
+    ...currentCourse,
+    id: courseIdValue() || `course-${Date.now()}`,
+    code: document.getElementById('courseCode')?.value.trim() || 'NEW 100',
+    name: document.getElementById('courseName')?.value.trim() || 'New Course',
     year: yearVal,
-    yearLabel: (courseYearLabelEl && courseYearLabelEl.value) ? courseYearLabelEl.value : (yearVal === 0 ? 'Pre-University' : `Year ${yearVal}`),
+    yearLabel: document.getElementById('courseYearLabel')?.value.trim() || (yearVal === 0 ? 'Pre-University' : `Year ${yearVal}`),
     textbooks: getModalTextbooksData(),
-    modules: cleanedModules
+    schedule: readScheduleFromForm(),
+    modules: cleanedModules,
   };
+  delete updatedCourse.textbook; // migrated to textbooks[]
+  applyOutline(updatedCourse);
 
-  if (typeof window.onCourseSave === 'function') {
-    window.onCourseSave(updatedCourse, editingConnections);
-  } else if (typeof window.onSaveCourseCallback === 'function') {
-    window.onSaveCourseCallback({ id: updatedCourse.id, modules: cleanedModules, connections: editingConnections });
+  const conflict = ((window.DATA && window.DATA.courses) || []).find((c) => c.id === updatedCourse.id && c.id !== originalCourseId);
+  if (conflict) {
+    alert(`Another course (${conflict.code}) already uses the ID "${updatedCourse.id}". Choose a different Course ID.`);
+    switchTab('general');
+    return;
   }
 
+  if (typeof window.onCourseSave === 'function') {
+    window.onCourseSave(updatedCourse, editingConnections, { originalId: originalCourseId, replaceConnections: true });
+  }
   closeCourseModal();
 }
 
-function escapeHtml(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
-window.openCourseEditor = openCourseEditor;
-window.openCourseModal = openCourseModal;
-window.closeCourseModal = closeCourseModal;
-window.switchTab = switchTab;
-window.renderTextbookInputs = renderTextbookInputs;
-window.getModalTextbooksData = getModalTextbooksData;
-window.addModuleRow = addModuleRow;
-window.addEvaluationRow = addEvaluationRow;
-window.addMidtermRow = addEvaluationRow;
-window.addLabRow = addLabRow;
-window.addLabItem = addLabItem;
-window.removeLabItem = removeLabItem;
-window.equalizeLabWeights = equalizeLabWeights;
-window.refreshLabWeightSumIndicator = refreshLabWeightSumIndicator;
-window.toggleMidtermModule = toggleMidtermModule;
-window.removeModuleRow = removeModuleRow;
-window.addTopicRow = addTopicRow;
-window.removeTopicRow = removeTopicRow;
-window.addTopicObjective = addTopicObjective;
-window.removeTopicObjective = removeTopicObjective;
-window.addTopicQuestion = addTopicQuestion;
-window.removeTopicQuestion = removeTopicQuestion;
-window.handleConnectionCourseChange = handleConnectionCourseChange;
-window.addConnectionFromDropdowns = addConnectionFromDropdowns;
-window.removeConnectionRow = removeConnectionRow;
-window.saveCourseData = saveCourseData;
-window.renderModulesList = renderModulesList;
-window.renderConnectionsList = renderConnectionsList;
-window.handleModuleLecturesInputChange = handleModuleLecturesInputChange;
-window.handleTopicLecturesInputChange = handleTopicLecturesInputChange;
+// ------------------------------------------------------------
+// Globals for inline handlers
+// ------------------------------------------------------------
+Object.assign(window, {
+  openCourseEditor, openCourseModal, closeCourseModal, switchTab,
+  renderTextbookInputs, getModalTextbooksData,
+  addModuleRow, addEvaluationRow, addMidtermRow: addEvaluationRow, addLabRow,
+  addLabItem, removeLabItem, equalizeLabWeights, refreshLabWeightSumIndicator,
+  toggleMidtermModule, removeModuleRow, addTopicRow, removeTopicRow,
+  addTopicObjective, removeTopicObjective, addTopicQuestion, removeTopicQuestion,
+  handleConnectionCourseChange, addConnectionFromDropdowns, removeConnectionRow,
+  saveCourseData, renderModulesList, renderConnectionsList, syncModulesFromDOM,
+  refreshBudget, orientConnection,
+  editingModulesRef: () => editingModules,
+});

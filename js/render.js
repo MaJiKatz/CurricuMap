@@ -122,6 +122,21 @@ function renderCourseCard(course, isCollapsed) {
   courseCode.textContent = course.code;
   headMeta.appendChild(courseCode);
 
+  // Time budget badge — same numbers as the calendar, editor and RTF
+  let sched = null;
+  if (window.Scheduler) {
+    sched = window.Scheduler.build(course);
+    const badge = document.createElement('span');
+    const fmt = window.Scheduler.formatHours;
+    badge.className = `hours-badge ${sched.isOver ? 'is-over' : ''}`;
+    badge.textContent = `${fmt(sched.requiredHours)}/${fmt(sched.capacityHours)} h`;
+    badge.title = sched.isOver
+      ? `${fmt(sched.overByHours)} h of required content doesn't fit in ${fmt(sched.capacityHours)} h of class time. Open the calendar to see what falls off.`
+      : `${fmt(sched.requiredHours)} h of required content in ${fmt(sched.capacityHours)} h of class time` +
+        (sched.optionalHours ? ` (+${fmt(sched.optionalHours)} h time permitting)` : '');
+    headMeta.appendChild(badge);
+  }
+
   const editBtn = document.createElement('button');
   editBtn.type = 'button';
   editBtn.className = 'edit-course-btn btn-edit-course';
@@ -220,6 +235,15 @@ function renderCourseCard(course, isCollapsed) {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = `module-chip ${mod.isExam ? 'midterm-chip' : ''} ${mod.isLab ? 'lab-chip' : ''}`;
+    const mStatus = sched ? sched.moduleStatus[mod.id] : null;
+    if (mStatus === 'overflow' || mStatus === 'partial') {
+      chip.classList.add('is-overflow');
+      chip.title = mStatus === 'overflow' ? "Doesn't fit in the term" : 'Runs past the end of term';
+    } else if (mStatus && mStatus.startsWith('optional')) {
+      chip.classList.add('is-optional-unreached');
+      chip.title = 'Time permitting — not reached in the current schedule';
+    }
+    if (window.Scheduler && window.Scheduler.isTimePermitting(mod)) chip.classList.add('is-time-permitting');
     chip.draggable = true;
     
     // ATTACH DATASET FOR PRECISE UNIQUE MATCHING ON DROP
@@ -293,135 +317,6 @@ function renderCourseCard(course, isCollapsed) {
 
   card.appendChild(list);
   return card;
-}
-
-function openCalendarModal(course) {
-  let modal = document.getElementById('calendar-modal');
-  if (!modal) {
-    modal = document.createElement('div');
-    modal.id = 'calendar-modal';
-    modal.className = 'modal-backdrop hidden';
-    document.body.appendChild(modal);
-  }
-
-  const config = window.currentCourseConfig || window.defaultScheduleConfig || {
-    weeksInSemester: 12,
-    meetingsPerWeek: 3,
-    minutesPerMeeting: 50
-  };
-
-  const layout = typeof window.calculateCalendarLayout === 'function'
-    ? window.calculateCalendarLayout(course, config)
-    : { weeks: [] };
-
-  let weeksHTML = '';
-
-  (layout.weeks || []).forEach((week) => {
-    let weekLecturesHTML = '';
-
-    (week.slots || []).forEach((slot) => {
-      const item = slot.lectureData;
-      if (!item) return;
-
-      if (item.isExam) {
-        const weightText = item.weightPercent ? ` (${item.weightPercent}%)` : '';
-        weekLecturesHTML += `
-          <div class="cal-lecture-item cal-inclass-exam" style="background: rgba(220, 38, 38, 0.15); border-left: 3px solid #ef4444; padding: 6px 8px; border-radius: 4px; margin-bottom: 4px;">
-            <span class="cal-lec-tag" style="color: #fca5a5; font-weight: 700;">
-              📝 ${escapeHtml(item.moduleLabel || 'EXAM')}${weightText}
-            </span>
-            <div class="cal-lec-title" style="color: #fef2f2; font-weight: 600;">
-              ${escapeHtml(item.title)}
-            </div>
-          </div>
-        `;
-      } else {
-        const countLabel = item.totalInModule 
-          ? ` (${item.lectureNumber}/${item.totalInModule})` 
-          : '';
-
-        let tagText = item.moduleLabel || '';
-        if (item.moduleTitle) {
-          tagText = `${item.moduleLabel}: ${item.moduleTitle}`;
-        }
-
-        let displayTitle = item.title;
-        if (item.isPlaceholder) {
-          displayTitle = item.moduleTitle || item.title;
-        }
-
-        weekLecturesHTML += `
-          <div class="cal-lecture-item">
-            <span class="cal-lec-tag">
-              ${escapeHtml(tagText)}${countLabel}
-            </span>
-            <div class="cal-lec-title">${escapeHtml(displayTitle)}</div>
-          </div>
-        `;
-      }
-    });
-
-    let assessmentsHTML = '';
-    if (week.assessments && week.assessments.length > 0) {
-      const itemsList = week.assessments.map(asm => {
-        const weightText = asm.weightPercent ? ` (${asm.weightPercent}%)` : '';
-        return `
-          <div class="cal-assessment-item" style="background: rgba(168, 85, 247, 0.2); border-left: 3px solid #a855f7; padding: 4px 8px; margin-top: 4px; border-radius: 4px;">
-            <div style="font-size: 0.75rem; font-weight: 700; color: #d8b4fe;">
-              🏠 ${escapeHtml(asm.label || 'Take-Home')}${weightText}
-            </div>
-            <div style="font-size: 0.85rem; color: #f3e8ff; font-weight: 600;">
-              ${escapeHtml(asm.title)}
-            </div>
-          </div>
-        `;
-      }).join('');
-
-      assessmentsHTML = `
-        <div class="cal-assessments-block" style="margin-top: 10px; padding-top: 6px; border-top: 1px dashed #475569;">
-          <div style="font-size: 0.7rem; font-weight: 700; color: #c084fc; text-transform: uppercase; margin-bottom: 2px;">
-            📌 Take-Home / Due This Week
-          </div>
-          ${itemsList}
-        </div>
-      `;
-    }
-
-    weeksHTML += `
-      <div class="cal-week-card">
-        <div class="cal-week-header">Week ${week.weekNumber}</div>
-        <div class="cal-week-body">
-          ${weekLecturesHTML || '<div class="cal-empty">No lectures scheduled</div>'}
-          ${assessmentsHTML}
-        </div>
-      </div>
-    `;
-  });
-
-  modal.innerHTML = `
-    <div class="calendar-modal-card">
-      <div class="modal-header">
-        <h2>📅 ${escapeHtml(course.code || 'Course')}: ${escapeHtml(course.name || 'Schedule')} Timeline</h2>
-        <button type="button" class="close-modal-btn" onclick="closeCalendarModal()">&times;</button>
-      </div>
-      <div class="modal-body" style="overflow-y: auto;">
-        <div class="calendar-grid">
-          ${weeksHTML}
-        </div>
-      </div>
-    </div>
-  `;
-
-  modal.classList.remove('hidden');
-  modal.classList.add('active');
-}
-
-function closeCalendarModal() {
-  const modal = document.getElementById('calendar-modal');
-  if (modal) {
-    modal.classList.remove('active');
-    modal.classList.add('hidden');
-  }
 }
 
 function renderTierToggles(legend, activeTiers) {
@@ -499,7 +394,12 @@ function renderDrawer(data, moduleId) {
       <h2 class="drawer-title">${escapeHtml(mod.title)} ${mod.isTakeHome ? '<span style="font-size: 0.9rem; font-weight: normal;">(🏠 Take-Home)</span>' : ''}</h2>
       <div class="drawer-banner exam-banner">
         🎯 <strong>Grade Evaluation Weight:</strong> ${mod.weightPercent ?? 0}% of final grade.<br>
-        ⏱️ <strong>Schedule Allocation:</strong> ${mod.lectureCount || 1} lecture block(s).
+        ⏱️ <strong>Scheduled:</strong> ${(() => {
+          if (mod.scheduleNote) return escapeHtml(mod.scheduleNote);
+          if (mod.isTakeHome) return 'Take-home';
+          const wk = window.Scheduler ? window.Scheduler.build(course).assessmentWeek[mod.id] : null;
+          return wk ? `Week ${wk}` : '<span style="color:#b91c1c">does not fit in the term</span>';
+        })()}
       </div>
       <div class="drawer-section-label">Scope & Covered Modules</div>
       ${coveredHtml}
@@ -590,6 +490,7 @@ function renderDrawer(data, moduleId) {
           <div class="drawer-topic-block">
             <div class="topic-title-row">
               <span class="topic-title">${escapeHtml(titleText)}</span>
+              ${window.Scheduler ? `<span class="topic-hours">${window.Scheduler.formatHours(window.Scheduler.topicHours(t))} h</span>` : ''}
             </div>
             ${descHtml}
             ${objectivesHtml}
@@ -636,15 +537,17 @@ function deleteModuleFromViewer(courseId, moduleId, event) {
   if (!confirmed) return;
 
   course.modules = course.modules.filter((m) => m.id !== moduleId);
+  course.modules.forEach((m) => {
+    if (Array.isArray(m.coveredModuleIds)) m.coveredModuleIds = m.coveredModuleIds.filter((id) => id !== moduleId);
+  });
 
-  const updatedConnections = (window.DATA.connections || []).filter(
+  // Previously these were passed to an upsert-only save, so deleted connections survived.
+  window.DATA.connections = (window.DATA.connections || []).filter(
     (c) => c.from !== moduleId && c.to !== moduleId
   );
 
   if (typeof window.onCourseSave === 'function') {
-    window.onCourseSave(course, updatedConnections);
-  } else if (typeof window.renderApp === 'function') {
-    window.renderApp();
+    window.onCourseSave(course, null);
   }
 }
 
@@ -653,5 +556,3 @@ window.renderBoard = renderBoard;
 window.renderTierToggles = renderTierToggles;
 window.renderLegendBar = renderLegendBar;
 window.renderDrawer = renderDrawer;
-window.openCalendarModal = openCalendarModal;
-window.closeCalendarModal = closeCalendarModal;
