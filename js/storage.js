@@ -279,7 +279,7 @@ export function initStorageUI(getAppState, onUpdateState, onMergeState) {
         // course(s) — a connection pointing at a module that wasn't imported
         // would dangle and could crash rendering.
         const importedModuleIds = new Set();
-        coursesToImport.forEach((c) => (c.modules || []).forEach((m) => importedModuleIds.add(m.id)));
+        coursesToImport.forEach((c) => { importedModuleIds.add(c.id); (c.modules || []).forEach((m) => importedModuleIds.add(m.id)); });
 
         const allConnections = (data.connections && data.connections.connections) || [];
         const connectionsToImport = allConnections.filter(

@@ -18,6 +18,8 @@
   --weak:         #7c3aed;   /* violet */
   --weak-soft:    #ede9fe;
   --collapsed:    #64748b;
+  --course-link:  #db2777;   /* rose: whole-course link */
+  --course-link-soft: #fce7f3;
 
   --primary-accent: #2563eb;
   --primary-hover:  #1d4ed8;
@@ -298,7 +300,7 @@ marker[id*="weak"] path { fill: var(--weak) !important; }
    ============================================================ */
 .course-card {
   position: absolute;
-  width: 230px;
+  width: 266px;
   background: #ffffff;
   border: 1px solid var(--card-border);
   border-radius: var(--radius-lg);
@@ -323,8 +325,12 @@ marker[id*="weak"] path { fill: var(--weak) !important; }
 .head-meta {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  row-gap: 4px;
+  column-gap: 3px;
   margin-bottom: 4px;
+  /* Never let a child render past the card's own edge, however crowded the row gets. */
+  max-width: 100%;
 }
 
 .drag-handle {
@@ -332,7 +338,8 @@ marker[id*="weak"] path { fill: var(--weak) !important; }
   color: var(--ink-soft);
   font-size: 0.9rem;
   user-select: none;
-  margin-right: 6px;
+  margin-right: 4px;
+  flex-shrink: 0;
 }
 
 .course-code {
@@ -342,14 +349,26 @@ marker[id*="weak"] path { fill: var(--weak) !important; }
   color: var(--ink-soft);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  flex: 1;
+  flex: 1 1 40px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Everything after the course code is a fixed-size icon/badge: it must
+   never shrink (that's what squeezes a button past the card's edge) and
+   should wrap onto a second line inside the card if the row is too full. */
+.head-meta > .hours-badge,
+.head-meta > button,
+.card-actions {
+  flex-shrink: 0;
 }
 
 .card-actions {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-left: auto;
 }
 
 /* Restored Action Icons (Gear, Calendar, Collapse, Delete) */
@@ -1132,3 +1151,43 @@ marker[id*="weak"] path { fill: var(--weak) !important; }
 }
 .toast-btn { background: none; border: 1px solid #64748b; color: #e2e8f0; border-radius: 4px; padding: 3px 8px; font-size: 0.8rem; }
 .toast-btn:hover { border-color: #fff; }
+
+
+/* ============================================================
+   COURSE-LEVEL LINKS + CLICKABLE CONNECTION LINES
+   ============================================================ */
+.tier-toggle.tier-course, .tier-toggle[data-tier="course"] { color: var(--course-link); border-color: var(--course-link); }
+.legend-swatch.course, .legend-line.course {
+  background: repeating-linear-gradient(90deg, var(--course-link) 0 8px, transparent 8px 12px);
+  height: 4px;
+  border-radius: 2px;
+}
+.badge.tier-course { background: var(--course-link); color: #fff; }
+
+.connection-layer .conn-hit-area { cursor: pointer; }
+.connection-layer .conn-group:hover .conn-visible-line { stroke-width: 6; }
+body.connect-mode-active .connection-layer .conn-hit-area { pointer-events: none !important; }
+
+.conn-toast {
+  position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%);
+  background: #0f172a; color: #f8fafc; padding: 7px 14px; border-radius: 999px;
+  font-size: 0.8rem; z-index: 20000; box-shadow: 0 4px 14px rgba(0,0,0,.3);
+  pointer-events: none;
+}
+.conn-scope-toggle { display: flex; gap: 6px; margin-bottom: 10px; }
+
+/* Start date / class days / important dates */
+.day-picker { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.day-chip { border: 1px solid var(--card-border); background: #fff; border-radius: 999px; padding: 4px 10px; cursor: pointer; font-size: 0.82rem; }
+.day-chip.is-on { background: var(--primary-accent); border-color: var(--primary-accent); color: #fff; }
+.day-hint { font-size: 0.75rem; color: var(--ink-soft); margin-left: 6px; }
+.important-dates-list { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 10px; }
+.important-date-row { display: grid; grid-template-columns: 150px 150px 1fr auto auto; gap: 6px; align-items: center; }
+.important-date-row input[type="text"], .important-date-row input[type="date"] { width: 100%; box-sizing: border-box; }
+.skip-check { font-size: 0.8rem; white-space: nowrap; display: flex; gap: 4px; align-items: center; }
+.hint-text { font-size: 0.78rem; color: var(--ink-soft); margin: 2px 0 6px; }
+
+/* Calendar dates + skip notes */
+.cal-week-range { float: right; font-weight: 400; font-size: 0.72rem; opacity: 0.85; }
+.cal-skip-note { font-size: 0.76rem; font-style: italic; color: #b91c1c; background: #fef2f2; border-left: 3px solid #ef4444; padding: 3px 7px; border-radius: 3px; margin-bottom: 6px; }
+.cal-flag-note { font-size: 0.76rem; font-style: italic; color: #92400e; background: #fffbeb; border-left: 3px solid #f59e0b; padding: 3px 7px; border-radius: 3px; margin-bottom: 6px; }

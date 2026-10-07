@@ -62,10 +62,21 @@
     return Math.max(explicit > 0 ? explicit : 0, topicsHours(mod));
   }
 
-  /** Number of whole classes an in-class assessment occupies. */
+  /** Number of whole classes an in-class assessment occupies (whole-class mode). */
   function examClasses(mod) {
     const n = parseInt(mod.lectureCount ?? mod.lectures, 10);
     return n > 0 ? n : 1;
+  }
+
+  /** True if this assessment shares a class instead of occupying whole ones. */
+  function isPartialExam(mod) {
+    return mod.durationMode === 'hours';
+  }
+
+  /** Hours an assessment needs when it shares a class rather than filling one. */
+  function examHours(mod) {
+    const h = num(mod.durationHours);
+    return h > 0 ? h : 0.5;
   }
 
   function isTimePermitting(mod) {
@@ -254,6 +265,22 @@
           return;
         }
 
+        if (isPartialExam(mod)) {
+          // Shares a class with whatever else is scheduled there, instead of
+          // claiming the whole meeting — e.g. a 20-minute quiz at the top of a lecture.
+          if (mod.startsFreshClass) padToFreshClass();
+          const base = {
+            kind: 'exam', moduleId: mod.id, moduleLabel: mod.label || 'Assessment',
+            title: mod.title || 'Assessment',
+            weightPercent: parseFloat(mod.weightPercent) || 0, moduleIndex: modIndex,
+          };
+          const pieces = placeTimed(base, examHours(mod), false);
+          const st = summarise(pieces);
+          assessmentWeek[mod.id] = st.startWeek;
+          moduleStatus[mod.id] = st.status;
+          return;
+        }
+
         padToFreshClass();
         const n = examClasses(mod);
         let firstWeek = null;
@@ -320,10 +347,15 @@
     const overUnits = overflow.reduce((s, seg) => s + seg.units, 0);
     const usedUnits = meetings.reduce((s, m) => s + m.segs.filter((x) => x.kind !== 'buffer').reduce((a, x) => a + x.units, 0), 0);
 
+    const dated = attachDates(meetings, weeks, course, assessmentWeek, takeHomeByWeek);
+
     return {
       config,
       meetings,
       weeks,
+      hasDates: dated.hasDates,
+      skipNotes: dated.skipNotes,
+      assessmentDate: dated.assessmentDate,
       overflow,
       unreachedOptional,
       requiredHours: Math.round(requiredHours * 100) / 100,
@@ -337,6 +369,124 @@
       topicStatus,
       moduleStatus,
     };
+  }
+
+  // ---------- calendar dates (start date, class days, important dates) ----------
+  const WEEKDAY_CODES = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']; // index = Date.getUTCDay()
+  const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const DEFAULT_CLASS_DAYS = { 1: [3], 2: [2, 4], 3: [1, 3, 5], 4: [1, 2, 4, 5], 5: [1, 2, 3, 4, 5] }; // 1 = Mon
+
+  function parseISODate(str) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(str || '').trim());
+    if (!m) return null;
+    const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  function addDays(d, n) { return new Date(d.getTime() + n * 86400000); }
+  function isoDate(d) { return d.toISOString().slice(0, 10); }
+  function formatDateLabel(iso, withWeekday = true) {
+    const d = parseISODate(iso);
+    if (!d) return '';
+    const base = `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
+    return withWeekday ? `${WEEKDAY_NAMES[d.getUTCDay()].slice(0, 3)} ${base}` : base;
+  }
+
+  /** Weekday numbers (0=Sun..6=Sat) the course meets on, honouring course.classDays when valid. */
+  function resolveClassDays(course, perWeek) {
+    const codes = Array.isArray(course && course.classDays) ? course.classDays : [];
+    const nums = codes.map((c) => WEEKDAY_CODES.indexOf(String(c).toUpperCase())).filter((n) => n >= 0);
+    const uniq = Array.from(new Set(nums));
+    if (uniq.length === perWeek) return uniq.sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7));
+    const fallback = DEFAULT_CLASS_DAYS[Math.min(5, Math.max(1, perWeek))] || [1, 3, 5];
+    return fallback.slice(0, perWeek);
+  }
+
+  function parseImportantDates(course) {
+    return ((course && course.importantDates) || []).map((d) => {
+      const start = parseISODate(d.date);
+      if (!start) return null;
+      const end = parseISODate(d.endDate) || start;
+      return {
+        start: end < start ? end : start,
+        end: end < start ? start : end,
+        label: d.label || 'Important date',
+        skipsClass: !!d.skipsClass,
+      };
+    }).filter(Boolean);
+  }
+
+  function inRange(date, ranges) {
+    return ranges.some((r) => date >= r.start && date <= r.end);
+  }
+
+  /**
+   * Walks the calendar day by day from the start date; each class-day that is not
+   * inside a "no class" range takes the next meeting. A skipped day costs exactly
+   * one meeting slot — the rest of the term just slides later.
+   */
+  function attachDates(meetings, weeks, course, assessmentWeek, takeHomeByWeek) {
+    const none = { skipNotes: [], hasDates: false, assessmentDate: {} };
+    const start = parseISODate(course && course.startDate);
+    if (!start || !meetings.length) return none;
+
+    const perWeek = meetings.filter((m) => m.week === meetings[0].week).length;
+    const weekdaySet = new Set(resolveClassDays(course, perWeek));
+    const all = parseImportantDates(course);
+    const skipRanges = all.filter((d) => d.skipsClass);
+
+    let cursor = addDays(start, -1);
+    let mi = 0;
+    for (let guard = 0; guard < 3000 && mi < meetings.length; guard++) {
+      cursor = addDays(cursor, 1);
+      if (!weekdaySet.has(cursor.getUTCDay())) continue;
+      if (inRange(cursor, skipRanges)) continue;
+      const m = meetings[mi++];
+      m.date = isoDate(cursor);
+      m.dateLabel = formatDateLabel(m.date);
+    }
+
+    weeks.forEach((w) => {
+      const dated = w.meetings.filter((m) => m.date);
+      if (dated.length) {
+        w.startDate = dated[0].date;
+        w.endDate = dated[dated.length - 1].date;
+      }
+    });
+
+    // One note per configured important date, shown on the week whose classes follow it.
+    const notes = [];
+    all.forEach((d) => {
+      const next = meetings.find((m) => m.date && parseISODate(m.date) >= d.start);
+      const week = next ? next.week : weeks[weeks.length - 1].weekNumber;
+      const note = {
+        week,
+        label: d.label,
+        date: isoDate(d.start),
+        endDate: isoDate(d.end),
+        skipsClass: d.skipsClass,
+        text: `${d.label} (${formatDateLabel(isoDate(d.start), true)}${d.end > d.start ? ' – ' + formatDateLabel(isoDate(d.end), true) : ''})`
+          + (d.skipsClass ? ' — no class' : ''),
+      };
+      notes.push(note);
+      const wk = weeks.find((x) => x.weekNumber === week);
+      if (wk) (wk.skipNotes = wk.skipNotes || []).push(note);
+    });
+
+    // Dates for assessments: in-class = its meeting date; take-home = last class of its week.
+    const assessmentDate = {};
+    meetings.forEach((m) => {
+      m.segs.forEach((seg) => {
+        if (seg.kind === 'exam' && m.date && !assessmentDate[seg.moduleId]) assessmentDate[seg.moduleId] = m.date;
+      });
+    });
+    Object.keys(takeHomeByWeek || {}).forEach((wkNum) => {
+      const wk = weeks.find((x) => x.weekNumber === Number(wkNum));
+      if (!wk || !wk.endDate) return;
+      takeHomeByWeek[wkNum].forEach((mod) => { assessmentDate[mod.id] = wk.endDate; });
+    });
+
+    return { skipNotes: notes, hasDates: true, assessmentDate };
   }
 
   // ---------- lab / weight helpers used by editor + export ----------
@@ -386,9 +536,18 @@
     topicsHours,
     moduleHours,
     examClasses,
+    isPartialExam,
+    examHours,
     isTimePermitting,
     labHours,
     weightSummary,
     formatHours,
+    parseISODate,
+    addDays,
+    isoDate,
+    formatDateLabel,
+    resolveClassDays,
+    WEEKDAY_CODES,
+    WEEKDAY_NAMES,
   };
 })();

@@ -25,16 +25,32 @@ function resizeConnectionLayer() {
   svg.style.height = h + 'px';
 }
 
-function resolveAnchorNode(moduleId) {
-  const chip = document.querySelector(`.module-chip[data-module-id="${cssEscape(moduleId)}"]`);
-  if (!chip) return null;
+const CONNECTION_TIER_CYCLE = ['strong', 'related', 'weak'];
+const COURSE_LINK_TIER = 'course';
 
-  const card = chip.closest('.course-card');
-  if (card && card.classList.contains('is-collapsed')) {
-    return { el: card.querySelector('.course-card-head'), isCollapsed: true };
+function resolveAnchorNode(id) {
+  const chip = document.querySelector(`.module-chip[data-module-id="${cssEscape(id)}"]`);
+  if (chip) {
+    const card = chip.closest('.course-card');
+    if (card && card.classList.contains('is-collapsed')) {
+      return { el: card.querySelector('.course-card-head'), isCollapsed: true };
+    }
+    return { el: chip, isCollapsed: false };
   }
 
-  return { el: chip, isCollapsed: false };
+  // Whole-course link: anchor on the course card header
+  const courseCard = document.querySelector(`.course-card[data-course-id="${cssEscape(id)}"]`);
+  if (courseCard) {
+    const head = courseCard.querySelector('.course-card-head') || courseCard;
+    return { el: head, isCollapsed: false };
+  }
+  return null;
+}
+
+/** A course-level link has course ids at both ends (no module chip matches either). */
+function isCourseLink(conn) {
+  const isCourse = (id) => !!document.querySelector(`.course-card[data-course-id="${cssEscape(id)}"]`);
+  return isCourse(conn.from) && isCourse(conn.to);
 }
 
 /**
@@ -94,8 +110,10 @@ function drawConnections(data, viewState) {
   const wrapRect = wrap.getBoundingClientRect();
   const { activeTiers, mode, selectedModuleId } = viewState;
 
+  const tierOf = (conn) => (isCourseLink(conn) ? COURSE_LINK_TIER : conn.level);
+
   const visible = data.connections.filter((conn) => {
-    if (!activeTiers.has(conn.level)) return false;
+    if (!activeTiers.has(tierOf(conn))) return false;
     if (mode === 'focus' && selectedModuleId) {
       return conn.from === selectedModuleId || conn.to === selectedModuleId;
     }
@@ -107,41 +125,66 @@ function drawConnections(data, viewState) {
     const toAnchor = resolveAnchorNode(conn.to);
     if (!fromAnchor || !toAnchor) return;
 
-    const isCollapsedLine = fromAnchor.isCollapsed || toAnchor.isCollapsed;
+    const courseLink = isCourseLink(conn);
+    const isCollapsedLine = !courseLink && (fromAnchor.isCollapsed || toAnchor.isCollapsed);
     const isDimmed = selectedModuleId && conn.from !== selectedModuleId && conn.to !== selectedModuleId && mode === 'all';
 
     const rectA = fromAnchor.el.getBoundingClientRect();
     const rectB = toAnchor.el.getBoundingClientRect();
-
-    // Pass your pixel threshold for top/bottom detection (e.g., 50px)
     const { p1, p2 } = getAnchorPoints(rectA, rectB, wrap, wrapRect, 50);
 
-    drawLine(svg, p1, p2, conn.level, isCollapsedLine, isDimmed);
+    drawLine(svg, p1, p2, conn, courseLink, isCollapsedLine, isDimmed);
   });
 }
 
-function drawLine(svg, p1, p2, level, isCollapsedLine, isDimmed) {
+function connectionTooltip(conn, courseLink) {
+  const label = courseLink ? 'Whole-course link' : conn.level;
+  const next = courseLink ? '' : ` (click to change to ${CONNECTION_TIER_CYCLE[(CONNECTION_TIER_CYCLE.indexOf(conn.level) + 1) % 3]})`;
+  return `${label}${next}`;
+}
+
+function drawLine(svg, p1, p2, conn, courseLink, isCollapsedLine, isDimmed) {
+  const level = conn.level;
   const group = document.createElementNS(SVG_NS, 'g');
   group.setAttribute('opacity', isDimmed ? '0.15' : '0.85');
+  group.setAttribute('class', 'conn-group');
+  group.dataset.connId = conn.id || '';
 
-  const color = isCollapsedLine ? '#8892b0' : (TIER_COLOR[level] || '#999');
+  const color = courseLink ? 'var(--course-link)' : (isCollapsedLine ? '#8892b0' : (TIER_COLOR[level] || '#999'));
 
-  const line = document.createElementNS(SVG_NS, 'line');
-  line.setAttribute('x1', p1.x);
-  line.setAttribute('y1', p1.y);
-  line.setAttribute('x2', p2.x);
-  line.setAttribute('y2', p2.y);
+  const mk = (cls) => {
+    const l = document.createElementNS(SVG_NS, 'line');
+    l.setAttribute('x1', p1.x);
+    l.setAttribute('y1', p1.y);
+    l.setAttribute('x2', p2.x);
+    l.setAttribute('y2', p2.y);
+    l.setAttribute('class', cls);
+    return l;
+  };
+
+  // Wide invisible line = easy click target
+  const hit = mk('conn-hit-area');
+  hit.setAttribute('stroke', 'transparent');
+  hit.setAttribute('stroke-width', '16');
+  hit.setAttribute('stroke-linecap', 'round');
+  hit.style.pointerEvents = 'stroke';
+  hit.style.cursor = courseLink ? 'pointer' : 'pointer';
+  hit.dataset.connId = conn.id || '';
+
+  const line = mk('conn-visible-line');
   line.setAttribute('stroke', color);
-  line.setAttribute('stroke-width', isCollapsedLine ? '2' : (level === 'strong' ? '3.5' : '3.5'));
+  line.setAttribute('stroke-width', courseLink ? '4.5' : '3.5');
   line.setAttribute('stroke-linecap', 'round');
+  line.style.pointerEvents = 'none';
+  if (courseLink) line.setAttribute('stroke-dasharray', '10,5');
+  else if (isCollapsedLine) line.setAttribute('stroke-dasharray', '4,4');
 
-  if (isCollapsedLine) {
-    line.setAttribute('stroke-dasharray', '4,4');
-  } else if (level === 'weak') {
-    line.setAttribute('stroke-width', '3.5');
-  }
+  const title = document.createElementNS(SVG_NS, 'title');
+  title.textContent = connectionTooltip(conn, courseLink);
+  hit.appendChild(title);
 
   group.appendChild(line);
+  group.appendChild(hit);
   svg.appendChild(group);
 }
 
@@ -152,3 +195,6 @@ function cssEscape(str) {
 
 window.drawConnections = drawConnections;
 window.resizeConnectionLayer = resizeConnectionLayer;
+window.CONNECTION_TIER_CYCLE = CONNECTION_TIER_CYCLE;
+window.COURSE_LINK_TIER = COURSE_LINK_TIER;
+window.isCourseLinkConn = isCourseLink;

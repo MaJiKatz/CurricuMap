@@ -168,7 +168,22 @@
             </div>
 
             <p class="schedule-capacity full-width" id="scheduleCapacityNote"></p>
+
+            <div class="form-group">
+              <label for="courseStartDate">First day of classes (optional)</label>
+              <input type="date" id="courseStartDate">
+            </div>
+
+            <div class="form-group">
+              <label>Class days</label>
+              <div id="classDaysPicker" class="day-picker"></div>
+            </div>
           </div>
+
+          <h3>Important Dates</h3>
+          <p class="hint-text">Holidays, reading weeks and other dates. Tick "no class" and the calendar and outline skip those days. Needs a start date above.</p>
+          <div id="editorImportantDatesContainer" class="important-dates-list"></div>
+          <button type="button" class="btn btn-secondary btn-sm" id="btnAddImportantDate">+ Add important date</button>
 
           <div class="form-group full-width" style="margin-top: 1.5rem;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">

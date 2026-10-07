@@ -8,7 +8,7 @@
 
 * **Visual Canvas:** Organizes courses across academic years with native support for Year 0 (Pre-University).
 * **Drag-and-Drop:** Free-form card positioning with canvas auto-sizing and persistent position caching.
-* **Dynamic Connections:** Interactive SVG rendering to link prerequisite courses, modules, and topics with custom connection levels (Strong, Related, Weak).
+* **Dynamic Connections:** Interactive SVG rendering to link prerequisite courses, modules, and topics with custom connection levels (Strong, Related, Weak). Click a line to cycle its strength. Link whole courses with a rose dashed line.
 * **Course CRUD Editor:** Built-in modal to add, edit, or delete courses, modules, learning objectives, and textbook details.
 * **Topic Drawer:** Slide-out inspection drawer for detailed module and objective breakdowns.
 * **RTF Document & Syllabus Exporter:** Generate formatted `.rtf` course outlines for individual courses or complete program curriculum packages. Includes:
@@ -133,6 +133,16 @@ CurriMap uses a standard JSON schema to represent courses, modules, and prerequi
 | module | `timePermitting`, `startsFreshClass` | Scheduled after required content; start on a new class |
 | assessment | `lectureCount` | Number of whole classes used (in-class only) |
 | assessment | `scheduleNote`, `scopeNote` | Override the "Scheduled:" and "Scope:" lines |
+| assessment | `durationMode: "hours"`, `durationHours` | Quiz/test that shares a class (e.g. 0.5 h) instead of taking a whole one |
+
+### Fields added in v1.2 (all optional)
+
+| Where | Field | Meaning |
+|---|---|---|
+| course | `startDate` | `"2026-09-09"` — first day of classes; the calendar and RTF then show real dates |
+| course | `classDays` | `["MO","WE","FR"]` — weekdays classes meet (must match classes per week; otherwise sensible defaults) |
+| course | `importantDates` | `[{ "date": "2026-10-12", "endDate": "2026-10-16", "label": "Reading week", "skipsClass": true }]` — a skipped day costs one class slot, everything after slides later |
+| connection | `from`/`to` = two **course** ids | Whole-course link (`level: "course"`); outlines say "This course builds strongly upon …" |
 
 🛡️ Data Privacy
 CurriMap is designed with a privacy-first architecture. All operations—including workspace editing, graph drawing, calendar rendering, and RTF document generation—happen entirely inside your browser's JavaScript runtime. No course data, personal information, or institutional materials are ever sent to external servers.

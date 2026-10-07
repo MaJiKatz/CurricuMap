@@ -9,7 +9,7 @@
 
 (function () {
   // Color table indices: 1 ink, 2 grey, 3 red (warnings), 4 amber
-  const COLOR_TABLE = '{\\colortbl ;\\red15\\green23\\blue42;\\red100\\green116\\blue139;\\red190\\green30\\blue30;\\red150\\green105\\blue15;}';
+  const COLOR_TABLE = '{\\colortbl ;\\red15\\green23\\blue42;\\red100\\green116\\blue139;\\red190\\green30\\blue30;\\red150\\green105\\blue15;\\red226\\green232\\blue240;}';
   const FONT_TABLE = '{\\fonttbl{\\f0\\fswiss\\fprq2\\fcharset0 Arial;}}';
 
   const FALLBACK_AI_POLICY = 'Permissible use of assistive technologies and Generative Artificial Intelligence (e.g., ChatGPT, Claude) in this course will be explicitly stated for each assignment. Unless explicitly permitted by the instructor, the use of generative AI tools to produce coursework, code, or written assignments is unauthorized and constitutes academic misconduct.';
@@ -65,6 +65,7 @@
     return '';
   }
 
+  const shortDate = (iso, withDay) => (window.Scheduler && iso ? window.Scheduler.formatDateLabel(iso, withDay !== false) : '');
   const fmt = (h) => (window.Scheduler ? window.Scheduler.formatHours(h) : String(h));
 
   // ---------------- lookups ----------------
@@ -133,7 +134,11 @@
     const tp = seg.optional ? ' ' + G(I('(time permitting)')) : '';
 
     if (seg.kind === 'exam') {
-      return `${B('[EXAM]')} ${escapeRtf(seg.title)}`;
+      const unit = cfg.allOneHour ? 'Lec' : 'Part';
+      let info = '';
+      if (seg.parts > 1) info = ` (${unit} ${seg.part}/${seg.parts}${partial ? `, ${fmt(seg.hours)} h` : ''})`;
+      else if (partial) info = ` (${fmt(seg.hours)} h)`;
+      return `${B('[EXAM]')} ${escapeRtf(seg.title)}${info ? ' ' + G(escapeRtf(info.trim())) : ''}`;
     }
     if (seg.kind === 'buffer') {
       return G(I(`Catch-up / review (${fmt(seg.hours)} h)`));
@@ -161,6 +166,59 @@
     return out;
   }
 
+  /** "Calendar at a Glance": one row per week, one column per class, as a real RTF table. */
+  function buildCalendarGridRtf(course, sched) {
+    const cfg = sched.config;
+    const nums = teachingNumbers(course);
+    const perWeek = cfg.pattern.length;
+    const totalW = 9360; // 6.5in text width in twips
+    const firstW = 1500;
+    const colW = Math.floor((totalW - firstW) / perWeek);
+
+    const bd = '\\clbrdrt\\brdrs\\brdrw10\\clbrdrl\\brdrs\\brdrw10\\clbrdrb\\brdrs\\brdrw10\\clbrdrr\\brdrs\\brdrw10';
+    const cellDefs = (shadeHead, merged) => {
+      let x = 0; let out = '';
+      const widths = [firstW, ...Array(perWeek).fill(colW)];
+      widths.forEach((w, i) => {
+        x += w;
+        const mg = merged ? (i === 0 ? '\\clmgf' : '\\clmrg') : '';
+        out += `${mg}${bd}${shadeHead ? '\\clcbpat5' : ''}\\cellx${x}`;
+      });
+      return out;
+    };
+    const row = (cells, head, merged) =>
+      `\\trowd\\trgaph80\\trleft0${cellDefs(head, merged)}\n` +
+      cells.map((c) => `\\pard\\intbl\\ql\\fs18 ${c}\\cell`).join('') + '\\row\n';
+
+    const short = (seg) => {
+      if (seg.kind === 'exam') return B(`[EXAM] ${escapeRtf(seg.title)}`);
+      if (seg.kind === 'buffer') return G(I('Catch-up'));
+      const tag = nums[seg.moduleId] ? ` ${G(`[M${nums[seg.moduleId]}]`)}` : '';
+      return `${escapeRtf(seg.title)}${tag}`;
+    };
+
+    let rtf = P(360, B('Calendar at a Glance'), '\\sb120\\keepn');
+    rtf += row(['{\\b Week}', ...cfg.pattern.map((h, i) => `{\\b Class ${i + 1}}`)], true);
+    sched.weeks.forEach((week) => {
+      const wk = week.startDate ? `{\\b ${week.weekNumber}}\\line ${escapeRtf(shortDate(week.startDate, false))}` : `{\\b ${week.weekNumber}}`;
+      const cells = [wk];
+      for (let i = 0; i < perWeek; i++) {
+        const m = week.meetings[i];
+        if (!m) { cells.push(G(escapeRtf('\u2014'))); continue; }
+        const head = m.dateLabel ? `${G(escapeRtf(m.dateLabel))}\\line ` : '';
+        const body = m.segs.length ? m.segs.map(short).join('\\line ') : G(I('Open'));
+        cells.push(head + body);
+      }
+      rtf += row(cells, false);
+      (week.skipNotes || []).filter((n) => n.skipsClass).forEach((n) => {
+        const span = [`${R(I(escapeRtf(n.text)))}`, ...Array(perWeek).fill('')];
+        rtf += row(span, false, true);
+      });
+    });
+    rtf += blank();
+    return rtf;
+  }
+
   function buildScheduleRtf(course, sched, labHrs) {
     const cfg = sched.config;
     const nums = teachingNumbers(course);
@@ -177,18 +235,28 @@
     rtf += P(360, `\\cf2 ${escapeRtf(format)}\\cf1`);
     rtf += blank();
 
+    if (sched.hasDates) rtf += buildCalendarGridRtf(course, sched);
+
     sched.weeks.forEach((week) => {
-      rtf += P(360, `\\b Week ${week.weekNumber}:\\b0`, '\\keepn');
+      const range = week.startDate
+        ? ` ${G(escapeRtf(week.endDate !== week.startDate ? `(${shortDate(week.startDate, false)} \u2013 ${shortDate(week.endDate, false)})` : `(${shortDate(week.startDate, false)})`))}`
+        : '';
+      rtf += P(360, `${B(`Week ${week.weekNumber}:`)}${range}`, '\\keepn');
+      (week.skipNotes || []).forEach((n) => {
+        rtf += P(720, n.skipsClass ? R(I(escapeRtf(n.text))) : G(I(escapeRtf(n.text))));
+      });
       week.meetings.forEach((m) => {
-        const dayLabel = cfg.uniform ? `Day ${m.day}` : `Day ${m.day} (${fmt(m.hours)} h)`;
+        const dateBit = m.dateLabel ? `, ${m.dateLabel}` : '';
+        const dayLabel = cfg.uniform ? `Day ${m.day}${dateBit}` : `Day ${m.day}${dateBit} (${fmt(m.hours)} h)`;
         const body = m.segs.length
           ? m.segs.map((s) => segmentText(s, course, nums, cfg)).join('; ')
           : G(I('Open / review'));
-        rtf += P(720, `${dayLabel}: ${body}`);
+        rtf += P(720, `${escapeRtf(dayLabel)}: ${body}`);
       });
       week.takeHome.forEach((mod) => {
         const w = parseFloat(mod.weightPercent) ? ` (${mod.weightPercent}%)` : '';
-        rtf += P(720, `${G('Due this week:')} ${B(escapeRtf(mod.title || mod.label))}${escapeRtf(w)}`);
+        const due = sched.assessmentDate && sched.assessmentDate[mod.id] ? ` \u2013 due ${shortDate(sched.assessmentDate[mod.id])}` : '';
+        rtf += P(720, `${G('Due this week:')} ${B(escapeRtf(mod.title || mod.label))}${escapeRtf(w + due)}`);
       });
     });
 
@@ -230,7 +298,8 @@
         const week = sched.assessmentWeek[mod.id];
         let when = pick(mod.scheduleNote);
         if (!when) {
-          if (week) when = `Week ${week}`;
+          const dt = sched.assessmentDate && sched.assessmentDate[mod.id];
+          if (week) when = dt ? `Week ${week} \u2013 ${shortDate(dt)}` : `Week ${week}`;
           else if (!mod.isTakeHome) when = `Not yet scheduled (beyond Week ${sched.config.weeks})`;
         }
         c.items.push({
@@ -377,6 +446,31 @@
     return rtf;
   }
 
+  /** Whole-course links: "This course builds strongly upon CHEM 1050 ..." */
+  function buildCourseLevelConnectionsRtf(course, connections) {
+    const mine = (connections || []).filter((c) => {
+      if (c.from !== course.id && c.to !== course.id) return false;
+      const otherId = c.from === course.id ? c.to : c.from;
+      return allCourses().some((x) => x.id === otherId);
+    });
+    if (!mine.length) return '';
+    const myYear = Number(course.year) || 0;
+    let rtf = '';
+    mine.forEach((conn) => {
+      const otherId = conn.from === course.id ? conn.to : conn.from;
+      const other = allCourses().find((x) => x.id === otherId);
+      const otherYear = Number(other.year) || 0;
+      const earlier = otherYear !== myYear ? otherYear < myYear : conn.to === course.id;
+      const name = `${other.code}${other.name ? ' (' + other.name + ')' : ''}`;
+      const note = conn.note && conn.note !== 'Created via Connect Mode' ? ` ${conn.note}` : '';
+      const text = earlier
+        ? `This course builds strongly upon ${name}.${note}`
+        : `This course strongly supports ${name}.${note}`;
+      rtf += P(360, `\\b Course Link:\\b0  ${escapeRtf(text)}`);
+    });
+    return rtf;
+  }
+
   // ---------------- one course ----------------
   function buildCourseRtfContent(course, connections) {
     const g = globals();
@@ -401,6 +495,7 @@
     rtf += row('Instructor Availability / Consultation Hours', pick(inst.officeHours, course.officeHours, g.officeHours, 'TBD / By Appointment'));
     rtf += row('Required Prerequisites', pick(course.prerequisites, course.prereqs, 'None'));
     rtf += row('Required Co-requisites', pick(course.corequisites, course.coreqs, 'None'));
+    rtf += buildCourseLevelConnectionsRtf(course, connections);
 
     // 1. Textbooks
     rtf += heading('1. Textbooks & Course Resources');

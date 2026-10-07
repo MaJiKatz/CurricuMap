@@ -18,7 +18,7 @@ window.defaultScheduleConfig = {
   let DATA = null;
 
   const state = {
-    activeTiers: new Set(['strong', 'related', 'weak']),
+    activeTiers: new Set(['strong', 'related', 'weak', 'course']),
     mode: 'all',
     selectedModuleId: null,
     collapsedCourses: new Set(),
@@ -41,7 +41,7 @@ window.defaultScheduleConfig = {
   function snapshot() {
     stampPositions();
     return {
-      meta: { savedAt: new Date().toISOString(), version: '1.1' },
+      meta: { savedAt: new Date().toISOString(), version: '1.2' },
       courses: DATA.courses,
       connections: { legend: DATA.legend, connections: DATA.connections },
     };
@@ -150,7 +150,7 @@ window.defaultScheduleConfig = {
         scheduleAutosave();
 
         requestAnimationFrame(() => {
-          document.querySelectorAll('.year-canvas').forEach((canvas) => fitCanvasToContent(canvas));
+          layoutCanvases();
           refreshVisuals();
         });
       },
@@ -192,7 +192,7 @@ window.defaultScheduleConfig = {
         scheduleAutosave();
 
         requestAnimationFrame(() => {
-          document.querySelectorAll('.year-canvas').forEach((canvas) => fitCanvasToContent(canvas));
+          layoutCanvases();
           refreshVisuals();
         });
       }
@@ -200,8 +200,41 @@ window.defaultScheduleConfig = {
 
     // 4. FIT CANVASES & DRAW CONNECTIONS
     requestAnimationFrame(() => {
-      document.querySelectorAll('.year-canvas').forEach((canvas) => fitCanvasToContent(canvas));
+      layoutCanvases();
       refreshVisuals();
+    });
+  }
+
+  /** Cards are wider than in older files, so saved positions can now overlap; slide them apart once at load. */
+  function separateOverlappingCards(canvas) {
+    const GAP = 16;
+    const cards = [...canvas.querySelectorAll('.course-card')];
+    for (let pass = 0; pass < 30; pass++) {
+      let moved = false;
+      cards.sort((a, b) => (parseFloat(a.style.left) || 0) - (parseFloat(b.style.left) || 0));
+      for (let i = 0; i < cards.length; i++) {
+        for (let j = i + 1; j < cards.length; j++) {
+          const a = cards[i], b = cards[j];
+          const al = parseFloat(a.style.left) || 0, at = parseFloat(a.style.top) || 0;
+          const bl = parseFloat(b.style.left) || 0, bt = parseFloat(b.style.top) || 0;
+          const xOverlap = bl < al + a.offsetWidth + GAP - 0.5;
+          const yOverlap = bt < at + a.offsetHeight && at < bt + b.offsetHeight;
+          if (xOverlap && yOverlap) {
+            const nx = al + a.offsetWidth + GAP;
+            b.style.left = `${nx}px`;
+            if (state.positions[b.dataset.courseId]) state.positions[b.dataset.courseId].x = nx;
+            moved = true;
+          }
+        }
+      }
+      if (!moved) break;
+    }
+  }
+
+  function layoutCanvases() {
+    document.querySelectorAll('.year-canvas').forEach((canvas) => {
+      separateOverlappingCards(canvas);
+      fitCanvasToContent(canvas);
     });
   }
 
@@ -405,8 +438,15 @@ window.defaultScheduleConfig = {
       );
 
       if (!exists) {
+        const srcIsCourse = !!DATA.courseById[connectingSource.id];
+        const tgtIsCourse = !!DATA.courseById[targetId];
+        if (srcIsCourse !== tgtIsCourse) {
+          alert('Link a whole course to another whole course (click the course header areas), or a topic to a topic — not one of each.');
+          cancelConnection();
+          return;
+        }
         const selectedLevel = document.getElementById('connectionTypeSelect')?.value || 'related';
-        state.activeTiers.add(selectedLevel);
+        state.activeTiers.add(srcIsCourse ? 'course' : selectedLevel);
 
         // Earlier-year course is always the "from" end, whichever you clicked first,
         // so outlines read "Builds upon" / "Leads to" the right way round.
@@ -693,6 +733,37 @@ window.defaultScheduleConfig = {
       }
     });
 
+    // --- CLICK A CONNECTION LINE TO CYCLE strong -> related -> weak ---
+    const connSvg = document.getElementById('connectionLayer');
+    if (connSvg) {
+      connSvg.addEventListener('click', (e) => {
+        const hit = e.target.closest('.conn-hit-area');
+        if (!hit || isConnectMode) return;
+        const conn = (DATA.connections || []).find((c) => c.id === hit.dataset.connId);
+        if (!conn) return;
+        if (DATA.courseById[conn.from] && DATA.courseById[conn.to]) {
+          showConnToast('Whole-course links have no strength tier. Edit them in the course editor.');
+          return;
+        }
+        const cycle = window.CONNECTION_TIER_CYCLE || ['strong', 'related', 'weak'];
+        const i = cycle.indexOf(conn.level);
+        conn.level = cycle[(i + 1) % cycle.length];
+        state.activeTiers.add(conn.level);
+        showConnToast(`Connection set to ${conn.level}`);
+        refreshVisuals();
+        scheduleAutosave();
+      });
+    }
+
+    function showConnToast(msg) {
+      document.querySelectorAll('.conn-toast').forEach((t) => t.remove());
+      const t = document.createElement('div');
+      t.className = 'conn-toast';
+      t.textContent = msg;
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 1600);
+    }
+
     const tierToggles = document.getElementById('tierToggles');
     if (tierToggles) {
       tierToggles.addEventListener('change', (e) => {
@@ -754,6 +825,12 @@ window.defaultScheduleConfig = {
   function reindexData() {
     DATA.moduleById = {};
     DATA.courseByModuleId = {};
+    DATA.courseById = {};
+    (DATA.courses || []).forEach((c) => { DATA.courseById[c.id] = c; });
+    // Legacy files: give every connection a stable id (needed for click-to-cycle)
+    if (Array.isArray(DATA.connections)) {
+      DATA.connections.forEach((c, i) => { if (!c.id) c.id = `conn-legacy-${i}-${Date.now().toString(36)}`; });
+    }
 
     (DATA.courses || []).forEach((course) => {
       (course.modules || []).forEach((mod) => {

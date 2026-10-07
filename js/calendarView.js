@@ -18,7 +18,11 @@
   function segHtml(seg, nums, fmt) {
     if (seg.kind === 'exam') {
       const w = seg.weightPercent ? ` · ${fmt(seg.weightPercent)}%` : '';
-      return `<div class="cal-seg cal-seg-exam"><span class="cal-seg-tag">${esc(seg.moduleLabel)}${w}</span><span class="cal-seg-title">${esc(seg.title)}</span></div>`;
+      const partial = seg.meeting && !seg.fillsClass;
+      const bits = [];
+      if (seg.parts > 1) bits.push(`${seg.part}/${seg.parts}`);
+      if (partial) bits.push(`${fmt(seg.hours)} h`);
+      return `<div class="cal-seg cal-seg-exam"><span class="cal-seg-tag">${esc(seg.moduleLabel)}${w}</span><span class="cal-seg-title">${esc(seg.title)}${bits.length ? ` <span class="cal-seg-part">(${bits.join(', ')})</span>` : ''}</span></div>`;
     }
     if (seg.kind === 'buffer') {
       return `<div class="cal-seg cal-seg-buffer"><span class="cal-seg-title">Catch-up / review · ${fmt(seg.hours)} h</span></div>`;
@@ -66,15 +70,19 @@
     const weeksHtml = r.weeks.map((week) => {
       const meetings = week.meetings.map((m) => `
         <div class="cal-meeting">
-          <div class="cal-meeting-label">Class ${m.day}${cfg.uniform ? '' : ` · ${fmt(m.hours)} h`}</div>
+          <div class="cal-meeting-label">${m.dateLabel ? `${esc(m.dateLabel)} · ` : ''}Class ${m.day}${cfg.uniform ? '' : ` · ${fmt(m.hours)} h`}</div>
           ${m.segs.length ? m.segs.map((s) => segHtml(s, nums, fmt)).join('') : '<div class="cal-seg cal-seg-buffer"><span class="cal-seg-title">Open</span></div>'}
         </div>`).join('');
       const due = week.takeHome.map((mod) => `
-        <div class="cal-seg cal-seg-due"><span class="cal-seg-tag">Due this week${mod.weightPercent ? ` · ${fmt(mod.weightPercent)}%` : ''}</span><span class="cal-seg-title">${esc(mod.title || mod.label)}</span></div>`).join('');
+        <div class="cal-seg cal-seg-due"><span class="cal-seg-tag">Due ${r.assessmentDate && r.assessmentDate[mod.id] ? esc(S.formatDateLabel(r.assessmentDate[mod.id])) : 'this week'}${mod.weightPercent ? ` · ${fmt(mod.weightPercent)}%` : ''}</span><span class="cal-seg-title">${esc(mod.title || mod.label)}</span></div>`).join('');
+      const range = week.startDate
+        ? `<span class="cal-week-range">${esc(S.formatDateLabel(week.startDate, false))}${week.endDate !== week.startDate ? ' – ' + esc(S.formatDateLabel(week.endDate, false)) : ''}</span>` : '';
+      const notes = (week.skipNotes || []).map((n) =>
+        `<div class="${n.skipsClass ? 'cal-skip-note' : 'cal-flag-note'}">${esc(n.text)}</div>`).join('');
       return `
         <div class="cal-week-card">
-          <div class="cal-week-header">Week ${week.weekNumber}</div>
-          <div class="cal-week-body">${meetings}${due}</div>
+          <div class="cal-week-header">Week ${week.weekNumber}${range}</div>
+          <div class="cal-week-body">${notes}${meetings}${due}</div>
         </div>`;
     }).join('');
 
@@ -96,9 +104,10 @@
         <ul>${listRows(r.unreachedOptional)}</ul>
       </section>` : '';
 
+    const noDateHint = r.hasDates ? '' : ' · set a start date in the course editor to see real dates';
     const summaryCls = r.isOver ? 'is-over' : 'is-ok';
     const summary = `${esc(cfg.label)} · ${cfg.weeks} weeks · ${fmt(r.requiredHours)} h required${r.optionalHours ? ` + ${fmt(r.optionalHours)} h time permitting` : ''} of ${fmt(cfg.capacityHours)} h` +
-      (r.isOver ? ` · <strong>${fmt(r.overByHours)} h over</strong>` : '');
+      (r.isOver ? ` · <strong>${fmt(r.overByHours)} h over</strong>` : '') + noDateHint;
 
     modal.innerHTML = `
       <div class="calendar-modal-card" role="dialog" aria-label="${esc(course.code)} term calendar">

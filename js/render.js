@@ -192,9 +192,7 @@ function renderCourseCard(course, isCollapsed) {
   headMeta.appendChild(downloadBtn);
 
   const actionControls = document.createElement('div');
-  actionControls.style.display = 'inline-flex';
-  actionControls.style.gap = '4px';
-  actionControls.style.alignItems = 'center';
+  actionControls.className = 'card-actions';
 
   const deleteBtn = document.createElement('button');
   deleteBtn.type = 'button';
@@ -319,7 +317,18 @@ function renderCourseCard(course, isCollapsed) {
   return card;
 }
 
+const COURSE_TIER_DEF = {
+  label: 'Course Link',
+  description: 'Whole course builds on / supports another course (not tied to a topic)',
+};
+
+function withCourseTier(legend) {
+  if (!legend) return legend;
+  return legend.course ? legend : Object.assign({}, legend, { course: COURSE_TIER_DEF });
+}
+
 function renderTierToggles(legend, activeTiers) {
+  legend = withCourseTier(legend);
   const container = document.getElementById('tierToggles');
   if (!container || !legend) return;
   container.innerHTML = '';
@@ -336,6 +345,7 @@ function renderTierToggles(legend, activeTiers) {
 }
 
 function renderLegendBar(legend) {
+  legend = withCourseTier(legend);
   const bar = document.getElementById('legendBar');
   if (!bar || !legend) return;
   bar.innerHTML = '';
@@ -397,8 +407,10 @@ function renderDrawer(data, moduleId) {
         ⏱️ <strong>Scheduled:</strong> ${(() => {
           if (mod.scheduleNote) return escapeHtml(mod.scheduleNote);
           if (mod.isTakeHome) return 'Take-home';
-          const wk = window.Scheduler ? window.Scheduler.build(course).assessmentWeek[mod.id] : null;
-          return wk ? `Week ${wk}` : '<span style="color:#b91c1c">does not fit in the term</span>';
+          const built = window.Scheduler ? window.Scheduler.build(course) : null;
+          const wk = built ? built.assessmentWeek[mod.id] : null;
+          const dt = built && built.assessmentDate ? built.assessmentDate[mod.id] : null;
+          return wk ? `Week ${wk}${dt ? ' (' + window.Scheduler.formatDateLabel(dt) + ')' : ''}` : '<span style="color:#b91c1c">does not fit in the term</span>';
         })()}
       </div>
       <div class="drawer-section-label">Scope & Covered Modules</div>

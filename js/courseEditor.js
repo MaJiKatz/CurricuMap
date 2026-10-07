@@ -131,10 +131,112 @@ function updateScheduleUi() {
   const note = document.getElementById('scheduleCapacityNote');
   if (note) {
     const cfg = S().getCourseSchedule({ schedule: readScheduleFromForm() });
+    renderClassDaysPicker();
     note.textContent = `${cfg.weeks} weeks × ${fmtH(cfg.hoursPerWeek)} lecture h/week = ${fmtH(cfg.capacityHours)} lecture hours of class time.`;
   }
   refreshBudget();
 }
+
+
+// ------------------------------------------------------------
+// Start date, class days, important dates
+// ------------------------------------------------------------
+let editingClassDays = [];
+let editingImportantDates = [];
+
+function currentPerWeek() {
+  return S().getCourseSchedule({ schedule: readScheduleFromForm() }).pattern.length;
+}
+
+function renderClassDaysPicker() {
+  const el = document.getElementById('classDaysPicker');
+  if (!el) return;
+  const perWeek = currentPerWeek();
+  const resolved = S().resolveClassDays({ classDays: editingClassDays }, perWeek);
+  const order = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
+  const chosen = new Set(resolved.map((n) => S().WEEKDAY_CODES[n]));
+  el.innerHTML = order.map((code) =>
+    `<button type="button" class="day-chip ${chosen.has(code) ? 'is-on' : ''}" data-day="${code}" onclick="toggleClassDay('${code}')">${code.charAt(0) + code.charAt(1).toLowerCase()}</button>`
+  ).join('') + `<span class="day-hint">${perWeek} class${perWeek === 1 ? '' : 'es'}/week &mdash; pick ${perWeek}</span>`;
+}
+
+function toggleClassDay(code) {
+  const perWeek = currentPerWeek();
+  const resolved = S().resolveClassDays({ classDays: editingClassDays }, perWeek).map((n) => S().WEEKDAY_CODES[n]);
+  let next = resolved.includes(code) ? resolved.filter((c) => c !== code) : [...resolved, code];
+  if (next.length > perWeek) next = next.slice(next.length - perWeek); // drop the oldest pick
+  editingClassDays = next;
+  renderClassDaysPicker();
+  refreshBudget();
+}
+
+function renderImportantDatesRows() {
+  const box = document.getElementById('editorImportantDatesContainer');
+  if (!box) return;
+  if (!editingImportantDates.length) {
+    box.innerHTML = '<p class="empty-note">No important dates yet.</p>';
+    return;
+  }
+  box.innerHTML = editingImportantDates.map((d, i) => `
+    <div class="important-date-row">
+      <input type="date" value="${escapeHtml(d.date || '')}" data-idx="${i}" data-f="date" title="Date (or first day)">
+      <input type="date" value="${escapeHtml(d.endDate || '')}" data-idx="${i}" data-f="endDate" title="Last day (optional, for a range)">
+      <input type="text" value="${escapeHtml(d.label || '')}" data-idx="${i}" data-f="label" placeholder="e.g. Reading week">
+      <label class="skip-check"><input type="checkbox" data-idx="${i}" data-f="skipsClass" ${d.skipsClass ? 'checked' : ''}> no class</label>
+      <button type="button" class="btn btn-cancel btn-sm" onclick="removeImportantDate(${i})" title="Remove">&times;</button>
+    </div>`).join('');
+}
+
+function syncImportantDatesFromDom() {
+  document.querySelectorAll('#editorImportantDatesContainer [data-f]').forEach((el) => {
+    const d = editingImportantDates[+el.dataset.idx];
+    if (!d) return;
+    d[el.dataset.f] = el.type === 'checkbox' ? el.checked : el.value;
+  });
+}
+
+function addImportantDate() {
+  syncImportantDatesFromDom();
+  editingImportantDates.push({ date: '', endDate: '', label: '', skipsClass: true });
+  renderImportantDatesRows();
+}
+
+function removeImportantDate(i) {
+  syncImportantDatesFromDom();
+  editingImportantDates.splice(i, 1);
+  renderImportantDatesRows();
+}
+
+/** Only the date fields that have values, so courses without dates stay unchanged. */
+function readDatesFromForm() {
+  syncImportantDatesFromDom();
+  const out = {};
+  const start = document.getElementById('courseStartDate')?.value;
+  if (start) out.startDate = start;
+  const perWeek = currentPerWeek();
+  if (editingClassDays.length === perWeek) out.classDays = editingClassDays.slice();
+  const dates = editingImportantDates
+    .filter((d) => d.date)
+    .map((d) => {
+      const row = { date: d.date, label: (d.label || '').trim(), skipsClass: !!d.skipsClass };
+      if (d.endDate && d.endDate !== d.date) row.endDate = d.endDate;
+      return row;
+    });
+  if (dates.length) out.importantDates = dates;
+  return out;
+}
+
+function writeDatesToForm(course) {
+  const el = document.getElementById('courseStartDate');
+  if (el) el.value = course.startDate || '';
+  editingClassDays = Array.isArray(course.classDays) ? course.classDays.slice() : [];
+  editingImportantDates = (course.importantDates || []).map((d) => ({ ...d }));
+  renderClassDaysPicker();
+  renderImportantDatesRows();
+}
+
+document.getElementById('btnAddImportantDate')?.addEventListener('click', addImportantDate);
+document.getElementById('courseStartDate')?.addEventListener('change', refreshBudget);
 
 ['weeksInSemester', 'weeklyFormat', 'customPattern'].forEach((id) => {
   const el = document.getElementById(id);
@@ -166,6 +268,7 @@ function openCourseModal(courseData = null, connectionsData = []) {
     ? JSON.parse(JSON.stringify(courseData))
     : { id: `course-${Date.now()}`, code: '', name: '', year: 1, yearLabel: 'Year 1', textbooks: [], modules: [] };
   originalCourseId = courseData ? courseData.id : null;
+  connScopeMode = 'module';
 
   editingModules = JSON.parse(JSON.stringify(currentCourse.modules || [])).map((mod) => {
     if (mod.isExam || mod.isLab) return mod;
@@ -190,6 +293,7 @@ function openCourseModal(courseData = null, connectionsData = []) {
 
   renderTextbookInputs(currentCourse.textbooks || currentCourse.textbook || []);
   writeScheduleToForm(currentCourse);
+  writeDatesToForm(currentCourse);
   renderModulesList();
   renderConnectionsList();
   renderOutlineTab();
@@ -235,6 +339,9 @@ function syncModulesFromDOM() {
       if (val('.input-eval-title')) mod.title = val('.input-eval-title').value;
       if (val('.input-eval-weight')) mod.weightPercent = parseFloat(val('.input-eval-weight').value) || 0;
       if (val('.input-eval-classes')) mod.lectureCount = mod.lectures = Math.max(1, parseInt(val('.input-eval-classes').value, 10) || 1);
+      if (val('.input-eval-duration-mode')) mod.durationMode = val('.input-eval-duration-mode').value;
+      if (val('.input-eval-hours')) mod.durationHours = hoursVal(val('.input-eval-hours').value, 0.5);
+      if (val('.input-eval-fresh')) mod.startsFreshClass = val('.input-eval-fresh').checked;
       if (val('.input-eval-when')) mod.scheduleNote = val('.input-eval-when').value;
       if (val('.input-eval-scope')) mod.scopeNote = val('.input-eval-scope').value;
       if (val('.input-eval-takehome')) mod.isTakeHome = val('.input-eval-takehome').checked;
@@ -335,9 +442,22 @@ function examRowHtml(mod, modIdx) {
           Take-home (doesn't use class time)
         </label>
         ${mod.isTakeHome ? '' : `
+        <label class="inline-field">Time used
+          <select class="input-eval-duration-mode" onchange="syncModulesFromDOM(); renderModulesList();">
+            <option value="classes" ${mod.durationMode !== 'hours' ? 'selected' : ''}>Whole class(es)</option>
+            <option value="hours" ${mod.durationMode === 'hours' ? 'selected' : ''}>Part of a class</option>
+          </select>
+        </label>
+        ${mod.durationMode === 'hours' ? `
+        <label class="inline-field" title="How much of a class this needs, in lecture hours — e.g. 0.25 for 15 minutes of a 1-hour class.">Hours needed
+          <input type="number" class="input-eval-hours" min="0.25" step="0.25" value="${S().examHours(mod)}" style="width: 65px;">
+        </label>
+        <label class="inline-field">
+          <input type="checkbox" class="input-eval-fresh" ${mod.startsFreshClass ? 'checked' : ''}> Start in a fresh class
+        </label>` : `
         <label class="inline-field">Classes used
           <input type="number" class="input-eval-classes" min="1" step="1" value="${S().examClasses(mod)}" style="width: 60px;">
-        </label>`}
+        </label>`}`}
         <label class="inline-field grow">"Scheduled" text
           <input type="text" class="input-eval-when" value="${escapeHtml(mod.scheduleNote || '')}" placeholder="Leave blank to use the computed week (e.g. October 21, TBD)">
         </label>
@@ -485,6 +605,7 @@ function draftCourse() {
     ...currentCourse,
     id: courseIdValue(),
     schedule: readScheduleFromForm(),
+    ...readDatesFromForm(),
     noFinalExam: !!editingOutline.noFinalExam,
     modules: editingModules,
   };
@@ -560,8 +681,11 @@ function refreshBudget() {
       const mod = editingModules.find((m) => m.id === id);
       if (mod && mod.isExam) {
         const wk = r.assessmentWeek[id];
-        if (wk) { text = `Week ${wk}`; cls = 'st-ok'; }
-        else if (!mod.isTakeHome) { text = "Doesn't fit in term"; cls = 'st-overflow'; }
+        const ms = r.moduleStatus[id];
+        if (mod.isTakeHome) { if (wk) { text = `Week ${wk}`; cls = 'st-ok'; } }
+        else if (ms === 'ok') { text = `Week ${wk}`; cls = 'st-ok'; }
+        else if (ms === 'partial') { text = wk ? `Week ${wk} (runs over)` : 'Runs past term'; cls = 'st-partial'; }
+        else { text = "Doesn't fit in term"; cls = 'st-overflow'; }
       } else {
         const ms = r.moduleStatus[id];
         const map = { overflow: ["Doesn't fit", 'st-overflow'], partial: ['Runs past term', 'st-partial'], 'optional-unreached': ['Not reached', 'st-optional'], 'optional-partial': ['Partly reached', 'st-optional'] };
@@ -862,6 +986,7 @@ function applyOutline(course) {
 // ------------------------------------------------------------
 function courseYearOf(moduleOrCourseId) {
   const data = window.DATA || {};
+  if (moduleOrCourseId === currentCourse.id) return parseInt(document.getElementById('courseYear')?.value, 10) || 0;
   if (editingModules.some((m) => m.id === moduleOrCourseId)) return parseInt(document.getElementById('courseYear')?.value, 10) || 0;
   const c = (data.courseByModuleId && data.courseByModuleId[moduleOrCourseId]) || (data.courses || []).find((x) => x.id === moduleOrCourseId);
   return c ? Number(c.year) || 0 : 0;
@@ -870,6 +995,26 @@ function courseYearOf(moduleOrCourseId) {
 /** Earlier year → later year, so "Builds upon / Leads to" reads correctly. */
 function orientConnection(from, to) {
   return courseYearOf(from) > courseYearOf(to) ? [to, from] : [from, to];
+}
+
+let connScopeMode = 'module'; // 'module' = topic-to-topic, 'course' = whole-course link
+
+function isCourseLevelConn(conn) {
+  const data = window.DATA || {};
+  const isCourseId = (id) => id === currentCourse.id || (data.courses || []).some((c) => c.id === id);
+  return isCourseId(conn.from) && isCourseId(conn.to);
+}
+
+function setConnScopeMode(mode) {
+  connScopeMode = mode === 'course' ? 'course' : 'module';
+  renderConnectionsList();
+}
+
+function courseLabel(id) {
+  const c = id === currentCourse.id
+    ? { code: document.getElementById('courseCode')?.value || currentCourse.code, name: document.getElementById('courseName')?.value || currentCourse.name }
+    : ((window.DATA && window.DATA.courses) || []).find((x) => x.id === id);
+  return c ? `${c.code || ''}${c.name ? ' — ' + c.name : ''}` : id;
 }
 
 function renderConnectionsList() {
@@ -888,6 +1033,19 @@ function renderConnectionsList() {
     .map((c) => `<option value="${c.id}">${escapeHtml(c.code)} — ${escapeHtml(c.name)}</option>`).join('');
 
   const rows = editingConnections.length ? editingConnections.map((conn, idx) => {
+    if (isCourseLevelConn(conn)) {
+      const fromLocal = conn.from === currentCourse.id;
+      const remoteId = fromLocal ? conn.to : conn.from;
+      const dir = courseYearOf(remoteId) < courseYearOf(currentCourse.id) ? 'Builds upon' : courseYearOf(remoteId) > courseYearOf(currentCourse.id) ? 'Leads to' : 'Same year';
+      return `
+      <tr>
+        <td><em>Whole course</em></td>
+        <td class="conn-dir">${dir}</td>
+        <td><span class="course-pill">${escapeHtml(courseLabel(remoteId))}</span> <em>(entire course)</em></td>
+        <td><span class="badge tier-course">course link</span></td>
+        <td style="text-align:right;"><button type="button" class="btn btn-cancel btn-sm" onclick="removeConnectionRow(${idx})" title="Delete connection">&times;</button></td>
+      </tr>`;
+    }
     const fromLocal = localIds.has(conn.from) || conn.from === currentCourse.id;
     const localId = fromLocal ? conn.from : conn.to;
     const remoteId = fromLocal ? conn.to : conn.from;
@@ -907,8 +1065,16 @@ function renderConnectionsList() {
       </tr>`;
   }).join('') : '<tr><td colspan="5" class="empty-note" style="text-align:center;">No connections for this course yet.</td></tr>';
 
-  container.innerHTML = `
-    <div class="connection-editor-box">
+  const isCourseMode = connScopeMode === 'course';
+  const form = isCourseMode ? `
+      <div class="add-connection-form">
+        <label class="stack-field grow">From
+          <select disabled><option>This whole course</option></select></label>
+        <label class="stack-field grow">To course (entire course)
+          <select id="conn-to-course-only">
+            <option value="">Select a course…</option>${courseOptions}</select></label>
+        <button type="button" class="btn btn-primary" onclick="addCourseLinkFromDropdowns()">Add course link</button>
+      </div>` : `
       <div class="add-connection-form">
         <label class="stack-field grow">From (this course)
           <select id="conn-from-module">${fromOptions}</select></label>
@@ -924,12 +1090,33 @@ function renderConnectionsList() {
             <option value="weak">Weak</option>
           </select></label>
         <button type="button" class="btn btn-primary" onclick="addConnectionFromDropdowns()">Add link</button>
+      </div>`;
+
+  container.innerHTML = `
+    <div class="connection-editor-box">
+      <div class="conn-scope-toggle" role="tablist">
+        <button type="button" class="btn btn-sm ${isCourseMode ? 'btn-secondary' : 'btn-primary'}" onclick="setConnScopeMode('module')">Topic ↔ topic</button>
+        <button type="button" class="btn btn-sm ${isCourseMode ? 'btn-primary' : 'btn-secondary'}" onclick="setConnScopeMode('course')">Whole course ↔ whole course</button>
       </div>
+      ${form}
       <table class="conn-table">
         <thead><tr><th>This course</th><th></th><th>Connected to</th><th>Type</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
+}
+
+function addCourseLinkFromDropdowns() {
+  const target = document.getElementById('conn-to-course-only')?.value;
+  if (!target) { alert('Choose the course to link to.'); return; }
+  const me = currentCourse.id;
+  if (editingConnections.some((c) => (c.from === me && c.to === target) || (c.from === target && c.to === me))) {
+    alert('These two courses are already linked.');
+    return;
+  }
+  const [from, to] = orientConnection(me, target);
+  editingConnections.push({ id: `conn-${Date.now()}`, from, to, level: 'course', note: '' });
+  renderConnectionsList();
 }
 
 function handleConnectionCourseChange(courseId) {
@@ -973,6 +1160,7 @@ function saveCourseData() {
 
   const cleanedModules = editingModules.map((mod) => {
     if (mod.isExam) {
+      const partial = !mod.isTakeHome && S().isPartialExam(mod);
       const out = {
         ...mod,
         label: mod.label || 'Assessment',
@@ -984,6 +1172,15 @@ function saveCourseData() {
         isTakeHome: !!mod.isTakeHome,
         coveredModuleIds: mod.coveredModuleIds || [],
       };
+      if (partial) {
+        out.durationMode = 'hours';
+        out.durationHours = S().examHours(mod);
+        if (!out.startsFreshClass) delete out.startsFreshClass;
+      } else {
+        delete out.durationMode;
+        delete out.durationHours;
+        delete out.startsFreshClass;
+      }
       ['scheduleNote', 'scopeNote'].forEach((k) => { if (!String(out[k] || '').trim()) delete out[k]; });
       return out;
     }
@@ -1036,6 +1233,8 @@ function saveCourseData() {
     modules: cleanedModules,
   };
   delete updatedCourse.textbook; // migrated to textbooks[]
+  delete updatedCourse.startDate; delete updatedCourse.classDays; delete updatedCourse.importantDates;
+  Object.assign(updatedCourse, readDatesFromForm());
   applyOutline(updatedCourse);
 
   const conflict = ((window.DATA && window.DATA.courses) || []).find((c) => c.id === updatedCourse.id && c.id !== originalCourseId);
@@ -1061,7 +1260,7 @@ Object.assign(window, {
   addLabItem, removeLabItem, equalizeLabWeights, refreshLabWeightSumIndicator,
   toggleMidtermModule, removeModuleRow, addTopicRow, removeTopicRow,
   addTopicObjective, removeTopicObjective, addTopicQuestion, removeTopicQuestion,
-  handleConnectionCourseChange, addConnectionFromDropdowns, removeConnectionRow,
+  toggleClassDay, removeImportantDate, handleConnectionCourseChange, addConnectionFromDropdowns, addCourseLinkFromDropdowns, setConnScopeMode, removeConnectionRow,
   saveCourseData, renderModulesList, renderConnectionsList, syncModulesFromDOM,
   refreshBudget, orientConnection,
   editingModulesRef: () => editingModules,

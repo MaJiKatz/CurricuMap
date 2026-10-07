@@ -31,12 +31,12 @@ const INTRO_STEPS = [
   },
   {
     title: "4. Drawing Prerequisites (Connect Mode)",
-    content: "Enable <b>🔗 Connect Mode</b> in the top header toolbar, pick a dependency tier (<i>Strong, Related, or Weak</i>), and click two modules across different courses to draw visual pedagogical connection lines across academic years.",
+    content: "Enable <b>🔗 Connect Mode</b> in the top header toolbar, pick a dependency tier (<i>Strong, Related, or Weak</i>), and click two modules across different courses to draw connection lines. Click two <i>course cards</i> instead to link whole courses (rose dashed line, shown in the outline as \"This course builds strongly upon…\"). Click any line later to cycle it between strong, related and weak.",
     badge: "5 of 7"
   },
   {
     title: "5. Course Calendar View",
-    content: "Click the <b>📅 Calendar icon</b> on any course card to open an auto-generated, week-by-week timetable breaking down every lecture topic, midterm, and lab section across the full semester duration.",
+    content: "Click the <b>📅 Calendar icon</b> on any course card to open an auto-generated, week-by-week timetable with real dates (when a start date is set), skipped days, topics, quizzes and exams. The same calendar is included as a table in the RTF outline.",
     badge: "6 of 7"
   },
   {
