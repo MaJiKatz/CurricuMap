@@ -124,9 +124,10 @@ function renderCourseCard(course, isCollapsed) {
 
   // Time budget badge — same numbers as the calendar, editor and RTF
   let sched = null;
+  let badge = null;
   if (window.Scheduler) {
     sched = window.Scheduler.build(course);
-    const badge = document.createElement('span');
+    badge = document.createElement('span');
     const fmt = window.Scheduler.formatHours;
     badge.className = `hours-badge ${sched.isOver ? 'is-over' : ''}`;
     badge.textContent = `${fmt(sched.requiredHours)}/${fmt(sched.capacityHours)} h`;
@@ -134,7 +135,6 @@ function renderCourseCard(course, isCollapsed) {
       ? `${fmt(sched.overByHours)} h of required content doesn't fit in ${fmt(sched.capacityHours)} h of class time. Open the calendar to see what falls off.`
       : `${fmt(sched.requiredHours)} h of required content in ${fmt(sched.capacityHours)} h of class time` +
         (sched.optionalHours ? ` (+${fmt(sched.optionalHours)} h time permitting)` : '');
-    headMeta.appendChild(badge);
   }
 
   const editBtn = document.createElement('button');
@@ -194,6 +194,13 @@ function renderCourseCard(course, isCollapsed) {
   const actionControls = document.createElement('div');
   actionControls.className = 'card-actions';
 
+  const collapseBtn = document.createElement('button');
+  collapseBtn.type = 'button';
+  collapseBtn.className = 'collapse-btn';
+  collapseBtn.setAttribute('aria-label', 'Toggle expansion');
+  collapseBtn.textContent = isCollapsed ? '+' : '−';
+  actionControls.appendChild(collapseBtn);
+
   const deleteBtn = document.createElement('button');
   deleteBtn.type = 'button';
   deleteBtn.className = 'btn-delete-course';
@@ -208,13 +215,6 @@ function renderCourseCard(course, isCollapsed) {
   });
   actionControls.appendChild(deleteBtn);
 
-  const collapseBtn = document.createElement('button');
-  collapseBtn.type = 'button';
-  collapseBtn.className = 'collapse-btn';
-  collapseBtn.setAttribute('aria-label', 'Toggle expansion');
-  collapseBtn.textContent = isCollapsed ? '+' : '−';
-  actionControls.appendChild(collapseBtn);
-
   headMeta.appendChild(actionControls);
   head.appendChild(headMeta);
   
@@ -222,6 +222,12 @@ function renderCourseCard(course, isCollapsed) {
   courseTitle.className = 'course-name';
   courseTitle.textContent = course.name;
   head.appendChild(courseTitle);
+  if (badge) {
+    const metaLine = document.createElement('div');
+    metaLine.className = 'course-meta-line';
+    metaLine.appendChild(badge);
+    head.appendChild(metaLine);
+  }
 
   card.appendChild(head);
 

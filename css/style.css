@@ -325,9 +325,8 @@ marker[id*="weak"] path { fill: var(--weak) !important; }
 .head-meta {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  row-gap: 4px;
-  column-gap: 3px;
+  flex-wrap: nowrap;
+  column-gap: 2px;
   margin-bottom: 4px;
   /* Never let a child render past the card's own edge, however crowded the row gets. */
   max-width: 100%;
@@ -378,7 +377,7 @@ marker[id*="weak"] path { fill: var(--weak) !important; }
   color: var(--ink-soft);
   font-size: 0.9rem;
   cursor: pointer;
-  padding: 2px 4px;
+  padding: 2px 3px;
   border-radius: 3px;
   line-height: 1;
   transition: color 0.15s ease, background 0.15s ease, transform 0.15s ease;
@@ -395,9 +394,10 @@ marker[id*="weak"] path { fill: var(--weak) !important; }
   color: var(--ink);
 }
 
-.btn-delete-course:hover {
-  color: #ef4444;
-}
+.btn-delete-course { color: #dc2626; font-weight: 700; font-size: 1.05rem; }
+.btn-delete-course:hover { color: #fff; background: #dc2626; }
+.course-meta-line { margin-top: 4px; }
+.card-actions { margin-left: 2px; gap: 2px; }
 
 .course-name {
   font-family: var(--font-display);
