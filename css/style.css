@@ -1191,3 +1191,12 @@ body.connect-mode-active .connection-layer .conn-hit-area { pointer-events: none
 .cal-week-range { float: right; font-weight: 400; font-size: 0.72rem; opacity: 0.85; }
 .cal-skip-note { font-size: 0.76rem; font-style: italic; color: #b91c1c; background: #fef2f2; border-left: 3px solid #ef4444; padding: 3px 7px; border-radius: 3px; margin-bottom: 6px; }
 .cal-flag-note { font-size: 0.76rem; font-style: italic; color: #92400e; background: #fffbeb; border-left: 3px solid #f59e0b; padding: 3px 7px; border-radius: 3px; margin-bottom: 6px; }
+
+/* Elective groups */
+.elective-panel { border: 1px dashed #a78bfa; border-radius: 8px; padding: 8px 12px; margin: 10px 0; background: rgba(124,58,237,.08); }
+.elective-panel small { color: var(--ink-soft); margin-left: 6px; }
+.elective-row { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+.elective-name { font-weight: 600; min-width: 120px; }
+.module-chip.is-not-selected { opacity: .55; border-style: dashed; background: repeating-linear-gradient(135deg,#f1f5f9 0 6px,#fff 6px 12px); }
+.elective-tag { font-family: var(--font-mono); font-size: .6rem; color: #6d28d9; margin-left: 4px; }
+.cal-leftover-elective { background: #f5f3ff; border: 1px dashed #a78bfa; }

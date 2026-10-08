@@ -105,6 +105,14 @@
       </section>` : '';
 
     const noDateHint = r.hasDates ? '' : ' · set a start date in the course editor to see real dates';
+    const electiveHtml = (r.electiveGroups || []).length ? `
+      <section class="cal-leftover cal-leftover-elective">
+        <h3>Elective groups</h3>
+        <ul>${r.electiveGroups.map((g) => `<li><strong>${esc(g.name)}</strong>: teach ${g.pick} of ${g.total} (${esc(g.basisLabel)}).
+          Taught: ${g.taught.map((m) => esc(m.label || m.title)).join(', ') || 'none'}.
+          ${g.notTaught.length ? `Not scheduled: ${g.notTaught.map((m) => esc(m.label || m.title)).join(', ')}.` : ''}</li>`).join('')}</ul>
+      </section>` : '';
+
     const summaryCls = r.isOver ? 'is-over' : 'is-ok';
     const summary = `${esc(cfg.label)} · ${cfg.weeks} weeks · ${fmt(r.requiredHours)} h required${r.optionalHours ? ` + ${fmt(r.optionalHours)} h time permitting` : ''} of ${fmt(cfg.capacityHours)} h` +
       (r.isOver ? ` · <strong>${fmt(r.overByHours)} h over</strong>` : '') + noDateHint;
@@ -122,6 +130,7 @@
           ${overflowHtml}
           <div class="calendar-grid">${weeksHtml}</div>
           ${optionalHtml}
+          ${electiveHtml}
         </div>
       </div>`;
 

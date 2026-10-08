@@ -365,12 +365,22 @@
     const nums = teachingNumbers(course);
     let rtf = heading('4. Course Modules & Detailed Topics');
 
+    const groups = sched.electiveGroups || [];
+    if (groups.length) {
+      groups.forEach((g) => {
+        const names = (list) => list.map((m) => `Module ${nums[m.id]}`).join(', ');
+        rtf += P(360, `${B(escapeRtf('Elective group \u2013 ' + g.name + ':'))} ${escapeRtf(`${g.total === g.pick ? 'all' : g.pick} of the ${g.total} modules in this group are taught each term, depending on ${g.basisLabel}. This offering: ${names(g.taught) || 'none'}.`)}${g.notTaught.length ? ' ' + G(escapeRtf(`Not taught this offering: ${names(g.notTaught)}.`)) : ''}`);
+      });
+    }
+    const notTaughtIds = new Set(groups.flatMap((g) => g.notTaught.map((m) => m.id)));
+
     (course.modules || []).forEach((mod) => {
       if (mod.isExam || mod.isLab) return;
       const k = nums[mod.id];
       const hrs = S.moduleHours(mod);
       let title = mod.title || mod.label || `Module ${k}`;
       if (S.isTimePermitting(mod) && !/time permitting/i.test(title)) title += ' (Time Permitting)';
+      if (mod.electiveGroup) title += notTaughtIds.has(mod.id) ? ' (Elective \u2013 not taught this offering)' : ' (Elective)';
 
       rtf += P(360, `\\b\\fs24 4.${k} Module ${k}: ${escapeRtf(title)} [${fmt(hrs)} ${unit(hrs)}]\\b0\\fs22`, '\\sb200\\keepn');
       if (mod.chapter) rtf += P(360, `\\cf2 Reading Reference: Chapter ${escapeRtf(mod.chapter)}\\cf1`);

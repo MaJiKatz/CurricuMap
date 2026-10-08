@@ -231,6 +231,8 @@ function renderCourseCard(course, isCollapsed) {
 
   card.appendChild(head);
 
+  const electiveInfo = window.Scheduler ? window.Scheduler.electiveSelection(course) : null;
+
   // Module, Evaluation & Lab List Rendering
   const list = document.createElement('div');
   list.className = 'module-list';
@@ -248,6 +250,15 @@ function renderCourseCard(course, isCollapsed) {
       chip.title = 'Time permitting — not reached in the current schedule';
     }
     if (window.Scheduler && window.Scheduler.isTimePermitting(mod)) chip.classList.add('is-time-permitting');
+    let electiveTag = '';
+    if (mod.electiveGroup && electiveInfo) {
+      const grp = electiveInfo.groups.find((g) => g.name === String(mod.electiveGroup).trim());
+      if (grp) electiveTag = ` <span class="elective-tag" title="Elective group: ${escapeHtml(grp.name)} \u2014 teach ${grp.pick} of ${grp.total} (${escapeHtml(grp.basisLabel)})">pick ${grp.pick}/${grp.total}</span>`;
+      if (mStatus === 'not-selected') {
+        chip.classList.add('is-not-selected');
+        chip.title = `Elective (${grp ? grp.name : 'group'}) \u2014 not taught in this offering`;
+      }
+    }
     chip.draggable = true;
     
     // ATTACH DATASET FOR PRECISE UNIQUE MATCHING ON DROP
@@ -293,7 +304,7 @@ function renderCourseCard(course, isCollapsed) {
     } else {
       chip.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-          <span class="m-label">${escapeHtml(mod.label)}</span>
+          <span class="m-label">${escapeHtml(mod.label)}${electiveTag}</span>
           ${deleteBtnHtml}
         </div>
         <span class="m-title">${escapeHtml(mod.title)}</span>

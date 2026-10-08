@@ -83,6 +83,52 @@
     return !!(mod && (mod.timePermitting || mod.optional));
   }
 
+  // ---------- elective groups ("teach n of m modules") ----------
+  const ELECTIVE_BASES = {
+    professor: 'instructor choice',
+    time: 'available time',
+    votes: 'student vote',
+    other: 'other',
+  };
+
+  /**
+   * Resolves each elective group: which modules are taught in this offering.
+   * Modules the instructor ticked "taught" come first (up to `pick`); remaining
+   * places are filled by the earliest modules in course order.
+   */
+  function electiveSelection(course) {
+    const mods = ((course && course.modules) || []).filter((m) => !m.isExam && !m.isLab && m.electiveGroup && String(m.electiveGroup).trim());
+    const defs = (course && course.electiveGroups) || {};
+    const byName = new Map();
+    mods.forEach((m) => {
+      const name = String(m.electiveGroup).trim();
+      if (!byName.has(name)) byName.set(name, []);
+      byName.get(name).push(m);
+    });
+    const groups = [];
+    const notTaughtIds = new Set();
+    byName.forEach((members, name) => {
+      const def = defs[name] || {};
+      const total = members.length;
+      let pick = parseInt(def.pick, 10);
+      if (!(pick >= 0)) pick = total;
+      pick = Math.min(pick, total);
+      const flagged = members.filter((m) => m.electiveTaught);
+      const chosen = flagged.slice(0, pick);
+      members.forEach((m) => { if (chosen.length < pick && !chosen.includes(m)) chosen.push(m); });
+      const taught = members.filter((m) => chosen.includes(m));
+      const notTaught = members.filter((m) => !chosen.includes(m));
+      notTaught.forEach((m) => notTaughtIds.add(m.id));
+      groups.push({
+        name, pick, total,
+        basis: def.basis || 'professor',
+        basisLabel: ELECTIVE_BASES[def.basis || 'professor'] || ELECTIVE_BASES.other,
+        taught, notTaught,
+      });
+    });
+    return { groups, notTaughtIds };
+  }
+
   // ---------- course schedule config ----------
   function getCourseSchedule(course) {
     const s = Object.assign({}, DEFAULT_SCHEDULE, (course && course.schedule) || {});
@@ -138,6 +184,7 @@
   function build(course) {
     const config = getCourseSchedule(course);
     const modules = (course && course.modules) || [];
+    const elective = electiveSelection(course);
 
     const meetings = [];
     for (let w = 1; w <= config.weeks; w++) {
@@ -254,6 +301,7 @@
 
     modules.forEach((mod, modIndex) => {
       if (mod.isLab) return;
+      if (elective.notTaughtIds.has(mod.id)) { moduleStatus[mod.id] = 'not-selected'; return; }
 
       if (mod.isExam) {
         if (mod.isTakeHome) {
@@ -335,7 +383,7 @@
     let requiredHours = 0;
     let optionalHours = 0;
     modules.forEach((mod) => {
-      if (mod.isLab || mod.isExam) return;
+      if (mod.isLab || mod.isExam || elective.notTaughtIds.has(mod.id)) return;
       if (isTimePermitting(mod)) optionalHours += moduleHours(mod);
       else requiredHours += moduleHours(mod);
     });
@@ -353,6 +401,7 @@
       config,
       meetings,
       weeks,
+      electiveGroups: elective.groups,
       hasDates: dated.hasDates,
       skipNotes: dated.skipNotes,
       assessmentDate: dated.assessmentDate,
@@ -539,6 +588,8 @@
     isPartialExam,
     examHours,
     isTimePermitting,
+    electiveSelection,
+    ELECTIVE_BASES,
     labHours,
     weightSummary,
     formatHours,

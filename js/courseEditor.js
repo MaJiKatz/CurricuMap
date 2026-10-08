@@ -141,6 +141,7 @@ function updateScheduleUi() {
 // ------------------------------------------------------------
 // Start date, class days, important dates
 // ------------------------------------------------------------
+let editingElectiveGroups = {};
 let editingClassDays = [];
 let editingImportantDates = [];
 
@@ -294,6 +295,7 @@ function openCourseModal(courseData = null, connectionsData = []) {
   renderTextbookInputs(currentCourse.textbooks || currentCourse.textbook || []);
   writeScheduleToForm(currentCourse);
   writeDatesToForm(currentCourse);
+  editingElectiveGroups = JSON.parse(JSON.stringify(currentCourse.electiveGroups || {}));
   renderModulesList();
   renderConnectionsList();
   renderOutlineTab();
@@ -358,6 +360,11 @@ function syncModulesFromDOM() {
     if (val('.input-module-title')) mod.title = val('.input-module-title').value;
     if (val('.input-module-tp')) mod.timePermitting = val('.input-module-tp').checked;
     if (val('.input-module-fresh')) mod.startsFreshClass = val('.input-module-fresh').checked;
+    if (val('.input-module-group')) {
+      const g = val('.input-module-group').value.trim();
+      if (g) mod.electiveGroup = g; else { delete mod.electiveGroup; delete mod.electiveTaught; }
+    }
+    if (val('.input-module-taught')) mod.electiveTaught = val('.input-module-taught').checked;
 
     // If the module total was simply the sum of its topics, keep it tracking that sum.
     const prevSum = S().topicsHours(mod);
@@ -395,11 +402,65 @@ function syncModulesFromDOM() {
 // ------------------------------------------------------------
 // Module list rendering
 // ------------------------------------------------------------
+
+// ------------------------------------------------------------
+// Elective groups panel ("teach n of m")
+// ------------------------------------------------------------
+function renderElectivePanel() {
+  const host = document.getElementById('electiveGroupsPanel');
+  if (!host) return;
+  const names = [];
+  editingModules.forEach((m) => {
+    if (!m.isExam && !m.isLab && m.electiveGroup && !names.includes(m.electiveGroup)) names.push(m.electiveGroup);
+  });
+  const dl = document.getElementById('electiveGroupNames');
+  if (dl) dl.innerHTML = names.map((n) => `<option value="${escapeHtml(n)}"></option>`).join('');
+  if (!names.length) { host.innerHTML = ''; return; }
+
+  const bases = S().ELECTIVE_BASES;
+  host.innerHTML = `<div class="elective-panel"><strong>Elective groups</strong> <small>Modules in a group are alternatives &mdash; only some are taught each time.</small>` +
+    names.map((name) => {
+      const total = editingModules.filter((m) => !m.isExam && !m.isLab && m.electiveGroup === name).length;
+      const def = editingElectiveGroups[name] || {};
+      let pick = parseInt(def.pick, 10);
+      if (!(pick >= 0)) pick = total;
+      pick = Math.min(pick, total);
+      const opts = Object.keys(bases).map((k) => `<option value="${k}" ${((def.basis || 'professor') === k) ? 'selected' : ''}>${bases[k]}</option>`).join('');
+      return `<div class="elective-row" data-group="${escapeHtml(name)}">
+        <span class="elective-name">${escapeHtml(name)}</span>
+        <label>Teach <input type="number" class="elective-pick" min="0" max="${total}" value="${pick}" style="width:56px"> of ${total} modules</label>
+        <label>decided by <select class="elective-basis">${opts}</select></label>
+      </div>`;
+    }).join('') + '</div>';
+}
+
+function syncElectivePanel() {
+  document.querySelectorAll('#electiveGroupsPanel .elective-row').forEach((row) => {
+    const name = row.dataset.group;
+    editingElectiveGroups[name] = {
+      pick: Math.max(0, parseInt(row.querySelector('.elective-pick').value, 10) || 0),
+      basis: row.querySelector('.elective-basis').value,
+    };
+  });
+}
+
+document.getElementById('electiveGroupsPanel')?.addEventListener('input', () => { syncElectivePanel(); refreshBudget(); });
+document.getElementById('electiveGroupsPanel')?.addEventListener('change', () => { syncElectivePanel(); renderModulesList(); });
+
+let renderingModules = false;
 function renderModulesList() {
+  if (renderingModules) return;
+  renderingModules = true;
+  try { renderModulesListInner(); } finally { renderingModules = false; }
+}
+
+function renderModulesListInner() {
+  if (document.activeElement && document.activeElement.blur && document.activeElement.closest && document.activeElement.closest('#moduleList, #electiveGroupsPanel')) document.activeElement.blur();
   const container = document.getElementById('moduleList');
   const countEl = document.getElementById('moduleCount');
   if (countEl) countEl.textContent = editingModules.length;
   if (!container) return;
+  renderElectivePanel();
 
   if (!editingModules.length) {
     container.innerHTML = '<p class="empty-note">No modules yet. Add a module, an assessment, or a lab section above.</p>';
@@ -575,6 +636,12 @@ function moduleRowHtml(mod, modIdx) {
         <label class="inline-field" title="If the previous topic ends part-way through a class, the rest of that class is left as catch-up time.">
           <input type="checkbox" class="input-module-fresh" ${mod.startsFreshClass ? 'checked' : ''}> Start in a fresh class
         </label>
+        <label class="inline-field" title="Modules sharing a group name are alternatives: only some of them are taught in a given offering.">Elective group
+          <input type="text" class="input-module-group" list="electiveGroupNames" value="${escapeHtml(mod.electiveGroup || '')}" placeholder="(none)" style="width: 130px;">
+        </label>
+        ${mod.electiveGroup ? `<label class="inline-field" title="Tick the modules you are teaching this time. Unticked ones are left out of the schedule and hour totals once the group's quota is filled.">
+          <input type="checkbox" class="input-module-taught" ${mod.electiveTaught ? 'checked' : ''}> Taught this offering
+        </label>` : ''}
         <span style="flex:1"></span>
         <span class="sched-badge" data-mod="${escapeHtml(mod.id)}"></span>
       </div>
@@ -594,7 +661,12 @@ function moduleRowHtml(mod, modIdx) {
   let t = null;
   const kick = () => { clearTimeout(t); t = setTimeout(() => { syncModulesFromDOM(); refreshBudget(); }, 150); };
   list.addEventListener('input', kick);
-  list.addEventListener('change', kick);
+  list.addEventListener('change', (e) => {
+    kick();
+    if (e.target.classList && (e.target.classList.contains('input-module-group') || e.target.classList.contains('input-module-taught'))) {
+      setTimeout(() => { syncModulesFromDOM(); renderModulesList(); }, 160);
+    }
+  });
 })();
 
 // ------------------------------------------------------------
@@ -606,6 +678,7 @@ function draftCourse() {
     id: courseIdValue(),
     schedule: readScheduleFromForm(),
     ...readDatesFromForm(),
+    electiveGroups: editingElectiveGroups,
     noFinalExam: !!editingOutline.noFinalExam,
     modules: editingModules,
   };
@@ -688,7 +761,7 @@ function refreshBudget() {
         else { text = "Doesn't fit in term"; cls = 'st-overflow'; }
       } else {
         const ms = r.moduleStatus[id];
-        const map = { overflow: ["Doesn't fit", 'st-overflow'], partial: ['Runs past term', 'st-partial'], 'optional-unreached': ['Not reached', 'st-optional'], 'optional-partial': ['Partly reached', 'st-optional'] };
+        const map = { overflow: ["Doesn't fit", 'st-overflow'], partial: ['Runs past term', 'st-partial'], 'optional-unreached': ['Not reached', 'st-optional'], 'optional-partial': ['Partly reached', 'st-optional'], 'not-selected': ['Not taught this time', 'st-optional'] };
         if (map[ms]) [text, cls] = map[ms];
       }
     }
@@ -1216,6 +1289,8 @@ function saveCourseData() {
     const out = { ...mod, lectureCount: total, lectures: total, isExam: false, isLab: false, topics };
     if (!out.timePermitting) delete out.timePermitting;
     if (!out.startsFreshClass) delete out.startsFreshClass;
+    if (!out.electiveGroup) { delete out.electiveGroup; delete out.electiveTaught; }
+    else if (!out.electiveTaught) delete out.electiveTaught;
     return out;
   });
 
@@ -1235,6 +1310,12 @@ function saveCourseData() {
   delete updatedCourse.textbook; // migrated to textbooks[]
   delete updatedCourse.startDate; delete updatedCourse.classDays; delete updatedCourse.importantDates;
   Object.assign(updatedCourse, readDatesFromForm());
+  {
+    const used = new Set(cleanedModules.map((m) => m.electiveGroup).filter(Boolean));
+    const eg = {};
+    Object.keys(editingElectiveGroups).forEach((k) => { if (used.has(k)) eg[k] = editingElectiveGroups[k]; });
+    if (Object.keys(eg).length) updatedCourse.electiveGroups = eg; else delete updatedCourse.electiveGroups;
+  }
   applyOutline(updatedCourse);
 
   const conflict = ((window.DATA && window.DATA.courses) || []).find((c) => c.id === updatedCourse.id && c.id !== originalCourseId);

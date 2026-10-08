@@ -142,6 +142,8 @@ CurriMap uses a standard JSON schema to represent courses, modules, and prerequi
 | course | `startDate` | `"2026-09-09"` — first day of classes; the calendar and RTF then show real dates |
 | course | `classDays` | `["MO","WE","FR"]` — weekdays classes meet (must match classes per week; otherwise sensible defaults) |
 | course | `importantDates` | `[{ "date": "2026-10-12", "endDate": "2026-10-16", "label": "Reading week", "skipsClass": true }]` — a skipped day costs one class slot, everything after slides later |
+| module | `electiveGroup`, `electiveTaught` | Modules sharing a group name are alternatives; `electiveTaught` marks the ones taught this offering |
+| course | `electiveGroups` | `{ "Advanced topics": { "pick": 2, "basis": "professor" \| "time" \| "votes" \| "other" } }` — teach `pick` of the group's modules; the rest drop out of the schedule and hour totals |
 | connection | `from`/`to` = two **course** ids | Whole-course link (`level: "course"`); outlines say "This course builds strongly upon …" |
 
 🛡️ Data Privacy
