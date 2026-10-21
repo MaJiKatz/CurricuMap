@@ -144,6 +144,11 @@ CurriMap uses a standard JSON schema to represent courses, modules, and prerequi
 | course | `importantDates` | `[{ "date": "2026-10-12", "endDate": "2026-10-16", "label": "Reading week", "skipsClass": true }]` — a skipped day costs one class slot, everything after slides later |
 | module | `electiveGroup`, `electiveTaught` | Modules sharing a group name are alternatives; `electiveTaught` marks the ones taught this offering |
 | course | `electiveGroups` | `{ "Advanced topics": { "pick": 2, "basis": "professor" \| "time" \| "votes" \| "other" } }` — teach `pick` of the group's modules; the rest drop out of the schedule and hour totals |
+| file | `outcomes` | Top level, beside `courses`. A tree: `[{ "id": "po-1", "parent_id": null \| "<id>", "title": "…", "description": "…", "status": "active" \| "archived", "codeOverride": "optional" }]`. Sibling order = array order; codes (1, 1.A, 1.A.1…) are generated from position. Old flat files are upgraded on load |
+| file | `programs` | Top level. `[{ "id": "prog-1", "name": "Chemistry Major", "type": "major" \| "honours" \| "minor" \| "specialization" \| "other", "description": "" }]` |
+| course | `programs` | `[{ "id": "prog-1", "required": true \| false }]`: which programs include the course, and whether it is required or an elective there. Edited in the course editor (General) or the Outcomes modal (Programs tab) |
+| outcome | `programId`, `area` | `programId` null = overall (applies to everyone; children inherit their parent's). `area` = subject-area tag (e.g. "Physical"), also inherited. The matrix can be filtered by program and area. With a program selected it shows required courses, then electives, plus Guaranteed (required only) and Possible (with electives) columns |
+| topic | `outcomes` | `[{ "id": "po-1", "level": "I" \| "R" \| "A" }]` — Introduced / Reinforced / Advanced (older D/M levels become R/A on load). The matrix is read-only and computed from these tags |
 | connection | `from`/`to` = two **course** ids | Whole-course link (`level: "course"`); outlines say "This course builds strongly upon …" |
 
 🛡️ Data Privacy

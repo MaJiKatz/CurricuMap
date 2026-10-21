@@ -42,6 +42,8 @@ window.defaultScheduleConfig = {
     stampPositions();
     return {
       meta: { savedAt: new Date().toISOString(), version: '1.2' },
+      outcomes: DATA.outcomes || [],
+      programs: DATA.programs || [],
       courses: DATA.courses,
       connections: { legend: DATA.legend, connections: DATA.connections },
     };
@@ -86,6 +88,8 @@ window.defaultScheduleConfig = {
       const saved = readAutosave();
       if (saved) {
         DATA.courses = saved.courses;
+        DATA.outcomes = Array.isArray(saved.outcomes) ? saved.outcomes : [];
+        DATA.programs = Array.isArray(saved.programs) ? saved.programs : [];
         DATA.connections = (saved.connections && saved.connections.connections) || [];
         if (saved.connections && saved.connections.legend) DATA.legend = saved.connections.legend;
         const when = new Date(saved.meta && saved.meta.savedAt);
@@ -126,11 +130,15 @@ window.defaultScheduleConfig = {
         stampPositions();
         return {
           courses: DATA.courses,
+          outcomes: DATA.outcomes || [],
+          programs: DATA.programs || [],
           connectionsData: { legend: DATA.legend, connections: DATA.connections }
         };
       },
-      ({ courses, connections }) => {
+      ({ courses, connections, outcomes, programs }) => {
         DATA.courses = courses;
+        DATA.outcomes = Array.isArray(outcomes) ? outcomes : [];
+        DATA.programs = Array.isArray(programs) ? programs : [];
         if (connections) {
           DATA.connections = connections.connections || connections;
           if (connections.legend) DATA.legend = connections.legend;
@@ -154,7 +162,12 @@ window.defaultScheduleConfig = {
           refreshVisuals();
         });
       },
-      ({ coursesToImport, connectionsToImport, legend }) => {
+      ({ coursesToImport, connectionsToImport, legend, outcomes, programs }) => {
+        if (!Array.isArray(DATA.programs)) DATA.programs = [];
+        (programs || []).forEach((p) => { if (!DATA.programs.some((x) => x.id === p.id)) DATA.programs.push(p); });
+        // Bring in any program outcomes the board doesn't have yet (matched by id)
+        if (!Array.isArray(DATA.outcomes)) DATA.outcomes = [];
+        (outcomes || []).forEach((o) => { if (!DATA.outcomes.some((x) => x.id === o.id)) DATA.outcomes.push(o); });
         // PARTIAL IMPORT: merge only the courses the user selected into the
         // existing board instead of replacing everything.
         (coursesToImport || []).forEach((course) => {
@@ -823,6 +836,7 @@ window.defaultScheduleConfig = {
   }
 
   function reindexData() {
+    if (window.Outcomes) window.Outcomes.normalize(DATA);
     DATA.moduleById = {};
     DATA.courseByModuleId = {};
     DATA.courseById = {};

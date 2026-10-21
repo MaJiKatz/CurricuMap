@@ -41,7 +41,7 @@ const INTRO_STEPS = [
   },
   {
     title: "6. Privacy, Workspaces & RTF Exports",
-    content: "🔒 <b>100% Private & Local:</b> Nothing is stored or transmitted to a external server—your data remains entirely in your browser. Use <b>⬇️ Save Workspace</b> to download a <code>.json</code> file to share with colleagues or reload later. Set institutional policies in <b>⚙️ Settings</b>, then click <b>📄 Download All Outlines (RTF)</b> to generate an accreditation-ready document bundle.",
+    content: "🔒 <b>100% Private & Local:</b> Nothing is stored or transmitted to a external server—your data remains entirely in your browser. Use <b>⬇️ Save Workspace</b> to download a <code>.json</code> file to share with colleagues or reload later. Define program-level learning outcomes (with sub-outcomes) under <b>🎯 Outcomes</b>, tag topics with them (Introduced / Reinforced / Advanced) in the course editor, and view the course-by-outcome matrix there; it is printed in the combined RTF. Add majors, minors, honours and specialities on the Programs tab, mark each course required or elective in them, and see what each program guarantees versus what electives could add. Set institutional policies in <b>⚙️ Settings</b>, then click <b>📄 Download All Outlines (RTF)</b> to generate an accreditation-ready document bundle.",
     badge: "7 of 7"
   }
 ];

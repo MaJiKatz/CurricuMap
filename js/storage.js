@@ -9,12 +9,14 @@
  * @param {Object} connectionsData - Object containing legend & connections array
  * @param {string} filename - Output filename
  */
-export function exportBoardState(coursesData, connectionsData, filename = 'curriculum-data.json') {
+export function exportBoardState(coursesData, connectionsData, filename = 'curriculum-data.json', outcomesData = [], programsData = []) {
   const unifiedPayload = {
     meta: {
       exportedAt: new Date().toISOString(),
       version: '1.0'
     },
+    outcomes: outcomesData || [],
+    programs: programsData || [],
     courses: coursesData,
     connections: connectionsData
   };
@@ -59,7 +61,9 @@ export function importBoardState(file) {
 
         resolve({
           courses: parsed.courses,
-          connections: parsed.connections
+          connections: parsed.connections,
+          outcomes: Array.isArray(parsed.outcomes) ? parsed.outcomes : [],
+          programs: Array.isArray(parsed.programs) ? parsed.programs : []
         });
       } catch (err) {
         reject(new Error(`Failed to parse file: ${err.message}`));
@@ -236,7 +240,7 @@ export function initStorageUI(getAppState, onUpdateState, onMergeState) {
   if (exportBtn) {
     exportBtn.addEventListener('click', () => {
       const state = getAppState();
-      exportBoardState(state.courses, state.connectionsData, 'my-curriculum-board.json');
+      exportBoardState(state.courses, state.connectionsData, 'my-curriculum-board.json', state.outcomes, state.programs);
     });
   }
 
@@ -289,7 +293,9 @@ export function initStorageUI(getAppState, onUpdateState, onMergeState) {
         onMergeState({
           coursesToImport,
           connectionsToImport,
-          legend: data.connections ? data.connections.legend : null
+          legend: data.connections ? data.connections.legend : null,
+          outcomes: data.outcomes || [],
+          programs: data.programs || []
         });
 
         alert(`Imported ${coursesToImport.length} course(s) successfully!`);

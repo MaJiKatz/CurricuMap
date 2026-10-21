@@ -52,6 +52,10 @@
           ⬆️ Load Workspace
         </button>
 
+        <button onclick="openOutcomesModal()" class="btn btn-secondary" title="Define program outcomes and view the curriculum matrix">
+          🎯 Outcomes
+        </button>
+
         <button onclick="openSettingsModal()" class="btn btn-secondary" title="Global Department & Institutional Policy Defaults">
           ⚙️ Settings
         </button>
@@ -143,6 +147,12 @@
               <label for="courseYearLabel">Year Label</label>
               <input type="text" id="courseYearLabel" placeholder="e.g. Year 1 (Fall)">
             </div>
+          </div>
+
+          <div id="courseProgramsSection">
+            <h3>Programs</h3>
+            <p class="hint-text">Which majors, minors, honours or specialities include this course, and is it required or an elective there?</p>
+            <div id="courseProgramsList" class="course-programs-list"></div>
           </div>
 
           <h3>Schedule Configuration</h3>
@@ -283,6 +293,7 @@
   <script src="js/connections.js"></script>
   <script src="js/courseEditor.js"></script>
   <script src="js/calendarView.js"></script>
+  <script src="js/outcomes.js"></script>
   <script src="js/exportRtf.js"></script>
   <script src="js/settings.js"></script>
   <script src="js/introModal.js"></script>

@@ -9,7 +9,7 @@
 
 (function () {
   // Color table indices: 1 ink, 2 grey, 3 red (warnings), 4 amber
-  const COLOR_TABLE = '{\\colortbl ;\\red15\\green23\\blue42;\\red100\\green116\\blue139;\\red190\\green30\\blue30;\\red150\\green105\\blue15;\\red226\\green232\\blue240;}';
+  const COLOR_TABLE = '{\\colortbl ;\\red15\\green23\\blue42;\\red100\\green116\\blue139;\\red190\\green30\\blue30;\\red150\\green105\\blue15;\\red226\\green232\\blue240;\\red253\\green230\\blue138;\\red134\\green239\\blue172;\\red147\\green197\\blue253;}';
   const FONT_TABLE = '{\\fonttbl{\\f0\\fswiss\\fprq2\\fcharset0 Arial;}}';
 
   const FALLBACK_AI_POLICY = 'Permissible use of assistive technologies and Generative Artificial Intelligence (e.g., ChatGPT, Claude) in this course will be explicitly stated for each assignment. Unless explicitly permitted by the instructor, the use of generative AI tools to produce coursework, code, or written assignments is unauthorized and constitutes academic misconduct.';
@@ -248,10 +248,11 @@
       week.meetings.forEach((m) => {
         const dateBit = m.dateLabel ? `, ${m.dateLabel}` : '';
         const dayLabel = cfg.uniform ? `Day ${m.day}${dateBit}` : `Day ${m.day}${dateBit} (${fmt(m.hours)} h)`;
-        const body = m.segs.length
-          ? m.segs.map((s) => segmentText(s, course, nums, cfg)).join('; ')
-          : G(I('Open / review'));
-        rtf += P(720, `${escapeRtf(dayLabel)}: ${body}`);
+        rtf += P(720, B(`${escapeRtf(dayLabel)}:`), '\\sb60\\keepn');
+        if (!m.segs.length) rtf += P(1080, G(I('Open / review')));
+        m.segs.forEach((s, i) => {
+          rtf += P(1080, `${segmentText(s, course, nums, cfg)}${i < m.segs.length - 1 ? ';' : ''}`);
+        });
       });
       week.takeHome.forEach((mod) => {
         const w = parseFloat(mod.weightPercent) ? ` (${mod.weightPercent}%)` : '';
@@ -620,6 +621,138 @@
     triggerRtfDownload(buildProgramDocument(courses, window.DATA.connections || []), 'Complete_Curriculum_Outlines.rtf');
   }
 
+  // ---------------- program outcomes + curriculum matrix ----------------
+  function buildOutcomesRtf(courses) {
+    const O = window.Outcomes;
+    const outcomes = O ? O.getOutcomes() : [];
+    if (!outcomes.length) return '';
+    const m = O.buildMatrix(courses, outcomes, { showArchived: false });
+    const levelCf = { I: 6, R: 7, A: 8 };
+    const levelName = { I: 'Introduced', R: 'Reinforced', A: 'Advanced' };
+    const textW = 12960; // landscape, 1in margins
+
+    // Landscape section for the outcome list + matrix
+    let rtf = '\\sect\\sectd\\sbkpage\\lndscpsxn\\pgwsxn15840\\pghsxn12240\\marglsxn1440\\margrsxn1440\\margtsxn1440\\margbsxn1440\n';
+    rtf += `\\pard\\qc\\sa240\\b\\fs36 Program Learning Outcomes\\b0\\fs22\\par\n`;
+
+    m.rows.forEach((r) => {
+      const ind = 360 + r.depth * 360;
+      const progs = O.getPrograms();
+      const tags = [];
+      if (r.o.programId) { const p = progs.find((x) => x.id === r.o.programId); if (p) tags.push(`${p.name} only`); }
+      if (r.o.area) tags.push(`Area: ${r.o.area}`);
+      rtf += P(ind, `${B(escapeRtf(r.code))} ${r.depth === 0 ? B(escapeRtf(r.o.title)) : escapeRtf(r.o.title)}${tags.length ? ' ' + R(escapeRtf('[' + tags.join('; ') + ']')) : ''}${r.o.description ? ' ' + G(escapeRtf('\u2013 ' + r.o.description)) : ''}`);
+    });
+
+    const progList = O.getPrograms();
+    if (progList.length) {
+      rtf += heading('Programs');
+      progList.forEach((p) => {
+        const pc = O.programCourses(p.id);
+        const req = pc.filter((x) => x.required).map((x) => x.course.code);
+        const el = pc.filter((x) => !x.required).map((x) => x.course.code);
+        rtf += P(360, `${B(escapeRtf(p.name || 'Untitled'))} ${G(escapeRtf('(' + (O.PROGRAM_TYPES[p.type] || p.type) + ')'))}${p.description ? ' ' + G(escapeRtf('\u2013 ' + p.description)) : ''}`, '\\keepn');
+        rtf += P(720, `${B('Required:')} ${escapeRtf(req.join(', ') || 'none')}`);
+        rtf += P(720, `${B('Electives:')} ${escapeRtf(el.join(', ') || 'none')}`);
+      });
+    }
+
+    const renderMatrix = (m, prog) => {
+    let rtf = '';
+    rtf += heading(prog ? `Curriculum Map: ${prog.name || 'Program'} (${O.PROGRAM_TYPES[prog.type] || prog.type})` : 'Curriculum Map: Outcomes by Course');
+    rtf += P(360, G(escapeRtf('Each cell shows the highest level the course reaches for the outcome, taken from the topics tagged in that course: I = Introduced, R = Reinforced, A = Advanced. Lower-case italic letters are rolled up from sub-outcomes. Blank = not addressed.')));
+
+    const labelW = 4200;
+    const sumW = prog ? 1300 : 950;
+    const nChunks = Math.max(1, Math.ceil(m.courses.length / 12));
+    const perChunk = Math.ceil(m.courses.length / nChunks);
+    const bd = '\\clbrdrt\\brdrs\\brdrw10\\clbrdrl\\brdrs\\brdrw10\\clbrdrb\\brdrs\\brdrw10\\clbrdrr\\brdrs\\brdrw10';
+
+    for (let start = 0; start < m.courses.length; start += perChunk) {
+      const chunk = m.courses.slice(start, start + perChunk);
+      const colW = Math.floor((textW - labelW - sumW * (prog ? 2 : 1)) / chunk.length);
+      const widths = prog ? [labelW, ...chunk.map(() => colW), sumW, sumW] : [labelW, ...chunk.map(() => colW), sumW];
+      const defs = (shades) => {
+        let x = 0; let out = '';
+        widths.forEach((w, i) => { x += w; out += `${bd}\\clvertalc${shades && shades[i] ? `\\clcbpat${shades[i]}` : ''}\\cellx${x}`; });
+        return out;
+      };
+      const row = (cells, shades, indent) =>
+        `\\trowd\\trgaph60\\trleft0${defs(shades)}\\n` +
+        cells.map((c, i) => `\\pard\\intbl\\${i === 0 ? 'ql' : 'qc'}${i === 0 && indent ? `\\li${indent}` : ''}\\fs16 ${c}\\cell`).join('') + '\\row\n';
+
+      if (start > 0) rtf += blank();
+      rtf += row(['{\\b Outcome}', ...chunk.map((c) => `{\\b ${escapeRtf(c.code)}${prog && !m.requiredIds.has(c.id) ? '*' : ''}}`), ...(prog ? ['{\\b Guaranteed}', '{\\b Possible}'] : ['{\\b Courses}'])], [5, ...chunk.map(() => 5), 5, ...(prog ? [5] : [])]);
+      let lastYear = null;
+      // year labels as a thin row of text above each group would complicate widths; show year in code row instead
+      m.rows.forEach((r) => {
+        const shades = [0];
+        const cells = [`${B(escapeRtf(r.code))} ${escapeRtf(r.o.title)}`];
+        chunk.forEach((c, i) => {
+          const cell = m.cells[r.o.id][c.id];
+          shades[i + 1] = cell ? levelCf[cell.level] : 0;
+          cells.push(cell ? (cell.derived ? `{\\i ${cell.level.toLowerCase()}}` : `{\\b ${cell.level}}`) : '');
+        });
+        const cv = m.coverage[r.o.id];
+        if (prog) {
+          cells.push(cv.guaranteed ? `{\\b ${cv.guaranteed}}` : (cv.possible ? R('{\\b elective only}') : R('{\\b none}')));
+          cells.push(cv.possible ? `{\\b ${cv.possible}}` : R('{\\b none}'));
+          shades[chunk.length + 1] = cv.guaranteed ? levelCf[cv.guaranteed] : 0;
+          shades[chunk.length + 2] = cv.possible ? levelCf[cv.possible] : 0;
+        } else cells.push(cv.courses ? String(cv.courses) : R('{\\b none}'));
+        rtf += row(cells, shades, r.depth * 240);
+      });
+      lastYear = null; // (kept for clarity; years are listed below)
+    }
+    rtf += blank();
+
+    if (prog) {
+      rtf += P(360, G(escapeRtf('* = elective in this program. Guaranteed = highest level reached through required courses only; Possible = highest level if electives are taken.')));
+      const req = m.courses.filter((c) => m.requiredIds.has(c.id)).map((c) => c.code);
+      const el = m.courses.filter((c) => !m.requiredIds.has(c.id)).map((c) => c.code);
+      rtf += P(360, `${B('Required:')} ${escapeRtf(req.join(', ') || 'none')}`);
+      rtf += P(360, `${B('Electives:')} ${escapeRtf(el.join(', ') || 'none')}`);
+      const eo = m.rows.filter((r) => m.coverage[r.o.id].possible && !m.coverage[r.o.id].guaranteed);
+      if (eo.length) rtf += P(360, `${R(B('Only reached through electives:'))} ${escapeRtf(eo.map((r) => r.code).join(', '))}`);
+    }
+    const yearLine = [];
+    if (!prog) m.courses.forEach((c) => {
+      const label = c.yearLabel || `Year ${c.year}`;
+      const last = yearLine[yearLine.length - 1];
+      if (last && last.label === label) last.codes.push(c.code); else yearLine.push({ label, codes: [c.code] });
+    });
+    if (!prog) rtf += P(360, `${B('Course order:')} ${G(escapeRtf(yearLine.map((y) => `${y.label}: ${y.codes.join(', ')}`).join('  |  ')))}`);
+
+    const gaps = m.rows.filter((r) => !m.coverage[r.o.id].courses);
+    const notAdvanced = m.rows.filter((r) => m.coverage[r.o.id].courses && m.coverage[r.o.id].max !== 'A');
+    if (gaps.length) rtf += P(360, `${R(B('Not addressed by any course:'))} ${escapeRtf(gaps.map((r) => r.code).join(', '))}`);
+    if (notAdvanced.length) rtf += P(360, `${B('Never reaches Advanced:')} ${escapeRtf(notAdvanced.map((r) => r.code).join(', '))}`);
+
+    return rtf;
+    };
+    rtf += renderMatrix(m, null);
+    O.getPrograms().forEach((p) => {
+      const pm = O.buildMatrix(courses, outcomes, { showArchived: false, programId: p.id });
+      if (pm.courses.length) rtf += renderMatrix(pm, p);
+    });
+
+    rtf += heading('Outcome Detail by Course');
+    m.rows.forEach((r) => {
+      rtf += P(360 + r.depth * 360, B(escapeRtf(`${r.code} ${r.o.title}`)), '\\sb160\\keepn');
+      const any = m.courses.filter((c) => m.cells[r.o.id][c.id]);
+      if (!any.length) { rtf += P(720 + r.depth * 360, G(I('Not addressed in any course.'))); return; }
+      any.forEach((c) => {
+        const cell = m.cells[r.o.id][c.id];
+        const shown = cell.derived ? `${levelName[cell.level]}, rolled up from sub-outcomes` : levelName[cell.level];
+        rtf += P(720 + r.depth * 360, `${B(escapeRtf(c.code))} ${G(escapeRtf('(' + shown + ')'))}`, '\\keepn');
+        cell.entries.forEach((e) => {
+          rtf += bullet(1080 + r.depth * 360, `${escapeRtf(e.topicTitle || e.moduleTitle)} ${G(escapeRtf('[' + e.level + ']'))}`);
+        });
+      });
+    });
+    return rtf;
+  }
+
   function buildProgramDocument(courses, connections) {
     const S = window.Scheduler;
     const g = globals();
@@ -658,6 +791,8 @@
       rtf += P(360, `\\b ${escapeRtf(c.code)}: ${escapeRtf(c.name)}\\b0`, '\\keepn');
       rtf += P(720, `\\cf2 Lecture: ${fmt(sch.capacityHours)} hrs (${escapeRtf(sch.config.label)}, ${sch.config.weeks} wks) | Lab: ${fmt(lh)} hrs | Total contact: ${fmt(sch.capacityHours + lh)} hrs\\cf1`);
     });
+
+    rtf += buildOutcomesRtf(courses);
 
     courses.forEach((course) => {
       rtf += '\\sect\\sectd\\sbkpage\n' + pageHeader(course, g) + buildCourseRtfContent(course, connections);
