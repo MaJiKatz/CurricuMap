@@ -40,17 +40,18 @@
     return out;
   }
 
-  function mount(container, cal, onChange) {
+  function mount(container, cal, onChange, opts) {
+    opts = opts || {};
     cal.importantDates = cal.importantDates || [];
     cal.extraDays = cal.extraDays || [];
     const changed = () => { if (onChange) onChange(); };
 
     function draw() {
       container.innerHTML = `
-        <div class="form-group tc-start"><label>First day of classes</label>
-          <input type="date" data-k="startDate" value="${esc(cal.startDate || '')}"></div>
+        <div class="form-group tc-start"><label>${esc(opts.startLabel || 'First day of classes')}</label>
+          <input type="date" data-k="startDate" value="${esc(cal.startDate || '')}">${opts.startHint ? `<small class="hint-text">${esc(opts.startHint)}</small>` : ''}</div>
 
-        <h4 class="tc-h">Important dates</h4>
+        <h4 class="tc-h">${esc(opts.datesTitle || 'Important dates')}</h4>
         <p class="hint-text">Holidays, reading weeks, study days. Tick "no class" and those days are skipped; the rest of the term slides later.</p>
         <div class="important-dates-list">${cal.importantDates.length ? cal.importantDates.map((d, i) => `
           <div class="important-date-row">
@@ -62,7 +63,7 @@
           </div>`).join('') : '<p class="empty-note">None yet.</p>'}</div>
         <button type="button" class="btn btn-secondary btn-sm" data-add="importantDates">+ Add important date</button>
 
-        <h4 class="tc-h">Day swaps &amp; extra days</h4>
+        <h4 class="tc-h">${esc(opts.swapsTitle || 'Day swaps & extra days')}</h4>
         <p class="hint-text">A date that runs another weekday's schedule, e.g. a Tuesday that follows a Wednesday schedule so every weekday meets the same number of times. Courses that meet on that weekday get a class on the date; the date's own weekday class is displaced.</p>
         <div class="important-dates-list">${cal.extraDays.length ? cal.extraDays.map((d, i) => `
           <div class="important-date-row tc-swap-row">
@@ -112,57 +113,37 @@
     return d.calendar;
   }
 
-  function ensureModal() {
-    let modal = document.getElementById('term-calendar-modal');
-    if (!modal) {
-      modal = document.createElement('div');
-      modal.id = 'term-calendar-modal';
-      modal.className = 'modal-overlay hidden';
-      document.body.appendChild(modal);
-      modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
-    }
-    return modal;
-  }
-
-  function open() {
+  /** Program-wide panel, shown inside the Settings modal. */
+  function mountProgramPanel(host) {
+    if (!host) return;
     const S = window.Scheduler;
     const cal = programCal();
-    const modal = ensureModal();
     const courses = (window.DATA.courses || []).slice().sort((a, b) => (Number(a.year) || 0) - (Number(b.year) || 0) || String(a.code).localeCompare(String(b.code), undefined, { numeric: true }));
-    modal.innerHTML = `
-      <div class="calendar-modal-card po-card" role="dialog" aria-label="Term calendar">
-        <div class="calendar-header">
-          <div><h2 class="calendar-title">Term Calendar</h2>
-            <p class="calendar-summary">One start date, holidays and day swaps for every course. A course can override it in its own editor.</p></div>
-          <button type="button" class="close-modal-btn" id="tcClose" aria-label="Close">&times;</button>
-        </div>
-        <div class="calendar-scroll po-body">
-          <label class="inline-field"><input type="checkbox" id="tcEnabled" ${cal.enabled === false ? '' : 'checked'}> Use program dates (untick to produce all outlines without dates)</label>
-          <div id="tcEditor"></div>
-          <h4 class="tc-h">Courses</h4>
-          <p class="hint-text">Class days (e.g. Tue/Thu) are set per course. Here you choose which calendar each course follows.</p>
-          <div class="tc-courses">${courses.map((c) => `
-            <label class="course-program-row"><span>${esc(c.code)} <em>${esc(c.name)}</em></span>
-              <select data-course="${esc(c.id)}">${[['inherit', 'Program calendar'], ['custom', 'Its own dates'], ['off', 'No dates']].map(([v, n]) => `<option value="${v}" ${S.dateMode(c) === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>`).join('')}</div>
-        </div>
-      </div>`;
-    modal.classList.remove('hidden');
-    modal.querySelector('#tcClose').onclick = close;
-    mount(modal.querySelector('#tcEditor'), cal, save);
-    modal.querySelector('#tcEnabled').onchange = (e) => { cal.enabled = e.target.checked; save(); };
-    modal.querySelectorAll('select[data-course]').forEach((sel) => {
+    host.innerHTML = `
+      <label class="inline-field"><input type="checkbox" id="tcEnabled" ${cal.enabled === false ? '' : 'checked'}> Use these dates (untick to make every outline date-free unless a course sets its own start date)</label>
+      <p class="hint-text">Leave the first day blank for a generic, non-semester outline.</p>
+      <div id="tcEditor"></div>
+      <h4 class="tc-h">Which calendar each course follows</h4>
+      <div class="tc-courses">${courses.length ? courses.map((c) => `
+        <label class="course-program-row"><span>${esc(c.code)} <em>${esc(c.name)}</em></span>
+          <select data-course="${esc(c.id)}">${[['inherit', 'Program calendar'], ['custom', 'Independent of program'], ['off', 'No dates']].map(([v, n]) => `<option value="${v}" ${S.dateMode(c) === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>`).join('') : '<p class="empty-note">No courses yet.</p>'}</div>`;
+    mount(host.querySelector('#tcEditor'), cal, save);
+    host.querySelector('#tcEnabled').onchange = (e) => { cal.enabled = e.target.checked; save(); };
+    host.querySelectorAll('select[data-course]').forEach((sel) => {
       sel.onchange = () => {
         const c = window.DATA.courses.find((x) => x.id === sel.dataset.course);
         if (!c) return;
         c.dateMode = sel.value;
-        if (sel.value === 'custom' && !c.startDate) { Object.assign(c, clean(copy(cal))); } // start from the program's dates
+        if (sel.value === 'custom' && !c.startDate) Object.assign(c, clean(copy(cal)));
         save();
       };
     });
   }
-  function close() { const m = document.getElementById('term-calendar-modal'); if (m) m.classList.add('hidden'); }
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  function open() {
+    if (typeof window.openSettingsModal === 'function') window.openSettingsModal();
+  }
+  function close() {}
 
-  window.TermCalendar = { mount, clean, copy, blank, open, close, programCal };
+  window.TermCalendar = { mount, clean, copy, blank, open, close, programCal, mountProgramPanel };
   window.openTermCalendar = open;
 })();

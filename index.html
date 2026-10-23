@@ -52,9 +52,6 @@
           ⬆️ Load Workspace
         </button>
 
-        <button onclick="openTermCalendar()" class="btn btn-secondary" title="Program-wide start date, holidays and day swaps">
-          <span>📅</span> Term Calendar
-        </button>
         <button onclick="openOutcomesModal()" class="btn btn-secondary" title="Define program outcomes and view the curriculum matrix">
           🎯 Outcomes
         </button>
@@ -192,8 +189,8 @@
           <div class="form-group">
             <label for="courseDateMode">Calendar for this course</label>
             <select id="courseDateMode">
-              <option value="inherit">Use the program calendar</option>
-              <option value="custom">Custom dates for this course</option>
+              <option value="inherit">Use the program calendar (with changes for this course)</option>
+              <option value="custom">Independent of the program calendar</option>
               <option value="off">No dates (outline only)</option>
             </select>
           </div>
@@ -271,6 +268,11 @@
         <p class="settings-intro">
           These defaults fill in every exported outline. Anything you enter in a course's Outline &amp; Policies tab overrides them for that course.
         </p>
+        <section class="settings-calendar">
+          <h3 class="settings-group">Semester calendar (shared by every course)</h3>
+          <p class="hint-text">Set the first day of classes, days off and day swaps once. Each course adds its own class days (e.g. Tue/Thu) and builds its calendar from this. A course can change or ignore any of it in its own editor. Calendar changes are saved with the workspace and apply immediately; they do not wait for "Save Settings".</p>
+          <div id="settingsCalendar"></div>
+        </section>
         <div class="form-grid" id="settingsFields"></div>
       </div>
 

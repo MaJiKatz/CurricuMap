@@ -173,48 +173,83 @@ function toggleClassDay(code) {
 
 let editingCal = { startDate: '', importantDates: [], extraDays: [] };
 let editingDateMode = 'inherit';
+let editingSkipGlobal = [];
+
+/** Date editor for the course: program entries with on/off boxes (inherit) + the course's own entries. */
+function mountCourseCalendar() {
+  const box = document.getElementById('courseDateCustom');
+  if (!box) return;
+  const TC = window.TermCalendar;
+  const S_ = S();
+  if (editingDateMode === 'off') { box.innerHTML = ''; return; }
+  box.innerHTML = '<div id="courseGlobalList"></div><div id="courseDateEditor"></div>';
+  const g = window.DATA && window.DATA.calendar;
+  const gOn = !!(g && g.enabled !== false);
+  if (editingDateMode === 'inherit') {
+    const list = box.querySelector('#courseGlobalList');
+    const items = [];
+    if (gOn) {
+      (g.importantDates || []).forEach((d) => {
+        if (d.date) items.push({ key: S_.globalKey('date', d), text: `${d.label || 'Important date'} (${S_.formatDateLabel(d.date)}${d.endDate ? ' \u2013 ' + S_.formatDateLabel(d.endDate) : ''})${d.skipsClass ? ', no class' : ''}` });
+      });
+      (g.extraDays || []).forEach((d) => {
+        if (d.date && d.actsAs) items.push({ key: S_.globalKey('swap', d), text: `${S_.formatDateLabel(d.date)} follows a ${S_.WEEKDAY_NAMES[S_.WEEKDAY_CODES.indexOf(d.actsAs)] || ''} schedule${d.label ? ' (' + d.label + ')' : ''}` });
+      });
+    }
+    list.innerHTML = `<p class="hint-text">${gOn && g.startDate ? `Program calendar: classes start <b>${escapeHtml(S_.formatDateLabel(g.startDate))}</b>.` : 'The program calendar has no first day set (Settings), so this outline has no dates unless you set one below.'}</p>`
+      + (items.length ? `<h4 class="tc-h">Program dates and swaps (untick to skip them for this course)</h4>`
+        + items.map((it) => `<label class="skip-check tc-global-item"><input type="checkbox" data-gkey="${escapeHtml(it.key)}" ${editingSkipGlobal.includes(it.key) ? '' : 'checked'}> ${escapeHtml(it.text)}</label>`).join('') : '');
+    list.onchange = (e) => {
+      const k = e.target.dataset && e.target.dataset.gkey;
+      if (!k) return;
+      editingSkipGlobal = editingSkipGlobal.filter((x) => x !== k);
+      if (!e.target.checked) editingSkipGlobal.push(k);
+      refreshBudget();
+    };
+    TC.mount(box.querySelector('#courseDateEditor'), editingCal, refreshBudget, {
+      startLabel: 'First day of classes for this course',
+      startHint: 'Leave blank to use the program\u2019s first day.',
+      datesTitle: 'Extra days off / dates for this course only',
+      swapsTitle: 'Extra day swaps for this course only',
+    });
+  } else {
+    TC.mount(box.querySelector('#courseDateEditor'), editingCal, refreshBudget);
+  }
+}
 
 function renderDateModePanels() {
-  const custom = document.getElementById('courseDateCustom');
   const info = document.getElementById('courseDateInherit');
   const picker = document.getElementById('classDaysPicker');
-  if (custom) custom.hidden = editingDateMode !== 'custom';
   if (picker) picker.closest('.form-group').hidden = editingDateMode === 'off';
   if (info) {
-    info.hidden = editingDateMode === 'off' && false;
-    if (editingDateMode === 'inherit') {
-      const cal = window.DATA && window.DATA.calendar;
-      info.textContent = cal && cal.enabled !== false && cal.startDate
-        ? `Program calendar: classes start ${S().formatDateLabel(cal.startDate)}; ${(cal.importantDates || []).length} important date(s), ${(cal.extraDays || []).length} day swap(s). Edit it from the 📅 Term Calendar button.`
-        : 'No program calendar is set (or it is switched off), so this outline will have no dates. Set one from the 📅 Term Calendar button.';
-    } else if (editingDateMode === 'off') {
-      info.textContent = 'This outline will not show any dates.';
-    } else {
-      info.textContent = 'Only this course\u2019s own dates below are used; the program calendar is ignored.';
-    }
+    info.textContent = editingDateMode === 'off'
+      ? 'This outline will not show any dates.'
+      : editingDateMode === 'custom'
+        ? 'Independent: only the dates below are used; the program calendar is ignored.'
+        : 'The program calendar applies. Change or add to it for this course below.';
   }
 }
 
 function setDateMode(mode) {
   const wasCustom = editingDateMode === 'custom';
   editingDateMode = mode;
+  if (mode === 'inherit' && wasCustom) { editingCal = window.TermCalendar.blank(); editingSkipGlobal = []; }
   if (mode === 'custom' && !wasCustom && !editingCal.startDate && !editingCal.importantDates.length && !editingCal.extraDays.length) {
-    // start from the program's dates so the course only has to change what differs
     const pc = window.DATA && window.DATA.calendar;
-    if (pc) editingCal = window.TermCalendar.copy(pc);
+    if (pc) editingCal = window.TermCalendar.copy(pc); // start from the program's dates
   }
-  const box = document.getElementById('courseDateCustom');
-  if (box && mode === 'custom') window.TermCalendar.mount(box, editingCal, refreshBudget);
+  mountCourseCalendar();
   renderDateModePanels();
   refreshBudget();
 }
 
-/** Date fields to store on the course (class days always; own dates only in custom mode). */
+/** Date fields to store on the course: class days always; start/dates/swaps unless dates are off. */
 function readDatesFromForm() {
   const out = { dateMode: editingDateMode };
   const perWeek = currentPerWeek();
   if (editingClassDays.length === perWeek) out.classDays = editingClassDays.slice();
-  if (editingDateMode === 'custom') Object.assign(out, window.TermCalendar.clean(editingCal));
+  if (editingDateMode !== 'off') Object.assign(out, window.TermCalendar.clean(editingCal));
+  if (editingDateMode === 'inherit' && editingSkipGlobal.length) out.skipGlobal = editingSkipGlobal.slice();
   return out;
 }
 
@@ -244,12 +279,12 @@ function readProgramsFromForm() {
 function writeDatesToForm(course) {
   editingClassDays = Array.isArray(course.classDays) ? course.classDays.slice() : [];
   editingCal = window.TermCalendar.copy(course);
+  editingSkipGlobal = Array.isArray(course.skipGlobal) ? course.skipGlobal.slice() : [];
   editingDateMode = S().dateMode(course);
   const sel = document.getElementById('courseDateMode');
   if (sel) sel.value = editingDateMode;
   renderClassDaysPicker();
-  const box = document.getElementById('courseDateCustom');
-  if (box) window.TermCalendar.mount(box, editingCal, refreshBudget);
+  mountCourseCalendar();
   renderDateModePanels();
 }
 
@@ -1035,14 +1070,14 @@ function removeTopicQuestion(modIdx, topicIdx, qIdx) {
 // Outline & Policies tab
 // ------------------------------------------------------------
 const OUTLINE_FIELDS = [
-  { group: 'Header & instructor', hint: 'Blank fields use the defaults from ⚙️ Settings.' },
+  { group: 'Header & instructor', hint: 'Page header fields fall back to ⚙️ Settings. Instructor details belong to each course.' },
   { key: 'term', label: 'Term (page header)', half: true, def: 'term', ph: 'e.g. Fall 2026' },
   { key: 'version', label: 'Version (page header)', half: true, def: 'version', ph: 'e.g. V1.0' },
-  { key: 'instructor.name', label: 'Instructor name', half: true, def: 'instructorName' },
-  { key: 'instructor.email', label: 'Instructor email', half: true, def: 'instructorEmail' },
-  { key: 'instructor.office', label: 'Office location', half: true, def: 'instructorOffice' },
+  { key: 'instructor.name', label: 'Instructor name', half: true },
+  { key: 'instructor.email', label: 'Instructor email', half: true },
+  { key: 'instructor.office', label: 'Office location', half: true },
   { key: 'credits', label: 'Credit hours (optional)', half: true },
-  { key: 'instructor.officeHours', label: 'Availability / consultation hours', rows: 2, def: 'officeHours' },
+  { key: 'instructor.officeHours', label: 'Availability / consultation hours', rows: 2 },
   { key: 'prerequisites', label: 'Required prerequisites', rows: 2, ph: 'None' },
   { key: 'corequisites', label: 'Required co-requisites', half: true, ph: 'None' },
   { key: 'software', label: 'Required software / tools', half: true },
@@ -1415,7 +1450,7 @@ function saveCourseData() {
     modules: cleanedModules,
   };
   delete updatedCourse.textbook; // migrated to textbooks[]
-  delete updatedCourse.startDate; delete updatedCourse.classDays; delete updatedCourse.importantDates; delete updatedCourse.extraDays; delete updatedCourse.dateMode;
+  delete updatedCourse.startDate; delete updatedCourse.classDays; delete updatedCourse.importantDates; delete updatedCourse.extraDays; delete updatedCourse.dateMode; delete updatedCourse.skipGlobal;
   Object.assign(updatedCourse, readDatesFromForm());
   if (document.querySelector('#courseProgramsList select[data-pid]')) {
     const pm = readProgramsFromForm();

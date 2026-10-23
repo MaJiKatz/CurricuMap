@@ -1274,3 +1274,8 @@ body.connect-mode-active .connection-layer .conn-hit-area { pointer-events: none
 .po-mem-table .po-label{white-space:nowrap}
 .po-none{opacity:.4}
 .po-foot.po-warn{background:rgba(245,158,11,.25)}
+
+.tc-h{margin:1.1rem 0 .3rem;font-size:1rem}
+.tc-global-item{display:flex;gap:8px;align-items:center;padding:3px 0}
+.tc-start{margin-bottom:.5rem}
+.settings-calendar{margin-bottom:1.5rem}

@@ -41,7 +41,7 @@ const INTRO_STEPS = [
   },
   {
     title: "6. Term Calendar & Course Calendar",
-    content: "<b>\ud83d\udcc5 Term Calendar</b> holds the program-wide first day of classes, <b>important dates</b> (tick <i>no class</i> to skip them; the term slides later) and <b>day swaps</b>: a date that runs another weekday's schedule, such as a Tuesday that follows a Wednesday schedule. In each course you can use the program calendar, set <b>custom dates</b>, or choose <b>no dates</b> for an outline without dates. The <b>calendar icon</b> on a card opens the week-by-week timetable with dates, topics, exams and due dates.",
+    content: "<b>\u2699\ufe0f Settings \u2192 Semester calendar</b> holds the program-wide first day of classes, <b>important dates</b> (tick <i>no class</i> to skip them; the term slides later) and <b>day swaps</b>: a date that runs another weekday's schedule, such as a Tuesday that follows a Wednesday schedule. Leave the first day blank for a generic outline. Each course adds its own class days, then builds its calendar from the global one. In a course you can start on a different day, add extra days off or swaps, untick any program date, work independently of the program calendar, or choose <b>no dates</b>. The <b>calendar icon</b> on a card opens the week-by-week timetable with dates, topics, exams and due dates.",
     badge: "7 of 11"
   },
   {
@@ -61,7 +61,7 @@ const INTRO_STEPS = [
   },
   {
     title: "10. Settings & Exporting Outlines",
-    content: "Set institutional policies and defaults in <b>\u2699\ufe0f Settings</b>. The document icon on a card downloads one course outline (RTF). <b>\ud83d\udcc4 Download All Outlines (RTF)</b> builds the full package: program hour totals and warnings, the outcome list, the curriculum matrix (overall and for each program), then every course outline with schedule, evaluation, modules and connections. Word opens the RTF directly.",
+    content: "<b>\u2699\ufe0f Settings</b> also holds page-header defaults (term, version) and institutional policies; instructor name, email and office hours are set per course. The document icon on a card downloads one course outline (RTF). <b>\ud83d\udcc4 Download All Outlines (RTF)</b> builds the full package: program hour totals and warnings, the outcome list, the curriculum matrix (overall and for each program), then every course outline with schedule, evaluation, modules and connections. Word opens the RTF directly.",
     badge: "11 of 11"
   },
 ];

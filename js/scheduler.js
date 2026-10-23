@@ -464,15 +464,40 @@
     const d = typeof window !== 'undefined' && window.DATA && window.DATA.calendar;
     return d || null;
   }
+  /** Stable key used by a course to switch off one program-calendar entry. */
+  function globalKey(kind, item) {
+    return kind === 'swap' ? `swap|${item.date || ''}` : `date|${item.date || ''}|${item.label || ''}`;
+  }
+  /**
+   * Calendar a course actually uses:
+   *  - 'off'     -> none
+   *  - 'custom'  -> only the course's own startDate / importantDates / extraDays
+   *  - 'inherit' -> the program calendar, plus this course's changes: its own startDate
+   *                 replaces the program's, its dates and swaps are added, and entries
+   *                 listed in course.skipGlobal are left out
+   */
   function effectiveCalendar(course) {
     const mode = dateMode(course);
     if (mode === 'off') return null;
     if (mode === 'custom') {
       return { startDate: course.startDate, importantDates: course.importantDates || [], extraDays: course.extraDays || [] };
     }
-    const cal = programCalendar();
-    if (!cal || cal.enabled === false || !cal.startDate) return null;
-    return { startDate: cal.startDate, importantDates: cal.importantDates || [], extraDays: cal.extraDays || [] };
+    const g = programCalendar();
+    const on = !!(g && g.enabled !== false);
+    const skip = new Set((course && course.skipGlobal) || []);
+    const startDate = (course && course.startDate) || (on ? g.startDate : '');
+    if (!startDate) return null;
+    return {
+      startDate,
+      importantDates: [
+        ...(on ? (g.importantDates || []).filter((d) => !skip.has(globalKey('date', d))) : []),
+        ...((course && course.importantDates) || []),
+      ],
+      extraDays: [
+        ...(on ? (g.extraDays || []).filter((d) => !skip.has(globalKey('swap', d))) : []),
+        ...((course && course.extraDays) || []),
+      ],
+    };
   }
 
   function parseImportantDates(cal) {
@@ -657,7 +682,7 @@
     addDays,
     isoDate,
     formatDateLabel,
-    resolveClassDays, dateMode, effectiveCalendar,
+    resolveClassDays, dateMode, effectiveCalendar, globalKey,
     WEEKDAY_CODES,
     WEEKDAY_NAMES,
   };

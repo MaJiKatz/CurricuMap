@@ -500,10 +500,10 @@
     rtf += heading('Course & Instructor Information');
     const inst = typeof course.instructor === 'string' ? { name: course.instructor } : (course.instructor || {});
     const row = (label, value) => P(360, `\\b ${label}:\\b0  ${escapeRtf(value)}`);
-    rtf += row('Instructor Name', pick(inst.name, g.instructorName, 'TBD'));
-    rtf += row('Instructor Email', pick(inst.email, g.instructorEmail, 'TBD'));
-    rtf += row('Office Location', pick(inst.office, g.instructorOffice, 'TBD'));
-    rtf += row('Instructor Availability / Consultation Hours', pick(inst.officeHours, course.officeHours, g.officeHours, 'TBD / By Appointment'));
+    rtf += row('Instructor Name', pick(inst.name, 'TBD'));
+    rtf += row('Instructor Email', pick(inst.email, 'TBD'));
+    rtf += row('Office Location', pick(inst.office, 'TBD'));
+    rtf += row('Instructor Availability / Consultation Hours', pick(inst.officeHours, course.officeHours, 'TBD / By Appointment'));
     rtf += row('Required Prerequisites', pick(course.prerequisites, course.prereqs, 'None'));
     rtf += row('Required Co-requisites', pick(course.corequisites, course.coreqs, 'None'));
     rtf += buildCourseLevelConnectionsRtf(course, connections);

@@ -5,11 +5,7 @@
    ============================================================ */
 
 window.DEFAULT_GLOBAL_SETTINGS = {
-  // Instructor & term defaults
-  instructorName: '',
-  instructorEmail: '',
-  instructorOffice: '',
-  officeHours: 'TBD / By Appointment',
+  // Page-header defaults
   term: '',
   version: '',
 
@@ -24,11 +20,7 @@ window.DEFAULT_GLOBAL_SETTINGS = {
 
 // Field definitions drive the settings modal (and the per-course override placeholders).
 window.SETTINGS_FIELDS = [
-  { group: 'Instructor & term (used when a course leaves these blank)' },
-  { key: 'instructorName', label: 'Instructor name', type: 'text', half: true },
-  { key: 'instructorEmail', label: 'Instructor email', type: 'text', half: true },
-  { key: 'instructorOffice', label: 'Office location', type: 'text', half: true },
-  { key: 'officeHours', label: 'Consultation hours', type: 'text', half: true },
+  { group: 'Page header (used when a course leaves these blank)' },
   { key: 'term', label: 'Term (page header, e.g. Fall 2026)', type: 'text', half: true },
   { key: 'version', label: 'Outline version (page header, e.g. V1.0)', type: 'text', half: true },
   { group: 'Institutional policies' },
@@ -77,6 +69,7 @@ function saveGlobalSettings() {
 
 function openSettingsModal() {
   renderSettingsForm();
+  if (window.TermCalendar) window.TermCalendar.mountProgramPanel(document.getElementById('settingsCalendar'));
   document.getElementById('settings-modal').classList.remove('hidden');
 }
 
