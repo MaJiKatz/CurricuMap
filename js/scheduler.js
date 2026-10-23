@@ -451,8 +451,32 @@
     return fallback.slice(0, perWeek);
   }
 
-  function parseImportantDates(course) {
-    return ((course && course.importantDates) || []).map((d) => {
+  /**
+   * Which calendar a course uses. course.dateMode: 'inherit' (program calendar, the
+   * default), 'custom' (the course's own startDate/importantDates/extraDays) or 'off'
+   * (no dates at all). Older files with a startDate and no mode count as custom.
+   */
+  function dateMode(course) {
+    if (course && course.dateMode) return course.dateMode;
+    return course && course.startDate ? 'custom' : 'inherit';
+  }
+  function programCalendar() {
+    const d = typeof window !== 'undefined' && window.DATA && window.DATA.calendar;
+    return d || null;
+  }
+  function effectiveCalendar(course) {
+    const mode = dateMode(course);
+    if (mode === 'off') return null;
+    if (mode === 'custom') {
+      return { startDate: course.startDate, importantDates: course.importantDates || [], extraDays: course.extraDays || [] };
+    }
+    const cal = programCalendar();
+    if (!cal || cal.enabled === false || !cal.startDate) return null;
+    return { startDate: cal.startDate, importantDates: cal.importantDates || [], extraDays: cal.extraDays || [] };
+  }
+
+  function parseImportantDates(cal) {
+    return ((cal && cal.importantDates) || []).map((d) => {
       const start = parseISODate(d.date);
       if (!start) return null;
       const end = parseISODate(d.endDate) || start;
@@ -476,23 +500,39 @@
    */
   function attachDates(meetings, weeks, course, assessmentWeek, takeHomeByWeek) {
     const none = { skipNotes: [], hasDates: false, assessmentDate: {} };
-    const start = parseISODate(course && course.startDate);
+    const cal = effectiveCalendar(course);
+    const start = parseISODate(cal && cal.startDate);
     if (!start || !meetings.length) return none;
 
     const perWeek = meetings.filter((m) => m.week === meetings[0].week).length;
     const weekdaySet = new Set(resolveClassDays(course, perWeek));
-    const all = parseImportantDates(course);
+    const all = parseImportantDates(cal);
     const skipRanges = all.filter((d) => d.skipsClass);
+
+    // Day swaps / extra days: a date that runs another weekday's schedule.
+    const swaps = new Map();
+    ((cal && cal.extraDays) || []).forEach((x) => {
+      const d = parseISODate(x.date);
+      const dow = WEEKDAY_CODES.indexOf(String(x.actsAs || '').toUpperCase());
+      if (d && dow >= 0) swaps.set(isoDate(d), { dow, label: x.label || '' });
+    });
 
     let cursor = addDays(start, -1);
     let mi = 0;
     for (let guard = 0; guard < 3000 && mi < meetings.length; guard++) {
       cursor = addDays(cursor, 1);
-      if (!weekdaySet.has(cursor.getUTCDay())) continue;
+      const iso = isoDate(cursor);
+      const swapped = swaps.has(iso);
+      const dow = swapped ? swaps.get(iso).dow : cursor.getUTCDay();
+      if (!weekdaySet.has(dow)) continue;
       if (inRange(cursor, skipRanges)) continue;
       const m = meetings[mi++];
-      m.date = isoDate(cursor);
-      m.dateLabel = formatDateLabel(m.date);
+      m.date = iso;
+      m.dateLabel = formatDateLabel(iso);
+      if (swapped && dow !== cursor.getUTCDay()) {
+        m.actsAs = WEEKDAY_NAMES[dow];
+        m.dateLabel += ` (${WEEKDAY_NAMES[dow]} schedule)`;
+      }
     }
 
     weeks.forEach((w) => {
@@ -506,6 +546,7 @@
     // One note per configured important date, shown on the week whose classes follow it.
     const notes = [];
     all.forEach((d) => {
+      if (d.end < start) return; // before the first class: nothing to note
       const next = meetings.find((m) => m.date && parseISODate(m.date) >= d.start);
       const week = next ? next.week : weeks[weeks.length - 1].weekNumber;
       const note = {
@@ -517,6 +558,25 @@
         text: `${d.label} (${formatDateLabel(isoDate(d.start), true)}${d.end > d.start ? ' – ' + formatDateLabel(isoDate(d.end), true) : ''})`
           + (d.skipsClass ? ' — no class' : ''),
       };
+      notes.push(note);
+      const wk = weeks.find((x) => x.weekNumber === week);
+      if (wk) (wk.skipNotes = wk.skipNotes || []).push(note);
+    });
+
+    // Notes for swap days, on the week whose classes follow them.
+    swaps.forEach((sw, iso) => {
+      const d = parseISODate(iso);
+      if (d < start) return;
+      const hit = meetings.find((m) => m.date === iso);
+      const next = hit || meetings.find((m) => m.date && parseISODate(m.date) >= d);
+      const week = next ? next.week : weeks[weeks.length - 1].weekNumber;
+      const dayName = WEEKDAY_NAMES[sw.dow];
+      const actual = WEEKDAY_NAMES[d.getUTCDay()];
+      let text = `${formatDateLabel(iso, true)} follows a ${dayName} schedule${sw.label ? ' (' + sw.label + ')' : ''}`;
+      let skipsClass = false;
+      if (!hit && !weekdaySet.has(sw.dow)) { text += ` \u2014 no ${actual} class`; skipsClass = true; }
+      if (actual === dayName) return;
+      const note = { week, label: sw.label || 'Schedule swap', date: iso, endDate: iso, skipsClass, text, isSwap: true };
       notes.push(note);
       const wk = weeks.find((x) => x.weekNumber === week);
       if (wk) (wk.skipNotes = wk.skipNotes || []).push(note);
@@ -597,7 +657,7 @@
     addDays,
     isoDate,
     formatDateLabel,
-    resolveClassDays,
+    resolveClassDays, dateMode, effectiveCalendar,
     WEEKDAY_CODES,
     WEEKDAY_NAMES,
   };

@@ -52,6 +52,13 @@
           ⬆️ Load Workspace
         </button>
 
+        <button onclick="openTermCalendar()" class="btn btn-secondary" title="Program-wide start date, holidays and day swaps">
+          <span>📅</span> Term Calendar
+        </button>
+        <button onclick="openOutcomesModal()" class="btn btn-secondary" title="Define program outcomes and view the curriculum matrix">
+          🎯 Outcomes
+        </button>
+
         <button onclick="openSettingsModal()" class="btn btn-secondary" title="Global Department & Institutional Policy Defaults">
           ⚙️ Settings
         </button>
@@ -145,6 +152,12 @@
             </div>
           </div>
 
+          <div id="courseProgramsSection">
+            <h3>Programs</h3>
+            <p class="hint-text">Which majors, minors, honours or specialities include this course, and is it required or an elective there?</p>
+            <div id="courseProgramsList" class="course-programs-list"></div>
+          </div>
+
           <h3>Schedule Configuration</h3>
           <div class="form-grid">
             <div class="form-group">
@@ -170,20 +183,22 @@
             <p class="schedule-capacity full-width" id="scheduleCapacityNote"></p>
 
             <div class="form-group">
-              <label for="courseStartDate">First day of classes (optional)</label>
-              <input type="date" id="courseStartDate">
-            </div>
-
-            <div class="form-group">
               <label>Class days</label>
               <div id="classDaysPicker" class="day-picker"></div>
             </div>
           </div>
 
-          <h3>Important Dates</h3>
-          <p class="hint-text">Holidays, reading weeks and other dates. Tick "no class" and the calendar and outline skip those days. Needs a start date above.</p>
-          <div id="editorImportantDatesContainer" class="important-dates-list"></div>
-          <button type="button" class="btn btn-secondary btn-sm" id="btnAddImportantDate">+ Add important date</button>
+          <h3>Dates</h3>
+          <div class="form-group">
+            <label for="courseDateMode">Calendar for this course</label>
+            <select id="courseDateMode">
+              <option value="inherit">Use the program calendar</option>
+              <option value="custom">Custom dates for this course</option>
+              <option value="off">No dates (outline only)</option>
+            </select>
+          </div>
+          <p class="hint-text" id="courseDateInherit"></p>
+          <div id="courseDateCustom"></div>
 
           <div class="form-group full-width" style="margin-top: 1.5rem;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
@@ -283,6 +298,8 @@
   <script src="js/connections.js"></script>
   <script src="js/courseEditor.js"></script>
   <script src="js/calendarView.js"></script>
+  <script src="js/outcomes.js"></script>
+  <script src="js/termCalendar.js"></script>
   <script src="js/exportRtf.js"></script>
   <script src="js/settings.js"></script>
   <script src="js/introModal.js"></script>

@@ -171,73 +171,89 @@ function toggleClassDay(code) {
   refreshBudget();
 }
 
-function renderImportantDatesRows() {
-  const box = document.getElementById('editorImportantDatesContainer');
-  if (!box) return;
-  if (!editingImportantDates.length) {
-    box.innerHTML = '<p class="empty-note">No important dates yet.</p>';
-    return;
+let editingCal = { startDate: '', importantDates: [], extraDays: [] };
+let editingDateMode = 'inherit';
+
+function renderDateModePanels() {
+  const custom = document.getElementById('courseDateCustom');
+  const info = document.getElementById('courseDateInherit');
+  const picker = document.getElementById('classDaysPicker');
+  if (custom) custom.hidden = editingDateMode !== 'custom';
+  if (picker) picker.closest('.form-group').hidden = editingDateMode === 'off';
+  if (info) {
+    info.hidden = editingDateMode === 'off' && false;
+    if (editingDateMode === 'inherit') {
+      const cal = window.DATA && window.DATA.calendar;
+      info.textContent = cal && cal.enabled !== false && cal.startDate
+        ? `Program calendar: classes start ${S().formatDateLabel(cal.startDate)}; ${(cal.importantDates || []).length} important date(s), ${(cal.extraDays || []).length} day swap(s). Edit it from the 📅 Term Calendar button.`
+        : 'No program calendar is set (or it is switched off), so this outline will have no dates. Set one from the 📅 Term Calendar button.';
+    } else if (editingDateMode === 'off') {
+      info.textContent = 'This outline will not show any dates.';
+    } else {
+      info.textContent = 'Only this course\u2019s own dates below are used; the program calendar is ignored.';
+    }
   }
-  box.innerHTML = editingImportantDates.map((d, i) => `
-    <div class="important-date-row">
-      <input type="date" value="${escapeHtml(d.date || '')}" data-idx="${i}" data-f="date" title="Date (or first day)">
-      <input type="date" value="${escapeHtml(d.endDate || '')}" data-idx="${i}" data-f="endDate" title="Last day (optional, for a range)">
-      <input type="text" value="${escapeHtml(d.label || '')}" data-idx="${i}" data-f="label" placeholder="e.g. Reading week">
-      <label class="skip-check"><input type="checkbox" data-idx="${i}" data-f="skipsClass" ${d.skipsClass ? 'checked' : ''}> no class</label>
-      <button type="button" class="btn btn-cancel btn-sm" onclick="removeImportantDate(${i})" title="Remove">&times;</button>
-    </div>`).join('');
 }
 
-function syncImportantDatesFromDom() {
-  document.querySelectorAll('#editorImportantDatesContainer [data-f]').forEach((el) => {
-    const d = editingImportantDates[+el.dataset.idx];
-    if (!d) return;
-    d[el.dataset.f] = el.type === 'checkbox' ? el.checked : el.value;
-  });
+function setDateMode(mode) {
+  const wasCustom = editingDateMode === 'custom';
+  editingDateMode = mode;
+  if (mode === 'custom' && !wasCustom && !editingCal.startDate && !editingCal.importantDates.length && !editingCal.extraDays.length) {
+    // start from the program's dates so the course only has to change what differs
+    const pc = window.DATA && window.DATA.calendar;
+    if (pc) editingCal = window.TermCalendar.copy(pc);
+  }
+  const box = document.getElementById('courseDateCustom');
+  if (box && mode === 'custom') window.TermCalendar.mount(box, editingCal, refreshBudget);
+  renderDateModePanels();
+  refreshBudget();
 }
 
-function addImportantDate() {
-  syncImportantDatesFromDom();
-  editingImportantDates.push({ date: '', endDate: '', label: '', skipsClass: true });
-  renderImportantDatesRows();
-}
-
-function removeImportantDate(i) {
-  syncImportantDatesFromDom();
-  editingImportantDates.splice(i, 1);
-  renderImportantDatesRows();
-}
-
-/** Only the date fields that have values, so courses without dates stay unchanged. */
+/** Date fields to store on the course (class days always; own dates only in custom mode). */
 function readDatesFromForm() {
-  syncImportantDatesFromDom();
-  const out = {};
-  const start = document.getElementById('courseStartDate')?.value;
-  if (start) out.startDate = start;
+  const out = { dateMode: editingDateMode };
   const perWeek = currentPerWeek();
   if (editingClassDays.length === perWeek) out.classDays = editingClassDays.slice();
-  const dates = editingImportantDates
-    .filter((d) => d.date)
-    .map((d) => {
-      const row = { date: d.date, label: (d.label || '').trim(), skipsClass: !!d.skipsClass };
-      if (d.endDate && d.endDate !== d.date) row.endDate = d.endDate;
-      return row;
-    });
-  if (dates.length) out.importantDates = dates;
+  if (editingDateMode === 'custom') Object.assign(out, window.TermCalendar.clean(editingCal));
+  return out;
+}
+
+let editingPrograms = [];
+function renderCourseProgramsForm(course) {
+  const box = document.getElementById('courseProgramsList');
+  if (!box) return;
+  const progs = (window.Outcomes && window.Outcomes.getPrograms()) || [];
+  editingPrograms = ((course && course.programs) || []).map((m) => ({ ...m }));
+  if (!progs.length) {
+    box.innerHTML = '<p class="empty-note">No programs defined yet. Add them from the 🎯 Outcomes button, Programs tab.</p>';
+    return;
+  }
+  box.innerHTML = progs.map((p) => {
+    const m = editingPrograms.find((x) => x.id === p.id);
+    const v = m ? (m.required ? 'required' : 'elective') : '';
+    return `<label class="course-program-row"><span>${escapeHtml(p.name || 'Untitled')} <em>(${escapeHtml(window.Outcomes.PROGRAM_TYPES[p.type] || p.type)})</em></span>
+      <select data-pid="${escapeHtml(p.id)}"><option value="">Not part of it</option><option value="required" ${v === 'required' ? 'selected' : ''}>Required</option><option value="elective" ${v === 'elective' ? 'selected' : ''}>Elective</option></select></label>`;
+  }).join('');
+}
+function readProgramsFromForm() {
+  const out = [];
+  document.querySelectorAll('#courseProgramsList select[data-pid]').forEach((s) => { if (s.value) out.push({ id: s.dataset.pid, required: s.value === 'required' }); });
   return out;
 }
 
 function writeDatesToForm(course) {
-  const el = document.getElementById('courseStartDate');
-  if (el) el.value = course.startDate || '';
   editingClassDays = Array.isArray(course.classDays) ? course.classDays.slice() : [];
-  editingImportantDates = (course.importantDates || []).map((d) => ({ ...d }));
+  editingCal = window.TermCalendar.copy(course);
+  editingDateMode = S().dateMode(course);
+  const sel = document.getElementById('courseDateMode');
+  if (sel) sel.value = editingDateMode;
   renderClassDaysPicker();
-  renderImportantDatesRows();
+  const box = document.getElementById('courseDateCustom');
+  if (box) window.TermCalendar.mount(box, editingCal, refreshBudget);
+  renderDateModePanels();
 }
 
-document.getElementById('btnAddImportantDate')?.addEventListener('click', addImportantDate);
-document.getElementById('courseStartDate')?.addEventListener('change', refreshBudget);
+document.getElementById('courseDateMode')?.addEventListener('change', (e) => setDateMode(e.target.value));
 
 ['weeksInSemester', 'weeklyFormat', 'customPattern'].forEach((id) => {
   const el = document.getElementById(id);
@@ -295,6 +311,7 @@ function openCourseModal(courseData = null, connectionsData = []) {
   renderTextbookInputs(currentCourse.textbooks || currentCourse.textbook || []);
   writeScheduleToForm(currentCourse);
   writeDatesToForm(currentCourse);
+  renderCourseProgramsForm(currentCourse);
   editingElectiveGroups = JSON.parse(JSON.stringify(currentCourse.electiveGroups || {}));
   renderModulesList();
   renderConnectionsList();
@@ -372,8 +389,12 @@ function syncModulesFromDOM() {
     const wasAuto = Math.abs(prevTotal - prevSum) < 0.001;
 
     const topics = [];
-    wrapper.querySelectorAll('.topic-editor-card').forEach((card) => {
+    const prevTopics = Array.isArray(mod.topics) ? mod.topics : [];
+    wrapper.querySelectorAll('.topic-editor-card').forEach((card, ci) => {
+      const keepOutcomes = prevTopics[ci] && Array.isArray(prevTopics[ci].outcomes) && prevTopics[ci].outcomes.length
+        ? { outcomes: prevTopics[ci].outcomes } : {};
       topics.push({
+        ...keepOutcomes,
         title: card.querySelector('.input-topic-title')?.value || '',
         description: card.querySelector('.input-topic-desc')?.value || '',
         lectureCount: hoursVal(card.querySelector('.input-topic-lectures')?.value, 1),
@@ -598,6 +619,7 @@ function moduleRowHtml(mod, modIdx) {
         <label class="stack-field">Description
           <textarea class="input-topic-desc" rows="2" placeholder="Brief overview of the topic">${escapeHtml(topic.description || '')}</textarea>
         </label>
+        ${outcomeRowHtml(modIdx, tIdx, topic)}
         <div class="nested-block">
           <div class="nested-head"><span class="nested-title obj">Learning objectives</span>
             <button type="button" class="btn btn-secondary btn-sm" onclick="addTopicObjective(${modIdx}, ${tIdx})">+ Add</button></div>
@@ -645,6 +667,7 @@ function moduleRowHtml(mod, modIdx) {
         <span style="flex:1"></span>
         <span class="sched-badge" data-mod="${escapeHtml(mod.id)}"></span>
       </div>
+      ${moduleOutcomeRowHtml(modIdx)}
       <div class="row-line">
         <span class="field-caption">Topics (${(mod.topics || []).length})</span>
         <span style="flex:1"></span>
@@ -892,6 +915,90 @@ function removeTopicRow(modIndex, topicIndex) {
   syncModulesFromDOM();
   editingModules[modIndex].topics.splice(topicIndex, 1);
   renderModulesList();
+}
+
+
+// ------------------------------------------------------------
+// Program outcome tags (per topic)
+// ------------------------------------------------------------
+function programOutcomes() {
+  return (window.Outcomes && window.Outcomes.getOutcomes()) || [];
+}
+
+const LEVEL_NAMES = { I: 'Introduced', R: 'Reinforced', A: 'Advanced' };
+const LEVEL_OPTIONS = '<option value="I">Introduced (I)</option><option value="R">Reinforced (R)</option><option value="A">Advanced (A)</option>';
+
+function outcomePickerOptions() {
+  return window.Outcomes ? window.Outcomes.pickerOptions().map((o) => `<option value="${escapeHtml(o.id)}">${escapeHtml(o.label)}</option>`).join('') : '';
+}
+
+function outcomeRowHtml(modIdx, tIdx, topic) {
+  const outs = programOutcomes().filter((o) => o.status !== 'archived');
+  if (!programOutcomes().length) {
+    return tIdx === 0 ? '<p class="hint-text">No program outcomes defined yet \u2013 use the \ud83c\udfaf Outcomes button in the header to add them, then tag topics here.</p>' : '';
+  }
+  const codes = window.Outcomes.codeMap(programOutcomes());
+  const tags = (topic.outcomes || []).map((t, i) => {
+    const o = programOutcomes().find((x) => x.id === t.id);
+    const archived = o && o.status === 'archived';
+    return `<span class="po-chip level-${t.level}" title="${escapeHtml(o ? o.title : 'Deleted outcome')} \u2013 ${LEVEL_NAMES[t.level] || ''}${archived ? ' (archived outcome)' : ''}">${escapeHtml(o ? codes[o.id] : '?')} \u00b7 ${t.level}${archived ? ' \u29c8' : ''}
+      <button type="button" onclick="removeTopicOutcome(${modIdx}, ${tIdx}, ${i})" aria-label="Remove tag">&times;</button></span>`;
+  }).join('');
+  return `<div class="row-line po-tag-row">
+    <span class="field-caption">Program outcomes</span>
+    ${tags || '<span class="empty-note">none tagged</span>'}
+    <span style="flex:1"></span>
+    <select class="po-pick">${outcomePickerOptions()}</select>
+    <select class="po-level">${LEVEL_OPTIONS}</select>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="addTopicOutcome(${modIdx}, ${tIdx}, this)">Tag</button>
+  </div>`;
+}
+
+function setTopicTag(topic, id, level) {
+  topic.outcomes = (topic.outcomes || []).filter((t) => t.id !== id);
+  topic.outcomes.push({ id, level });
+}
+
+function addTopicOutcome(modIdx, tIdx, btn) {
+  const row = btn.closest('.po-tag-row');
+  const id = row.querySelector('.po-pick').value;
+  const level = row.querySelector('.po-level').value;
+  syncModulesFromDOM();
+  const t = editingModules[modIdx].topics[tIdx];
+  if (!t || !id) return;
+  setTopicTag(t, id, level);
+  renderModulesList();
+}
+
+function removeTopicOutcome(modIdx, tIdx, i) {
+  syncModulesFromDOM();
+  const t = editingModules[modIdx].topics[tIdx];
+  if (!t || !t.outcomes) return;
+  t.outcomes.splice(i, 1);
+  if (!t.outcomes.length) delete t.outcomes;
+  renderModulesList();
+}
+
+/** Shortcut: tag every topic in a module with the same outcome and level. */
+function applyOutcomeToModule(modIdx, btn) {
+  const row = btn.closest('.po-module-row');
+  const id = row.querySelector('.po-pick').value;
+  const level = row.querySelector('.po-level').value;
+  syncModulesFromDOM();
+  const mod = editingModules[modIdx];
+  if (!mod || !id) return;
+  (mod.topics || []).forEach((t) => { if (t && typeof t === 'object') setTopicTag(t, id, level); });
+  renderModulesList();
+}
+
+function moduleOutcomeRowHtml(modIdx) {
+  if (!programOutcomes().filter((o) => o.status !== 'archived').length) return '';
+  return `<div class="row-line po-module-row">
+    <span class="field-caption">Tag all topics in this module</span>
+    <select class="po-pick">${outcomePickerOptions()}</select>
+    <select class="po-level">${LEVEL_OPTIONS}</select>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="applyOutcomeToModule(${modIdx}, this)">Apply to all</button>
+  </div>`;
 }
 
 function addTopicObjective(modIdx, topicIdx) {
@@ -1308,8 +1415,13 @@ function saveCourseData() {
     modules: cleanedModules,
   };
   delete updatedCourse.textbook; // migrated to textbooks[]
-  delete updatedCourse.startDate; delete updatedCourse.classDays; delete updatedCourse.importantDates;
+  delete updatedCourse.startDate; delete updatedCourse.classDays; delete updatedCourse.importantDates; delete updatedCourse.extraDays; delete updatedCourse.dateMode;
   Object.assign(updatedCourse, readDatesFromForm());
+  if (document.querySelector('#courseProgramsList select[data-pid]')) {
+    const pm = readProgramsFromForm();
+    // keep memberships of programs that no longer exist untouched; replace the rest
+    if (pm.length) updatedCourse.programs = pm; else delete updatedCourse.programs;
+  }
   {
     const used = new Set(cleanedModules.map((m) => m.electiveGroup).filter(Boolean));
     const eg = {};
@@ -1341,7 +1453,7 @@ Object.assign(window, {
   addLabItem, removeLabItem, equalizeLabWeights, refreshLabWeightSumIndicator,
   toggleMidtermModule, removeModuleRow, addTopicRow, removeTopicRow,
   addTopicObjective, removeTopicObjective, addTopicQuestion, removeTopicQuestion,
-  toggleClassDay, removeImportantDate, handleConnectionCourseChange, addConnectionFromDropdowns, addCourseLinkFromDropdowns, setConnScopeMode, removeConnectionRow,
+  toggleClassDay, addTopicOutcome, removeTopicOutcome, applyOutcomeToModule, handleConnectionCourseChange, addConnectionFromDropdowns, addCourseLinkFromDropdowns, setConnScopeMode, removeConnectionRow,
   saveCourseData, renderModulesList, renderConnectionsList, syncModulesFromDOM,
   refreshBudget, orientConnection,
   editingModulesRef: () => editingModules,
