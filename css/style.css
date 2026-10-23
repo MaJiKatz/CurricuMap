@@ -1279,3 +1279,6 @@ body.connect-mode-active .connection-layer .conn-hit-area { pointer-events: none
 .tc-global-item{display:flex;gap:8px;align-items:center;padding:3px 0}
 .tc-start{margin-bottom:.5rem}
 .settings-calendar{margin-bottom:1.5rem}
+
+.cal-view-bar{display:flex;gap:12px;align-items:center;padding:8px 20px;border-bottom:1px solid var(--card-border)}
+.cal-view-bar label{display:flex;gap:8px;align-items:center;font-size:.9rem}

@@ -155,3 +155,7 @@ CurriMap uses a standard JSON schema to represent courses, modules, and prerequi
 
 🛡️ Data Privacy
 CurriMap is designed with a privacy-first architecture. All operations—including workspace editing, graph drawing, calendar rendering, and RTF document generation—happen entirely inside your browser's JavaScript runtime. No course data, personal information, or institutional materials are ever sent to external servers.
+
+### Which dates does an export use?
+- Card outline button and the **Download this outline** button in the course calendar window: the course's own setting by default; the calendar window's *Dates* switch can instead use the program calendar only, or a generic version without dates.
+- **Download All Outlines (RTF)**: the program calendar only. Course-level date changes, independent calendars and "no dates" are ignored there.

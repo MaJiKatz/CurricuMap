@@ -52,9 +52,11 @@
     return out;
   }
 
-  function openCalendarModal(course) {
+  function openCalendarModal(savedCourse, view) {
     const S = window.Scheduler;
     const fmt = S.formatHours;
+    view = view || 'course';
+    const course = S.withDateView(savedCourse, view);
     const r = S.build(course);
     const cfg = r.config;
     const nums = teachingNumbers(course);
@@ -104,7 +106,7 @@
         <ul>${listRows(r.unreachedOptional)}</ul>
       </section>` : '';
 
-    const noDateHint = r.hasDates ? '' : ' · set a start date in the course editor to see real dates';
+    const noDateHint = r.hasDates ? '' : ' · set a first day in ⚙️ Settings or the course editor to see real dates';
     const electiveHtml = (r.electiveGroups || []).length ? `
       <section class="cal-leftover cal-leftover-elective">
         <h3>Elective groups</h3>
@@ -126,6 +128,15 @@
           </div>
           <button type="button" class="close-modal-btn" onclick="closeCalendarModal()" aria-label="Close">&times;</button>
         </div>
+        <div class="cal-view-bar">
+          <label>Dates
+            <select id="calViewSel">
+              <option value="course" ${view === 'course' ? 'selected' : ''}>This course's setting</option>
+              <option value="global" ${view === 'global' ? 'selected' : ''}>Program calendar only</option>
+              <option value="generic" ${view === 'generic' ? 'selected' : ''}>Generic (no dates)</option>
+            </select></label>
+          <button type="button" class="btn btn-secondary btn-sm" id="calDownloadBtn">Download this outline (RTF)</button>
+        </div>
         <div class="calendar-scroll">
           ${overflowHtml}
           <div class="calendar-grid">${weeksHtml}</div>
@@ -136,6 +147,8 @@
 
     modal.classList.remove('hidden');
     modal.onclick = (e) => { if (e.target === modal) closeCalendarModal(); };
+    modal.querySelector('#calViewSel').onchange = (e) => openCalendarModal(savedCourse, e.target.value);
+    modal.querySelector('#calDownloadBtn').onclick = () => window.downloadCourseOutlineRTF(savedCourse.id, view);
   }
 
   function closeCalendarModal() {

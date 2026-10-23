@@ -604,10 +604,11 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  function downloadCourseOutlineRTF(courseId) {
+  function downloadCourseOutlineRTF(courseId, view) {
     const { course, connections } = window.getCourseById(courseId);
     if (!course) { alert('Course data not found.'); return; }
-    const rtf = buildSingleCourseDocument(course, connections || []);
+    const used = window.Scheduler.withDateView(course, view);
+    const rtf = buildSingleCourseDocument(used, connections || []);
     triggerRtfDownload(rtf, outlineFileName(course));
   }
 
@@ -618,7 +619,9 @@
   function downloadAllCourseOutlinesRTF() {
     const courses = (window.DATA && window.DATA.courses) || [];
     if (!courses.length) { alert('No course data found.'); return; }
-    triggerRtfDownload(buildProgramDocument(courses, window.DATA.connections || []), 'Complete_Curriculum_Outlines.rtf');
+    // The combined package uses the program calendar only; a course's own date changes are ignored here.
+    const global = courses.map((c) => window.Scheduler.withDateView(c, 'global'));
+    triggerRtfDownload(buildProgramDocument(global, window.DATA.connections || []), 'Complete_Curriculum_Outlines.rtf');
   }
 
   // ---------------- program outcomes + curriculum matrix ----------------

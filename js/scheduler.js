@@ -464,6 +464,20 @@
     const d = typeof window !== 'undefined' && window.DATA && window.DATA.calendar;
     return d || null;
   }
+  /**
+   * A copy of the course with its calendar forced to one of three views:
+   *  'course'  -> as saved (program calendar + this course's own changes)
+   *  'global'  -> the program calendar only, ignoring this course's date changes
+   *  'generic' -> no dates at all
+   */
+  function withDateView(course, view) {
+    if (!view || view === 'course') return course;
+    const c = { ...course };
+    delete c.startDate; delete c.importantDates; delete c.extraDays; delete c.skipGlobal;
+    c.dateMode = view === 'generic' ? 'off' : 'inherit';
+    return c;
+  }
+
   /** Stable key used by a course to switch off one program-calendar entry. */
   function globalKey(kind, item) {
     return kind === 'swap' ? `swap|${item.date || ''}` : `date|${item.date || ''}|${item.label || ''}`;
@@ -682,7 +696,7 @@
     addDays,
     isoDate,
     formatDateLabel,
-    resolveClassDays, dateMode, effectiveCalendar, globalKey,
+    resolveClassDays, dateMode, effectiveCalendar, globalKey, withDateView,
     WEEKDAY_CODES,
     WEEKDAY_NAMES,
   };
