@@ -1282,3 +1282,17 @@ body.connect-mode-active .connection-layer .conn-hit-area { pointer-events: none
 
 .cal-view-bar{display:flex;gap:12px;align-items:center;padding:8px 20px;border-bottom:1px solid var(--card-border)}
 .cal-view-bar label{display:flex;gap:8px;align-items:center;font-size:.9rem}
+
+/* sessions (review / reflection / guest lecture) and self-directed topics */
+#courseModal .kind-session { color: #d1fae5; background: #047857; }
+.module-row-container.session-row { border-left: 4px solid #10b981; background: rgba(16, 185, 129, 0.07); }
+.session-add-select { border-color: #10b981; color: #6ee7b7; cursor: pointer; }
+.topic-selfdir { align-self: flex-end; white-space: nowrap; }
+.cal-seg-session { border-left-color: #047857; background: #ecfdf5; }
+.cal-seg-session .cal-seg-tag { color: #047857; }
+.cal-seg-session .cal-seg-title { font-weight: 600; }
+.cal-seg-session .cal-seg-speaker { color: var(--ink-soft); font-weight: 400; font-size: .78rem; }
+.cal-seg-selfdir { border-left-color: #4f46e5; background: #eef2ff; border-style: dashed; border-left-width: 3px; }
+.cal-seg-selfdir .cal-seg-tag { color: #4338ca; }
+.topic-selfdir-tag { font-size: .72rem; background: #e0e7ff; color: #3730a3; padding: 1px 6px; border-radius: 999px; margin-left: 6px; }
+.module-chip.session-chip { border-color: #10b981 !important; background: rgba(16, 185, 129, 0.22) !important; }

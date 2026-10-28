@@ -11,7 +11,7 @@
   function teachingNumbers(course) {
     const map = {};
     let n = 0;
-    (course.modules || []).forEach((m) => { if (!m.isExam && !m.isLab) map[m.id] = ++n; });
+    (course.modules || []).forEach((m) => { if (!m.isExam && !m.isLab && !m.isSession) map[m.id] = ++n; });
     return map;
   }
 
@@ -23,6 +23,15 @@
       if (seg.parts > 1) bits.push(`${seg.part}/${seg.parts}`);
       if (partial) bits.push(`${fmt(seg.hours)} h`);
       return `<div class="cal-seg cal-seg-exam"><span class="cal-seg-tag">${esc(seg.moduleLabel)}${w}</span><span class="cal-seg-title">${esc(seg.title)}${bits.length ? ` <span class="cal-seg-part">(${bits.join(', ')})</span>` : ''}</span></div>`;
+    }
+    if (seg.kind === 'session') {
+      const t = window.Scheduler.SESSION_TYPES[seg.sessionType] || window.Scheduler.SESSION_TYPES.other;
+      const partial = seg.meeting && !seg.fillsClass;
+      const bits = [];
+      if (seg.parts > 1) bits.push(`${seg.part}/${seg.parts}`);
+      if (partial) bits.push(`${fmt(seg.hours)} h`);
+      const named = seg.title && seg.title !== seg.moduleLabel ? seg.title : '';
+      return `<div class="cal-seg cal-seg-session"><span class="cal-seg-tag">${t.icon} ${esc(seg.moduleLabel || t.label)}</span><span class="cal-seg-title">${esc(named || t.label)}${bits.length ? ` <span class="cal-seg-part">(${bits.join(', ')})</span>` : ''}${seg.speaker ? ` <span class="cal-seg-speaker">&mdash; ${esc(seg.speaker)}</span>` : ''}</span></div>`;
     }
     if (seg.kind === 'buffer') {
       return `<div class="cal-seg cal-seg-buffer"><span class="cal-seg-title">Catch-up / review · ${fmt(seg.hours)} h</span></div>`;
@@ -75,6 +84,8 @@
           <div class="cal-meeting-label">${m.dateLabel ? `${esc(m.dateLabel)} · ` : ''}Class ${m.day}${cfg.uniform ? '' : ` · ${fmt(m.hours)} h`}</div>
           ${m.segs.length ? m.segs.map((s) => segHtml(s, nums, fmt)).join('') : '<div class="cal-seg cal-seg-buffer"><span class="cal-seg-title">Open</span></div>'}
         </div>`).join('');
+      const selfDir = (week.selfDirected || []).map((x) => `
+        <div class="cal-seg cal-seg-selfdir"><span class="cal-seg-tag">Self-directed${nums[x.moduleId] ? ' · Module ' + nums[x.moduleId] : ''}${x.optional ? ' · time permitting' : ''}</span><span class="cal-seg-title">${esc(x.title)}</span></div>`).join('');
       const due = week.takeHome.map((mod) => `
         <div class="cal-seg cal-seg-due"><span class="cal-seg-tag">Due ${r.assessmentDate && r.assessmentDate[mod.id] ? esc(S.formatDateLabel(r.assessmentDate[mod.id])) : 'this week'}${mod.weightPercent ? ` · ${fmt(mod.weightPercent)}%` : ''}</span><span class="cal-seg-title">${esc(mod.title || mod.label)}</span></div>`).join('');
       const range = week.startDate
@@ -84,7 +95,7 @@
       return `
         <div class="cal-week-card">
           <div class="cal-week-header">Week ${week.weekNumber}${range}</div>
-          <div class="cal-week-body">${notes}${meetings}${due}</div>
+          <div class="cal-week-body">${notes}${meetings}${selfDir}${due}</div>
         </div>`;
     }).join('');
 

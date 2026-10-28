@@ -217,6 +217,13 @@
             <button class="btn btn-secondary" onclick="addModuleRow()">+ Add Module</button>
             <button type="button" class="btn btn-secondary" onclick="addMidtermRow()" style="border-color: #a855f7; color: #c084fc;">+ Add Assessment</button>
             <button type="button" class="btn btn-secondary" onclick="addLabRow()" style="border-color: #06b6d4; color: #67e8f9;">+ Add Lab Section</button>
+            <select id="addSessionSelect" class="btn btn-secondary session-add-select" onchange="addSessionRow(this.value); this.value='';" title="Class time that isn't a topic: review, reflection, a guest lecture">
+              <option value="">+ Add Session…</option>
+              <option value="review">Review</option>
+              <option value="reflection">Self-reflection</option>
+              <option value="guest">Guest lecture</option>
+              <option value="other">Other session</option>
+            </select>
           </div>
           <div id="electiveGroupsPanel"></div>
           <datalist id="electiveGroupNames"></datalist>

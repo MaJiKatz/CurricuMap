@@ -290,6 +290,17 @@ function renderCourseCard(course, isCollapsed) {
         </div>
         <span class="m-title" style="font-weight: 600; color: black;">${escapeHtml(mod.title)}</span>
       `;
+    } else if (mod.isSession) {
+      const st = window.Scheduler.SESSION_TYPES[window.Scheduler.sessionType(mod)];
+      chip.classList.add('session-chip');
+      const hrs = window.Scheduler.sessionHours(mod);
+      chip.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+          <span class="m-label" style="color: black; font-weight: 600;">${st.icon} ${escapeHtml(mod.label || st.label)} <span style="font-size:0.75rem; background:#047857; padding:1px 4px; border-radius:3px; color:#d1fae5;">${window.Scheduler.formatHours(hrs)} h</span></span>
+          ${deleteBtnHtml}
+        </div>
+        <span class="m-title" style="font-weight: 600; color: black;">${escapeHtml(mod.title || st.label)}</span>
+      `;
     } else if (mod.isLab) {
       chip.style.borderColor = '#06b6d4';
       chip.style.background = 'rgba(6, 182, 212, 0.2)';
@@ -436,6 +447,27 @@ function renderDrawer(data, moduleId) {
     return;
   }
 
+  if (mod.isSession) {
+    const st = window.Scheduler.SESSION_TYPES[window.Scheduler.sessionType(mod)];
+    const built = window.Scheduler.build(course);
+    const meet = built.weeks.flatMap((w) => w.meetings).find((m) => m.segs.some((s) => s.moduleId === mod.id));
+    const when = meet ? `Week ${meet.week}${meet.dateLabel ? ' (' + escapeHtml(meet.dateLabel) + ')' : ''}` : '<span style="color:#b91c1c">does not fit in the term</span>';
+    content.innerHTML = `
+      <div class="drawer-header-actions">
+        <span class="drawer-course-code">${escapeHtml(course.code)} · ${st.icon} ${escapeHtml(mod.label || st.label)}</span>
+        <button class="btn-edit-course" onclick="if(window.openCourseEditor) window.openCourseEditor('${course.id}')" title="Edit Course">✏️</button>
+      </div>
+      <h2 class="drawer-title">${escapeHtml(mod.title || st.label)}</h2>
+      <div class="drawer-banner" style="border-color:#10b981;">
+        ${st.icon} <strong>${escapeHtml(st.label)}</strong> &middot; ${window.Scheduler.formatHours(window.Scheduler.sessionHours(mod))} h of class time<br>
+        ⏱️ <strong>Scheduled:</strong> ${when}
+        ${mod.speaker ? `<br>🎤 <strong>Speaker:</strong> ${escapeHtml(mod.speaker)}` : ''}
+      </div>
+      ${mod.description ? `<p class="topic-description">${escapeHtml(mod.description)}</p>` : ''}
+    `;
+    return;
+  }
+
   if (mod.isLab) {
     const labsList = (mod.labs || []);
     const labsHtml = labsList.length > 0
@@ -518,8 +550,8 @@ function renderDrawer(data, moduleId) {
         return `
           <div class="drawer-topic-block">
             <div class="topic-title-row">
-              <span class="topic-title">${escapeHtml(titleText)}</span>
-              ${window.Scheduler ? `<span class="topic-hours">${window.Scheduler.formatHours(window.Scheduler.topicHours(t))} h</span>` : ''}
+              <span class="topic-title">${escapeHtml(titleText)}${t.selfDirected ? '<span class="topic-selfdir-tag">self-directed</span>' : ''}</span>
+              ${window.Scheduler ? `<span class="topic-hours">${t.selfDirected ? '0 h' : window.Scheduler.formatHours(window.Scheduler.topicHours(t)) + ' h'}</span>` : ''}
             </div>
             ${descHtml}
             ${objectivesHtml}

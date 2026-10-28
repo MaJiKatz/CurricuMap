@@ -21,7 +21,7 @@ const INTRO_STEPS = [
   },
   {
     title: "2. Modules, Topics, Assessments & Labs",
-    content: "On the <b>Modules</b> tab add modules and topics (in lecture hours; 0.25 or 1.5 is fine), learning objectives, practice questions, assessments (in class or take-home, with weights) and lab sections. A live time budget shows what fits in the term and flags anything over. Mark a module <b>time permitting</b> and it is only scheduled if there is room. <b>Outline &amp; Policies</b> holds the instructor details, prerequisites and policy text that appear in the printed outline.",
+    content: "On the <b>Modules</b> tab add modules and topics (in lecture hours; 0.25 or 1.5 is fine), learning objectives, practice questions, assessments (in class or take-home, with weights) and lab sections. A live time budget shows what fits in the term and flags anything over. Mark a module <b>time permitting</b> and it is only scheduled if there is room. Use <b>+ Add Session</b> for class time that isn't a topic: a <b>review</b>, <b>self-reflection</b>, <b>guest lecture</b> (with speaker) or other session. Sessions use class time, are green on the map, and appear in the calendar and outline without being numbered as modules. Tick <b>Self-directed</b> on a topic to give it 0 lecture hours: it is listed separately in the week it comes up, and in the outline. <b>Outline &amp; Policies</b> holds the instructor details, prerequisites and policy text that appear in the printed outline.",
     badge: "3 of 11"
   },
   {

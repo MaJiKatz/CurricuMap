@@ -9,7 +9,7 @@
 
 (function () {
   // Color table indices: 1 ink, 2 grey, 3 red (warnings), 4 amber
-  const COLOR_TABLE = '{\\colortbl ;\\red15\\green23\\blue42;\\red100\\green116\\blue139;\\red190\\green30\\blue30;\\red150\\green105\\blue15;\\red226\\green232\\blue240;\\red253\\green230\\blue138;\\red134\\green239\\blue172;\\red147\\green197\\blue253;}';
+  const COLOR_TABLE = '{\\colortbl ;\\red15\\green23\\blue42;\\red100\\green116\\blue139;\\red190\\green30\\blue30;\\red150\\green105\\blue15;\\red226\\green232\\blue240;\\red253\\green230\\blue138;\\red134\\green239\\blue172;\\red147\\green197\\blue253;\\red4\\green120\\blue87;\\red67\\green56\\blue202;}';
   const FONT_TABLE = '{\\fonttbl{\\f0\\fswiss\\fprq2\\fcharset0 Arial;}}';
 
   const FALLBACK_AI_POLICY = 'Permissible use of assistive technologies and Generative Artificial Intelligence (e.g., ChatGPT, Claude) in this course will be explicitly stated for each assignment. Unless explicitly permitted by the instructor, the use of generative AI tools to produce coursework, code, or written assignments is unauthorized and constitutes academic misconduct.';
@@ -85,7 +85,7 @@
   function teachingNumbers(course) {
     const map = {};
     let n = 0;
-    (course.modules || []).forEach((m) => { if (!m.isExam && !m.isLab) map[m.id] = ++n; });
+    (course.modules || []).forEach((m) => { if (!m.isExam && !m.isLab && !m.isSession) map[m.id] = ++n; });
     return map;
   }
 
@@ -127,6 +127,15 @@
     return null; // "related" renders untagged, as in the current outlines
   }
 
+  // ---------------- sessions & self-directed topics ----------------
+  const SESS = (t) => `{\\cf9 ${t}}`;   // green: review / reflection / guest lecture
+  const SELF = (t) => `{\\cf10 ${t}}`;  // indigo: self-directed
+  function sessionLabel(seg) {
+    const T = window.Scheduler.SESSION_TYPES[seg.sessionType] || window.Scheduler.SESSION_TYPES.other;
+    const named = seg.title && seg.title !== seg.moduleLabel ? seg.title : '';
+    return { head: seg.moduleLabel || T.label, named, speaker: seg.speaker || '' };
+  }
+
   // ---------------- schedule section ----------------
   function segmentText(seg, course, nums, cfg) {
     const tag = (s) => (nums[s.moduleId] ? ' ' + G(`[Module ${nums[s.moduleId]}]`) : '');
@@ -142,6 +151,11 @@
     }
     if (seg.kind === 'buffer') {
       return G(I(`Catch-up / review (${fmt(seg.hours)} h)`));
+    }
+    if (seg.kind === 'session') {
+      const s = sessionLabel(seg);
+      const info = partial ? ` (${fmt(seg.hours)} h)` : '';
+      return `${SESS(B(escapeRtf('[' + s.head.toUpperCase() + ']')))} ${escapeRtf(s.named)}${s.speaker ? ' ' + G(escapeRtf('\u2013 ' + s.speaker)) : ''}${info ? ' ' + G(escapeRtf(info.trim())) : ''}`;
     }
     let info = '';
     const unit = cfg.allOneHour ? 'Lec' : 'Part';
@@ -193,6 +207,7 @@
     const short = (seg) => {
       if (seg.kind === 'exam') return B(`[EXAM] ${escapeRtf(seg.title)}`);
       if (seg.kind === 'buffer') return G(I('Catch-up'));
+      if (seg.kind === 'session') { const s = sessionLabel(seg); return `${SESS(B(escapeRtf('[' + s.head + ']')))} ${escapeRtf(s.named)}`; }
       const tag = nums[seg.moduleId] ? ` ${G(`[M${nums[seg.moduleId]}]`)}` : '';
       return `${escapeRtf(seg.title)}${tag}`;
     };
@@ -253,6 +268,10 @@
         m.segs.forEach((s, i) => {
           rtf += P(1080, `${segmentText(s, course, nums, cfg)}${i < m.segs.length - 1 ? ';' : ''}`);
         });
+      });
+      (week.selfDirected || []).forEach((x) => {
+        const mn = nums[x.moduleId] ? ` [Module ${nums[x.moduleId]}]` : '';
+        rtf += P(720, `${SELF('Self-directed (no class time):')} ${escapeRtf(x.title)}${G(escapeRtf(mn))}${x.optional ? ' ' + G(I('(time permitting)')) : ''}`);
       });
       week.takeHome.forEach((mod) => {
         const w = parseFloat(mod.weightPercent) ? ` (${mod.weightPercent}%)` : '';
@@ -376,6 +395,13 @@
     const notTaughtIds = new Set(groups.flatMap((g) => g.notTaught.map((m) => m.id)));
 
     (course.modules || []).forEach((mod) => {
+      if (mod.isSession) {
+        const T = S.SESSION_TYPES[S.sessionType(mod)];
+        rtf += P(360, `${SESS(B(escapeRtf((mod.label || T.label) + (mod.title ? ': ' + mod.title : ''))))} ${G(escapeRtf('[' + fmt(S.sessionHours(mod)) + ' ' + unit(S.sessionHours(mod)) + ', not a topic]'))}`, '\\sb200\\keepn');
+        if (mod.speaker) rtf += P(720, `${B('Speaker:')} ${escapeRtf(mod.speaker)}`);
+        if (mod.description) rtf += P(720, `\\i ${escapeRtf(mod.description)}\\i0`);
+        return;
+      }
       if (mod.isExam || mod.isLab) return;
       const k = nums[mod.id];
       const hrs = S.moduleHours(mod);
@@ -393,7 +419,7 @@
       topics.forEach((topic, tIdx) => {
         const t = typeof topic === 'string' ? { title: topic } : topic;
         const th = S.topicHours(t);
-        rtf += P(720, `${B(`Topic 4.${k}.${tIdx + 1}: ${escapeRtf(t.title || t.name || '')}`)} ${G(`(${fmt(th)} ${unit(th)})`)}`, '\\sb120\\keepn');
+        rtf += P(720, `${B(`Topic 4.${k}.${tIdx + 1}: ${escapeRtf(t.title || t.name || '')}`)} ${t.selfDirected ? SELF('(self-directed, no class time)') : G(`(${fmt(th)} ${unit(th)})`)}`, '\\sb120\\keepn');
         if (t.description) rtf += P(1080, `\\i ${escapeRtf(t.description)}\\i0`);
 
         const objs = (t.learningObjectives || t.objectives || [])

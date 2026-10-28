@@ -47,6 +47,7 @@
   function topicHours(topic) {
     if (typeof topic === 'number') return topic > 0 ? topic : 1;
     if (!topic || typeof topic === 'string') return 1;
+    if (topic.selfDirected) return 0; // self-directed: students work on it outside class
     const v = num(topic.lectureCount ?? topic.lectures ?? topic.hours ?? topic.duration);
     return v > 0 ? v : 1;
   }
@@ -55,9 +56,24 @@
     return (mod && Array.isArray(mod.topics) ? mod.topics : []).reduce((s, t) => s + topicHours(t), 0);
   }
 
+  // Non-topic items that still use class time: review, reflection, guest lecture...
+  const SESSION_TYPES = {
+    review:     { label: 'Review',          icon: '\uD83D\uDD01' },
+    reflection: { label: 'Self-reflection', icon: '\uD83D\uDCAD' },
+    guest:      { label: 'Guest lecture',   icon: '\uD83C\uDFA4' },
+    other:      { label: 'Other session',   icon: '\uD83D\uDCCC' },
+  };
+  function isSession(mod) { return !!(mod && mod.isSession); }
+  function sessionType(mod) { return SESSION_TYPES[mod && mod.sessionType] ? mod.sessionType : 'other'; }
+  function sessionHours(mod) {
+    const v = num(mod && (mod.lectureCount ?? mod.lectures ?? mod.hours));
+    return v > 0 ? v : 1;
+  }
+
   /** Total teaching hours for a regular module: max(explicit total, sum of topics). */
   function moduleHours(mod) {
     if (!mod || mod.isExam || mod.isLab) return 0;
+    if (mod.isSession) return sessionHours(mod);
     const explicit = num(mod.lectureCount ?? mod.lectures ?? mod.totalLectures);
     return Math.max(explicit > 0 ? explicit : 0, topicsHours(mod));
   }
@@ -204,6 +220,7 @@
     let mi = 0;
     const overflow = [];
     const unreachedOptional = [];
+    const selfDirectedList = [];
     const takeHomeByWeek = {};
     const assessmentWeek = {};
     const topicStatus = {};
@@ -270,6 +287,13 @@
 
       (mod.topics || []).forEach((topic, tIdx) => {
         const title = typeof topic === 'string' ? topic : (topic.title || topic.name || `Topic ${tIdx + 1}`);
+        if (topic && typeof topic === 'object' && topic.selfDirected) {
+          // No class time: listed in the week where the schedule has reached this point.
+          const wk = currentWeek() || config.weeks;
+          selfDirectedList.push({ week: wk, moduleId: mod.id, moduleLabel: label, moduleIndex: modIndex, topicIndex: tIdx, title, optional: !!isOptional });
+          topicStatus[`${mod.id}::${tIdx}`] = { status: 'self-directed', startWeek: wk, endWeek: wk, overHours: 0 };
+          return;
+        }
         const pieces = placeTimed(
           Object.assign({}, base, { kind: 'topic', topicIndex: tIdx, title, totalHours: topicHours(topic) }),
           topicHours(topic),
@@ -360,6 +384,17 @@
         return;
       }
 
+      if (mod.isSession) {
+        if (mod.startsFreshClass) padToFreshClass();
+        const label = mod.label || (SESSION_TYPES[sessionType(mod)].label);
+        const pieces = placeTimed({
+          kind: 'session', sessionType: sessionType(mod), moduleId: mod.id, moduleLabel: label,
+          title: mod.title || label, speaker: mod.speaker || '', moduleIndex: modIndex, totalHours: sessionHours(mod),
+        }, sessionHours(mod), false);
+        moduleStatus[mod.id] = summarise(pieces).status;
+        return;
+      }
+
       if (isTimePermitting(mod)) { deferred.push([mod, modIndex]); return; }
       placeModule(mod, modIndex, false);
     });
@@ -374,6 +409,7 @@
         weekNumber: w,
         meetings: meetings.filter((m) => m.week === w),
         takeHome: takeHomeByWeek[w] || [],
+        selfDirected: selfDirectedList.filter((x) => x.week === w),
       });
     }
 
@@ -407,6 +443,7 @@
       assessmentDate: dated.assessmentDate,
       overflow,
       unreachedOptional,
+      selfDirected: selfDirectedList,
       requiredHours: Math.round(requiredHours * 100) / 100,
       catchUpHours,
       optionalHours: Math.round(optionalHours * 100) / 100,
@@ -696,7 +733,7 @@
     addDays,
     isoDate,
     formatDateLabel,
-    resolveClassDays, dateMode, effectiveCalendar, globalKey, withDateView,
+    SESSION_TYPES, isSession, sessionType, sessionHours, resolveClassDays, dateMode, effectiveCalendar, globalKey, withDateView,
     WEEKDAY_CODES,
     WEEKDAY_NAMES,
   };

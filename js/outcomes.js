@@ -193,7 +193,7 @@
     const direct = {}; // outcomeId -> courseId -> { level, entries[] }
     cs.forEach((course) => {
       (course.modules || []).forEach((mod) => {
-        if (mod.isExam || mod.isLab) return;
+        if (mod.isExam || mod.isLab || mod.isSession) return;
         (mod.topics || []).forEach((topic) => {
           if (!topic || typeof topic !== 'object') return;
           (topic.outcomes || []).forEach((tag) => {

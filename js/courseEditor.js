@@ -323,7 +323,7 @@ function openCourseModal(courseData = null, connectionsData = []) {
   connScopeMode = 'module';
 
   editingModules = JSON.parse(JSON.stringify(currentCourse.modules || [])).map((mod) => {
-    if (mod.isExam || mod.isLab) return mod;
+    if (mod.isExam || mod.isLab || mod.isSession) return mod;
     const target = S().moduleHours(mod);
     return { ...mod, lectureCount: target, lectures: target };
   });
@@ -402,6 +402,17 @@ function syncModulesFromDOM() {
       return;
     }
 
+    if (mod.isSession) {
+      if (val('.input-sess-type')) mod.sessionType = val('.input-sess-type').value;
+      if (val('.input-sess-label')) mod.label = val('.input-sess-label').value;
+      if (val('.input-sess-title')) mod.title = val('.input-sess-title').value;
+      if (val('.input-sess-hours')) mod.lectureCount = mod.lectures = hoursVal(val('.input-sess-hours').value, 1);
+      if (val('.input-sess-speaker')) mod.speaker = val('.input-sess-speaker').value;
+      if (val('.input-sess-notes')) mod.description = val('.input-sess-notes').value;
+      if (val('.input-sess-fresh')) mod.startsFreshClass = val('.input-sess-fresh').checked;
+      return;
+    }
+
     if (mod.isLab) {
       if (val('.input-lab-label')) mod.label = val('.input-lab-label').value;
       if (val('.input-lab-title')) mod.title = val('.input-lab-title').value;
@@ -432,7 +443,8 @@ function syncModulesFromDOM() {
         ...keepOutcomes,
         title: card.querySelector('.input-topic-title')?.value || '',
         description: card.querySelector('.input-topic-desc')?.value || '',
-        lectureCount: hoursVal(card.querySelector('.input-topic-lectures')?.value, 1),
+        ...(card.querySelector('.input-topic-selfdir')?.checked ? { selfDirected: true } : {}),
+        lectureCount: card.querySelector('.input-topic-selfdir')?.checked ? 0 : hoursVal(card.querySelector('.input-topic-lectures')?.value, 1),
         learningObjectives: Array.from(card.querySelectorAll('.input-topic-obj')).map((i) => i.value),
         textbookQuestions: Array.from(card.querySelectorAll('.input-topic-quest')).map((i) => i.value),
       });
@@ -467,7 +479,7 @@ function renderElectivePanel() {
   if (!host) return;
   const names = [];
   editingModules.forEach((m) => {
-    if (!m.isExam && !m.isLab && m.electiveGroup && !names.includes(m.electiveGroup)) names.push(m.electiveGroup);
+    if (!m.isExam && !m.isLab && !m.isSession && m.electiveGroup && !names.includes(m.electiveGroup)) names.push(m.electiveGroup);
   });
   const dl = document.getElementById('electiveGroupNames');
   if (dl) dl.innerHTML = names.map((n) => `<option value="${escapeHtml(n)}"></option>`).join('');
@@ -476,7 +488,7 @@ function renderElectivePanel() {
   const bases = S().ELECTIVE_BASES;
   host.innerHTML = `<div class="elective-panel"><strong>Elective groups</strong> <small>Modules in a group are alternatives &mdash; only some are taught each time.</small>` +
     names.map((name) => {
-      const total = editingModules.filter((m) => !m.isExam && !m.isLab && m.electiveGroup === name).length;
+      const total = editingModules.filter((m) => !m.isExam && !m.isLab && !m.isSession && m.electiveGroup === name).length;
       const def = editingElectiveGroups[name] || {};
       let pick = parseInt(def.pick, 10);
       if (!(pick >= 0)) pick = total;
@@ -527,6 +539,7 @@ function renderModulesListInner() {
   container.innerHTML = editingModules.map((mod, modIdx) => {
     if (mod.isExam) return examRowHtml(mod, modIdx);
     if (mod.isLab) return labRowHtml(mod, modIdx);
+    if (mod.isSession) return sessionRowHtml(mod, modIdx);
     return moduleRowHtml(mod, modIdx);
   }).join('');
 
@@ -536,7 +549,7 @@ function renderModulesListInner() {
 
 function examRowHtml(mod, modIdx) {
   const covered = new Set(mod.coveredModuleIds || []);
-  const boxes = editingModules.filter((m) => !m.isExam && !m.isLab).map((m) => `
+  const boxes = editingModules.filter((m) => !m.isExam && !m.isLab && !m.isSession).map((m) => `
     <label class="chip-check">
       <input type="checkbox" ${covered.has(m.id) ? 'checked' : ''} onchange="toggleMidtermModule(${modIdx}, '${m.id}', this.checked)">
       ${escapeHtml(m.label || m.id)}
@@ -590,6 +603,62 @@ function examRowHtml(mod, modIdx) {
         </label>
       </div>
     </div>`;
+}
+
+function sessionRowHtml(mod, modIdx) {
+  const types = S().SESSION_TYPES;
+  const type = S().sessionType(mod);
+  return `
+    <div class="module-row-container session-row" data-mod-idx="${modIdx}">
+      <div class="row-line">
+        <span class="row-kind kind-session">${types[type].icon} Session</span>
+        <select class="input-sess-type" onchange="changeSessionType(${modIdx}, this.value)" title="Type of session">
+          ${Object.entries(types).map(([k, v]) => `<option value="${k}" ${k === type ? 'selected' : ''}>${v.label}</option>`).join('')}
+        </select>
+        <input type="text" class="input-sess-label" value="${escapeHtml(mod.label || types[type].label)}" placeholder="Label" style="width: 130px;">
+        <input type="text" class="input-sess-title" value="${escapeHtml(mod.title || '')}" placeholder="Title (e.g. Midterm review, Industry perspectives)" style="flex: 1; min-width: 160px;">
+        <label class="inline-field" title="Class time used, in lecture hours (1 = one 50-minute class).">Hours
+          <input type="number" class="input-sess-hours" min="0.25" step="0.25" value="${S().sessionHours(mod)}" style="width: 70px;">
+        </label>
+        <button type="button" class="btn btn-cancel btn-sm" onclick="removeModuleRow(${modIdx})" title="Delete session">&times;</button>
+      </div>
+      <div class="row-line">
+        ${type === 'guest' ? `<label class="inline-field grow">Speaker / affiliation
+          <input type="text" class="input-sess-speaker" value="${escapeHtml(mod.speaker || '')}" placeholder="e.g. Dr. A. Smith, Industry Co.">
+        </label>` : ''}
+        <label class="inline-field" title="If the previous topic ends part-way through a class, the rest of that class is left as catch-up time and this session starts in the next class.">
+          <input type="checkbox" class="input-sess-fresh" ${mod.startsFreshClass ? 'checked' : ''}> Start in a fresh class
+        </label>
+        <span class="sched-badge" data-mod="${escapeHtml(mod.id)}"></span>
+      </div>
+      <div class="row-line">
+        <label class="inline-field grow">Notes (optional, shown in the outline)
+          <input type="text" class="input-sess-notes" value="${escapeHtml(mod.description || '')}" placeholder="e.g. Bring questions; covers Modules 1\u20133">
+        </label>
+      </div>
+    </div>`;
+}
+
+function changeSessionType(modIdx, type) {
+  const types = S().SESSION_TYPES;
+  const mod = editingModules[modIdx];
+  const wasDefault = Object.values(types).some((t) => t.label === (mod.label || ''));
+  syncModulesFromDOM();
+  const m = editingModules[modIdx];
+  m.sessionType = type;
+  if (wasDefault || !m.label) m.label = types[type].label;
+  renderModulesList();
+}
+
+function addSessionRow(type) {
+  if (!type) return;
+  syncModulesFromDOM();
+  const t = S().SESSION_TYPES[type] || S().SESSION_TYPES.other;
+  editingModules.push({
+    id: uniqueId(`${courseIdValue()}-sess`), label: t.label, title: '', sessionType: type,
+    lectureCount: 1, lectures: 1, topics: [], isSession: true, isExam: false, isLab: false, startsFreshClass: true,
+  });
+  renderModulesList();
 }
 
 function labRowHtml(mod, modIdx) {
@@ -647,7 +716,10 @@ function moduleRowHtml(mod, modIdx) {
             <input type="text" class="input-topic-title" value="${escapeHtml(topic.title || '')}" placeholder="e.g. First Law of Thermodynamics">
           </label>
           <label class="stack-field" style="width: 96px;" title="In lecture hours: 1 = one 50-minute lecture. Fractions like 1.5 or 0.5 are fine.">Lecture hrs
-            <input type="number" class="input-topic-lectures" min="0.25" step="0.25" value="${S().topicHours(topic)}">
+            <input type="number" class="input-topic-lectures" min="0.25" step="0.25" value="${S().topicHours(topic)}" ${topic.selfDirected ? 'disabled' : ''}>
+          </label>
+          <label class="inline-field topic-selfdir" title="Students work on this on their own: it takes no class time and is listed separately in the calendar and outline.">
+            <input type="checkbox" class="input-topic-selfdir" ${topic.selfDirected ? 'checked' : ''} onchange="syncModulesFromDOM(); renderModulesList();"> Self-directed (0 lecture hrs)
           </label>
           <span class="sched-badge topic-badge" data-key="${escapeHtml(mod.id)}::${tIdx}"></span>
         </div>
@@ -771,7 +843,7 @@ function refreshBudget() {
     if (m.isExam && !(m.coveredModuleIds || []).length && !m.scopeNote && (parseFloat(m.weightPercent) || 0) > 0) {
       checks.push(`<li>"${escapeHtml(m.title || m.label)}" is worth ${fmtH(m.weightPercent)}% but covers no modules.</li>`);
     }
-    if (!m.isExam && !m.isLab) {
+    if (!m.isExam && !m.isLab && !m.isSession) {
       (m.topics || []).forEach((t) => {
         const objs = (t.learningObjectives || []).map((o) => String(o).trim().toLowerCase()).filter(Boolean);
         const dup = objs.find((o, i) => objs.indexOf(o) !== i);
@@ -819,6 +891,10 @@ function refreshBudget() {
         else { text = "Doesn't fit in term"; cls = 'st-overflow'; }
       } else {
         const ms = r.moduleStatus[id];
+        if (mod && mod.isSession && ms === 'ok') {
+          const wk = (r.weeks.find((w) => w.meetings.some((m) => m.segs.some((s) => s.moduleId === id))) || {}).weekNumber;
+          if (wk) { text = `Week ${wk}`; cls = 'st-ok'; }
+        }
         const map = { overflow: ["Doesn't fit", 'st-overflow'], partial: ['Runs past term', 'st-partial'], 'optional-unreached': ['Not reached', 'st-optional'], 'optional-partial': ['Partly reached', 'st-optional'], 'not-selected': ['Not taught this time', 'st-optional'] };
         if (map[ms]) [text, cls] = map[ms];
       }
@@ -830,6 +906,7 @@ function refreshBudget() {
 }
 
 function badgeFor(st) {
+  if (st.status === 'self-directed') return { text: `Self-directed · Wk ${st.startWeek}`, cls: 'st-optional' };
   if (st.status === 'ok') {
     return { text: st.startWeek === st.endWeek ? `Wk ${st.startWeek}` : `Wk ${st.startWeek}–${st.endWeek}`, cls: 'st-ok' };
   }
@@ -844,7 +921,7 @@ function badgeFor(st) {
 // ------------------------------------------------------------
 function addModuleRow() {
   syncModulesFromDOM();
-  const n = editingModules.filter((m) => !m.isExam && !m.isLab).length + 1;
+  const n = editingModules.filter((m) => !m.isExam && !m.isLab && !m.isSession).length + 1;
   editingModules.push({
     id: uniqueId(`${courseIdValue()}-m`), label: `Module ${n}`, title: 'New Module',
     lectureCount: 1, lectures: 1, topics: [], isExam: false, isLab: false,
@@ -1242,7 +1319,7 @@ function renderConnectionsList() {
   const moduleById = (window.DATA && window.DATA.moduleById) || {};
   const localIds = new Set(editingModules.map((m) => m.id));
 
-  const fromOptions = editingModules.filter((m) => !m.isLab).map((m) => `<option value="${m.id}">${escapeHtml(m.label)}: ${escapeHtml(m.title)}</option>`).join('')
+  const fromOptions = editingModules.filter((m) => !m.isLab && !m.isSession).map((m) => `<option value="${m.id}">${escapeHtml(m.label)}: ${escapeHtml(m.title)}</option>`).join('')
     || '<option value="">No modules in this course yet</option>';
   const courseOptions = allCourses.filter((c) => c.id !== originalCourseId)
     .map((c) => `<option value="${c.id}">${escapeHtml(c.code)} — ${escapeHtml(c.name)}</option>`).join('');
@@ -1338,7 +1415,7 @@ function handleConnectionCourseChange(courseId) {
   const sel = document.getElementById('conn-to-module');
   if (!sel) return;
   const course = ((window.DATA && window.DATA.courses) || []).find((c) => c.id === courseId);
-  const mods = course ? (course.modules || []).filter((m) => !m.isLab) : [];
+  const mods = course ? (course.modules || []).filter((m) => !m.isLab && !m.isSession) : [];
   sel.innerHTML = mods.length
     ? mods.map((m) => `<option value="${m.id}">${escapeHtml(m.label)}: ${escapeHtml(m.title)}</option>`).join('')
     : `<option value="">${courseId ? 'No modules in this course' : 'Select a course first'}</option>`;
@@ -1415,6 +1492,20 @@ function saveCourseData() {
         isLab: true, isExam: false, labs,
       };
     }
+    if (mod.isSession) {
+      const type = S().sessionType(mod);
+      const out = {
+        ...mod, sessionType: type,
+        label: (mod.label || '').trim() || S().SESSION_TYPES[type].label,
+        title: (mod.title || '').trim(),
+        lectureCount: S().sessionHours(mod), lectures: S().sessionHours(mod),
+        isSession: true, isExam: false, isLab: false, topics: [],
+      };
+      ['speaker', 'description'].forEach((k) => { if (!String(out[k] || '').trim()) delete out[k]; });
+      if (type !== 'guest') delete out.speaker;
+      if (!out.startsFreshClass) delete out.startsFreshClass;
+      return out;
+    }
     const topics = (mod.topics || [])
       .map((t) => (typeof t === 'string'
         ? { title: t, description: '', lectureCount: 1, learningObjectives: [], textbookQuestions: [] }
@@ -1422,12 +1513,13 @@ function saveCourseData() {
           ...t,
           title: t.title || '',
           description: t.description || '',
-          lectureCount: hoursVal(t.lectureCount, 1),
+          lectureCount: t.selfDirected ? 0 : hoursVal(t.lectureCount, 1),
           learningObjectives: (t.learningObjectives || []).filter((o) => typeof o === 'string' && o.trim()),
           textbookQuestions: (t.textbookQuestions || []).filter((q) => typeof q === 'string' && q.trim()),
         }))
       .filter((t) => t.title.trim() || t.description.trim() || t.learningObjectives.length || t.textbookQuestions.length);
     const total = Math.max(parseFloat(mod.lectureCount) || 0, S().topicsHours({ topics }));
+    topics.forEach((t) => { if (!t.selfDirected) delete t.selfDirected; });
     const out = { ...mod, lectureCount: total, lectures: total, isExam: false, isLab: false, topics };
     if (!out.timePermitting) delete out.timePermitting;
     if (!out.startsFreshClass) delete out.startsFreshClass;
@@ -1488,7 +1580,7 @@ Object.assign(window, {
   addLabItem, removeLabItem, equalizeLabWeights, refreshLabWeightSumIndicator,
   toggleMidtermModule, removeModuleRow, addTopicRow, removeTopicRow,
   addTopicObjective, removeTopicObjective, addTopicQuestion, removeTopicQuestion,
-  toggleClassDay, addTopicOutcome, removeTopicOutcome, applyOutcomeToModule, handleConnectionCourseChange, addConnectionFromDropdowns, addCourseLinkFromDropdowns, setConnScopeMode, removeConnectionRow,
+  toggleClassDay, addSessionRow, changeSessionType, addTopicOutcome, removeTopicOutcome, applyOutcomeToModule, handleConnectionCourseChange, addConnectionFromDropdowns, addCourseLinkFromDropdowns, setConnScopeMode, removeConnectionRow,
   saveCourseData, renderModulesList, renderConnectionsList, syncModulesFromDOM,
   refreshBudget, orientConnection,
   editingModulesRef: () => editingModules,
