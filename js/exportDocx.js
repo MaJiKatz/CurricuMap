@@ -135,6 +135,7 @@
     style: 'Heading2', keepNext: true, numbering: headNum('Heading2'),
     border: color ? { left: { style: D().BorderStyle.SINGLE, size: 36, color, space: 8 } } : undefined,
     indent: color ? { left: 360 } : undefined,
+    spacing: color ? { before: 0, after: 80 } : undefined,
   });
   const H3 = (text, o = {}) => para(t(text), { style: 'Heading3', keepNext: true, indent: o.indent });
   const body = (text, o = {}) => para(typeof text === 'string' ? t(text, o.run) : text, { after: o.after ?? 80, indent: o.indent, keepNext: o.keepNext, fill: o.fill });
@@ -676,12 +677,16 @@
       const names = (list) => list.map((m) => `Module ${nums[m.id]}`).join(', ');
       out.push(para([...t(`Elective group – ${g.name}: `, { b: true }), ...t(`${g.total === g.pick ? 'all' : g.pick} of the ${g.total} modules in this group are taught each term, depending on ${g.basisLabel}. This offering: ${names(g.taught) || 'none'}.`), ...(g.notTaught.length ? t(` Not taught this offering: ${names(g.notTaught)}.`, { c: C.grey }) : [])]));
     });
+    // A short unbordered paragraph between modules puts a white break in the colour bar (4.1 | 4.2 | ... 4.n).
+    const breaker = () => new (D().Paragraph)({ children: [new (D().TextRun)({ text: '', size: 8 })], spacing: { before: 0, after: 0, line: 280, lineRule: D().LineRuleType.EXACT } });
+    let started = false;
     (course.modules || []).forEach((mod) => {
       MOD_COLOR = null;
+      if (!(mod.isExam || mod.isLab)) { if (started) out.push(breaker()); started = true; }
       if (mod.isSession) {
         const T = s.SESSION_TYPES[s.sessionType(mod)];
         const hrs = s.sessionHours(mod);
-        out.push(new (D().Paragraph)({ children: [...t(`${T.icon || ''} ${(mod.label || T.label)}${mod.title ? ': ' + mod.title : ''}`, { c: C.sess }), ...t(`   [${fmt(hrs)} ${unitWord(cfg, hrs)}, not a topic]`, { c: C.grey, b: false, s: 21 })], style: 'SessionHeading' }));
+        out.push(new (D().Paragraph)({ children: [...t(`${T.icon || ''} ${(mod.label || T.label)}${mod.title ? ': ' + mod.title : ''}`, { c: C.sess }), ...t(`   [${fmt(hrs)} ${unitWord(cfg, hrs)}, not a topic]`, { c: C.grey, b: false, s: 21 })], style: 'SessionHeading', spacing: { before: 0, after: 80 } }));
         if (mod.speaker) out.push(para([...t('Speaker: ', { b: true }), ...t(mod.speaker)], { indent: 360 }));
         if (mod.description) out.push(para(t(mod.description, { i: true }), { indent: 360 }));
         return;
@@ -696,22 +701,17 @@
       if (mod.chapter) out.push(para(t(`Reading Reference: Chapter ${mod.chapter}`, { c: C.grey }), { indent: 360 }));
       const topics = Array.isArray(mod.topics) ? mod.topics : [];
       if (!topics.length) out.push(body(mod.description || 'Core topics and competencies for this unit.', { indent: 360 }));
-      // A short unbordered paragraph between topics puts a white break in the colour bar.
-      const breaker = () => new (D().Paragraph)({ children: [new (D().TextRun)({ text: '', size: 8 })], spacing: { before: 0, after: 0, line: 160, lineRule: D().LineRuleType.EXACT } });
       topics.forEach((topic, ti) => {
-        if (ti > 0) out.push(breaker());
         const tp = typeof topic === 'string' ? { title: topic } : topic;
         const th = s.topicHours(tp);
-        out.push(para([...t(`${tp.title || tp.name || ''}`), ...(tp.selfDirected ? t('  (self-directed, no class time)', { c: C.self, s: 19 }) : t(`  (${fmt(th)} ${unitWord(cfg, th)})`, { c: C.grey, b: false, s: 19 }))], { style: 'Heading3', before: ti > 0 ? 0 : 100 }));
+        out.push(para([...t(`${tp.title || tp.name || ''}`), ...(tp.selfDirected ? t('  (self-directed, no class time)', { c: C.self, s: 19 }) : t(`  (${fmt(th)} ${unitWord(cfg, th)})`, { c: C.grey, b: false, s: 19 }))], { style: 'Heading3' }));
         if (tp.description) out.push(para(t(tp.description, { i: true }), { style: 'TopicDetail' }));
         const objs = (tp.learningObjectives || tp.objectives || []).map((o) => (typeof o === 'string' ? o : (o.text || o.title || ''))).filter((o) => o && o.trim());
         if (objs.length) { out.push(para(t('Learning Objectives'), { style: 'DetailLabel' })); objs.forEach((o) => out.push(bullet(t(o, { c: C.grey }), 1))); }
         const qs = (tp.textbookQuestions || tp.questions || []).map((q) => (typeof q === 'string' ? q : (q.text || q.title || ''))).filter((q) => q && q.trim());
         if (qs.length) { out.push(para(t('Recommended Practice Questions'), { style: 'DetailLabel' })); qs.forEach((q) => out.push(bullet(t(q, { c: C.grey }), 1))); }
       });
-      const conn = connectionLines(course, mod, connections);
-      if (conn.length && topics.length) out.push(breaker());
-      out.push(...conn);
+      out.push(...connectionLines(course, mod, connections));
       MOD_COLOR = null;
     });
     MOD_COLOR = null;
