@@ -676,13 +676,66 @@
   }
 
   // ---------- lab / weight helpers used by editor + export ----------
+  /**
+   * Lab plan. A lab module has a block length (`blockHours`, default 3 h). Each experiment may say which
+   * week it starts (`startWeek`), how many weeks it runs (`weeks`, default 1), what share of each block it
+   * uses (`blockShare` %, default 100, so two concurrent labs can be 50/50), and when its report is due
+   * (`dueWeek` and/or `dueDate`). An experiment with no startWeek is unscheduled and keeps its plain `hours`.
+   */
+  const DEFAULT_LAB_BLOCK = 3;
+  function labPlan(course, sched) {
+    const weeksArr = (sched && sched.weeks) || [];
+    const labs = []; const byWeek = {};
+    ((course && course.modules) || []).forEach((m) => {
+      if (!m.isLab) return;
+      const block = num(m.blockHours) > 0 ? num(m.blockHours) : DEFAULT_LAB_BLOCK;
+      (m.labs || []).forEach((l, idx) => {
+        const start = Math.max(0, Math.floor(num(l.startWeek)) || 0);
+        const n = Math.max(1, Math.floor(num(l.weeks)) || 1);
+        let share = l.blockShare === undefined || l.blockShare === '' || l.blockShare === null ? 100 : num(l.blockShare);
+        share = Math.min(100, Math.max(0, share || 0)) || 100;
+        const scheduled = start > 0;
+        const perWeek = Math.round(block * share) / 100;
+        const total = scheduled ? Math.round(n * perWeek * 100) / 100 : (num(l.hours) || 0);
+        const dueDate = /^\d{4}-\d{2}-\d{2}$/.test(String(l.dueDate || '')) ? l.dueDate : '';
+        let dueWeek = Math.max(0, Math.floor(num(l.dueWeek)) || 0);
+        if (dueDate && weeksArr.length) {
+          const hit = weeksArr.find((w) => w.startDate && dueDate >= w.startDate && dueDate <= (w.endDate || w.startDate))
+            || weeksArr.find((w) => w.startDate && w.startDate > dueDate);
+          if (hit) dueWeek = hit.weekNumber;
+        }
+        const e = {
+          lab: l, mod: m, index: idx, label: `Lab ${idx + 1}`, title: l.title || `Lab ${idx + 1}`,
+          display: /^\s*lab\s*\d+/i.test(l.title || '') ? l.title : `Lab ${idx + 1}: ${l.title || 'untitled'}`,
+          scheduled, startWeek: start, weeks: n, endWeek: scheduled ? start + n - 1 : 0, share, blockHours: block,
+          perWeekHours: perWeek, totalHours: total, dueDate, dueWeek, hasInfo: scheduled || !!dueDate || dueWeek > 0,
+        };
+        labs.push(e);
+        if (scheduled) for (let w = start; w <= e.endWeek; w++) (byWeek[w] = byWeek[w] || []).push({ entry: e, part: w - start + 1, parts: n, share, hours: perWeek });
+      });
+    });
+    const overbooked = Object.keys(byWeek).map(Number).sort((a, b) => a - b)
+      .map((w) => ({ week: w, share: Math.round(byWeek[w].reduce((a, x) => a + x.share, 0) * 100) / 100 }))
+      .filter((x) => x.share > 100.001);
+    return { labs, byWeek, overbooked, any: labs.some((x) => x.hasInfo), blockHours: labs.length ? labs[0].blockHours : DEFAULT_LAB_BLOCK };
+  }
+
+  /** "Weeks 3-4 \u00B7 50% of lab block \u00B7 due Oct 21" (empty when nothing is defined). */
+  function labWhenText(e) {
+    const parts = [];
+    if (e.scheduled) parts.push(e.weeks > 1 ? `Weeks ${e.startWeek}\u2013${e.endWeek}` : `Week ${e.startWeek}`);
+    if (e.scheduled && e.share < 100) parts.push(`${formatHours(e.share)}% of lab block`);
+    if (e.dueDate) parts.push(`due ${formatDateLabel(e.dueDate)}`);
+    else if (e.dueWeek) parts.push(`due Week ${e.dueWeek}`);
+    return parts.join(' \u00B7 ');
+  }
+
   function labHours(course) {
     if (course && course.labHours !== undefined && course.labHours !== '') return num(course.labHours) || 0;
     let h = 0;
+    labPlan(course).labs.forEach((e) => { h += e.totalHours; });
     ((course && course.modules) || []).forEach((m) => {
-      if (!m.isLab) return;
-      (m.labs || []).forEach((l) => { h += num(l.hours) || 0; });
-      if (!(m.labs || []).length) h += num(m.labHours ?? m.hours) || 0;
+      if (m.isLab && !(m.labs || []).length) h += num(m.labHours ?? m.hours) || 0;
     });
     return h;
   }
@@ -728,6 +781,9 @@
     electiveSelection,
     ELECTIVE_BASES,
     labHours,
+    labPlan,
+    labWhenText,
+    DEFAULT_LAB_BLOCK,
     weightSummary,
     formatHours,
     parseISODate,

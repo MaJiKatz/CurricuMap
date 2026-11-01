@@ -941,6 +941,7 @@ marker[id*="weak"] path { fill: var(--weak) !important; }
 .lab-weight {
   color: #67e8f9;
   font-weight: 600;
+  white-space: nowrap;
 }
 /* ============================================================
    v1.1 — Scheduling, time budget, outline tab, calendar
@@ -975,8 +976,11 @@ marker[id*="weak"] path { fill: var(--weak) !important; }
   font-size: 0.7rem;
   color: var(--ink-soft);
   margin-left: 8px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
-.topic-title-row { display: flex; align-items: baseline; justify-content: space-between; }
+.topic-title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.topic-title-row .topic-title { flex: 1; min-width: 0; }
 
 /* ---------- Editor: shared layout primitives ---------- */
 #courseModal .row-line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
@@ -1303,3 +1307,13 @@ body.connect-mode-active .connection-layer .conn-hit-area { pointer-events: none
 .size-btn:hover { color: #64ffda; border-color: #64ffda; }
 #courseModal .modal-container.modal-large { width: 96vw; max-width: 1900px; height: 94vh; max-height: 94vh; }
 #courseModal .modal-container.modal-large .modal-body { padding: 24px 32px; }
+
+/* Lab planning */
+.lab-item-box { border: 1px solid #2a303f; border-left: 3px solid #06b6d4; border-radius: 6px; padding: 6px 8px; margin: 6px 0; }
+.lab-item-box .lab-item-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin: 4px 0; }
+.lab-plan-row .lab-hours-note { flex: 1; min-width: 160px; }
+.cal-seg-lab { border-left: 3px solid #06b6d4; background: #ecfeff; color: #0f172a; }
+
+/* Module chips: time on its own line, top left, opposite the delete button */
+.module-chip .chip-top { display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 2px; }
+.module-chip .chip-time { font-family: var(--font-mono, monospace); font-size: 0.68rem; font-weight: 600; opacity: 0.75; letter-spacing: 0.02em; }

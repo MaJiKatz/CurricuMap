@@ -78,6 +78,7 @@
       document.body.appendChild(modal);
     }
 
+    const labs = S.labPlan(course, r);
     const weeksHtml = r.weeks.map((week) => {
       const meetings = week.meetings.map((m) => `
         <div class="cal-meeting">
@@ -88,6 +89,11 @@
         <div class="cal-seg cal-seg-selfdir"><span class="cal-seg-tag">Self-directed${nums[x.moduleId] ? ' · Module ' + nums[x.moduleId] : ''}${x.optional ? ' · time permitting' : ''}</span><span class="cal-seg-title">${esc(x.title)}</span></div>`).join('');
       const due = week.takeHome.map((mod) => `
         <div class="cal-seg cal-seg-due"><span class="cal-seg-tag">Due ${r.assessmentDate && r.assessmentDate[mod.id] ? esc(S.formatDateLabel(r.assessmentDate[mod.id])) : 'this week'}${mod.weightPercent ? ` · ${fmt(mod.weightPercent)}%` : ''}</span><span class="cal-seg-title">${esc(mod.title || mod.label)}</span></div>`).join('');
+      const labHtml = (labs.byWeek[week.weekNumber] || []).map((x) => {
+        const bits = [x.parts > 1 ? `week ${x.part} of ${x.parts}` : '', x.share < 100 ? `${fmt(x.share)}% of block` : '', `${fmt(x.hours)} h`].filter(Boolean).join(' · ');
+        return `<div class="cal-seg cal-seg-lab"><span class="cal-seg-tag">Lab</span><span class="cal-seg-title">${esc(x.entry.display)}</span> <span class="cal-seg-part">(${esc(bits)})</span></div>`;
+      }).join('') + labs.labs.filter((e) => e.dueWeek === week.weekNumber).map((e) => `
+        <div class="cal-seg cal-seg-lab"><span class="cal-seg-tag">Report due${e.dueDate ? ' ' + esc(S.formatDateLabel(e.dueDate)) : ''}</span><span class="cal-seg-title">${esc(e.display)}</span></div>`).join('');
       const range = week.startDate
         ? `<span class="cal-week-range">${esc(S.formatDateLabel(week.startDate, false))}${week.endDate !== week.startDate ? ' – ' + esc(S.formatDateLabel(week.endDate, false)) : ''}</span>` : '';
       const notes = (week.skipNotes || []).map((n) =>
@@ -95,7 +101,7 @@
       return `
         <div class="cal-week-card">
           <div class="cal-week-header">Week ${week.weekNumber}${range}</div>
-          <div class="cal-week-body">${notes}${meetings}${selfDir}${due}</div>
+          <div class="cal-week-body">${notes}${meetings}${labHtml}${selfDir}${due}</div>
         </div>`;
     }).join('');
 
@@ -104,6 +110,11 @@
       return `<li><span class="cal-seg-tag">${esc(tag)}</span> ${esc(s.title)} <span class="cal-seg-part">(${fmt(s.hours)} h)</span></li>`;
     }).join('');
 
+    const labWarn = labs.overbooked.length ? `
+      <section class="cal-leftover cal-leftover-over">
+        <h3>Lab block over-booked</h3>
+        <ul>${labs.overbooked.map((o) => `<li>Week ${o.week}: ${fmt(o.share)}% of the lab block is booked. Lower the "share of block" on the labs that overlap.</li>`).join('')}</ul>
+      </section>` : '';
     const overflowHtml = r.overflow.length ? `
       <section class="cal-leftover cal-leftover-over">
         <h3>Doesn't fit in the term — ${fmt(r.overByHours)} h over</h3>
@@ -151,6 +162,7 @@
         </div>
         <div class="calendar-scroll">
           ${overflowHtml}
+          ${labWarn}
           <div class="calendar-grid">${weeksHtml}</div>
           ${optionalHtml}
           ${electiveHtml}

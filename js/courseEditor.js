@@ -374,6 +374,9 @@ function toggleCourseModalSize() {
   applyCourseModalSize();
 }
 window.toggleCourseModalSize = toggleCourseModalSize;
+window.editLabField = editLabField;
+window.editLabBlock = editLabBlock;
+window.splitLabBlocks = splitLabBlocks;
 
 function closeCourseModal() {
   const modal = document.getElementById('courseModal');
@@ -561,7 +564,7 @@ function renderModulesListInner() {
     return moduleRowHtml(mod, modIdx);
   }).join('');
 
-  editingModules.forEach((mod, modIdx) => { if (mod.isLab) refreshLabWeightSumIndicator(modIdx); });
+  editingModules.forEach((mod, modIdx) => { if (mod.isLab) { refreshLabWeightSumIndicator(modIdx); refreshLabPlanIndicator(modIdx); } });
   refreshBudget();
 }
 
@@ -681,16 +684,37 @@ function addSessionRow(type) {
 
 function labRowHtml(mod, modIdx) {
   const labs = mod.labs || [];
+  const setLab = (modIdx, labIdx, key, kind) => `editLabField(${modIdx}, ${labIdx}, '${key}', this.value, '${kind}')`;
   const items = labs.map((lab, labIdx) => `
-    <div class="lab-item-row">
-      <input type="text" value="${escapeHtml(lab.title || '')}" onchange="editingModules[${modIdx}].labs[${labIdx}].title = this.value" placeholder="Lab title" style="flex: 1;">
-      <label class="inline-field">Hours
-        <input type="number" step="0.5" min="0" value="${lab.hours ?? 3}" onchange="editingModules[${modIdx}].labs[${labIdx}].hours = parseFloat(this.value) || 0; refreshBudget();" style="width: 60px;">
-      </label>
-      <label class="inline-field">Weight %
-        <input type="number" step="0.25" min="0" value="${lab.weightPercent ?? 0}" onchange="editingModules[${modIdx}].labs[${labIdx}].weightPercent = parseFloat(this.value) || 0; refreshLabWeightSumIndicator(${modIdx}); refreshBudget();" style="width: 70px;">
-      </label>
-      <button type="button" class="btn btn-cancel btn-sm" onclick="removeLabItem(${modIdx}, ${labIdx})" title="Delete lab">&times;</button>
+    <div class="lab-item-box">
+      <div class="lab-item-row">
+        <input type="text" value="${escapeHtml(lab.title || '')}" onchange="editingModules[${modIdx}].labs[${labIdx}].title = this.value" placeholder="Lab title" style="flex: 1;">
+        <label class="inline-field">Weight %
+          <input type="number" step="0.25" min="0" value="${lab.weightPercent ?? 0}" onchange="editingModules[${modIdx}].labs[${labIdx}].weightPercent = parseFloat(this.value) || 0; refreshLabWeightSumIndicator(${modIdx}); refreshBudget();" style="width: 70px;">
+        </label>
+        <button type="button" class="btn btn-cancel btn-sm" onclick="removeLabItem(${modIdx}, ${labIdx})" title="Delete lab">&times;</button>
+      </div>
+      <div class="lab-item-row lab-plan-row">
+        <label class="inline-field" title="Used only when the experiment has no start week">Hours
+          <input type="number" step="0.5" min="0" value="${lab.hours ?? 3}" onchange="editingModules[${modIdx}].labs[${labIdx}].hours = parseFloat(this.value) || 0; refreshLabPlanIndicator(${modIdx}); refreshBudget();" style="width: 60px;">
+        </label>
+        <label class="inline-field">Starts week
+          <input type="number" min="1" step="1" value="${lab.startWeek ?? ''}" placeholder="&mdash;" onchange="${setLab(modIdx, labIdx, 'startWeek', 'int')}" style="width: 60px;">
+        </label>
+        <label class="inline-field">Runs (weeks)
+          <input type="number" min="1" step="1" value="${lab.weeks ?? ''}" placeholder="1" onchange="${setLab(modIdx, labIdx, 'weeks', 'int')}" style="width: 60px;">
+        </label>
+        <label class="inline-field">Share of block %
+          <input type="number" min="1" max="100" step="5" value="${lab.blockShare ?? ''}" placeholder="100" onchange="${setLab(modIdx, labIdx, 'blockShare', 'num')}" style="width: 70px;">
+        </label>
+        <label class="inline-field">Due week
+          <input type="number" min="1" step="1" value="${lab.dueWeek ?? ''}" placeholder="&mdash;" onchange="${setLab(modIdx, labIdx, 'dueWeek', 'int')}" style="width: 60px;">
+        </label>
+        <label class="inline-field">or due date
+          <input type="date" value="${escapeHtml(lab.dueDate || '')}" onchange="${setLab(modIdx, labIdx, 'dueDate', 'str')}">
+        </label>
+        <span class="field-caption lab-hours-note" id="labHoursNote-${modIdx}-${labIdx}"></span>
+      </div>
     </div>`).join('');
 
   return `
@@ -707,9 +731,14 @@ function labRowHtml(mod, modIdx) {
       <div class="row-line">
         <span id="labWeightSumIndicator-${modIdx}" class="field-caption"></span>
         <span style="flex:1"></span>
+        <label class="inline-field" title="How long one lab session is. Each experiment's hours come from this, its weeks and its share.">Lab block (h)
+          <input type="number" min="0.5" step="0.5" value="${mod.blockHours ?? ''}" placeholder="${S().DEFAULT_LAB_BLOCK}" onchange="editLabBlock(${modIdx}, this.value)" style="width: 60px;">
+        </label>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="splitLabBlocks(${modIdx})" title="Where experiments overlap in the same week, give each an equal share of the block">Split block where labs overlap</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="equalizeLabWeights(${modIdx})">Equalize weights</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="addLabItem(${modIdx})">+ Add experiment</button>
       </div>
+      <div class="row-line"><span id="labPlanIndicator-${modIdx}" class="field-caption"></span></div>
       ${items || '<p class="empty-note">No experiments yet.</p>'}
     </div>`;
 }
@@ -992,6 +1021,59 @@ function equalizeLabWeights(modIdx) {
   const each = Math.round(((parseFloat(m.weightPercent) || 0) / labs.length) * 100) / 100;
   labs.forEach((l) => { l.weightPercent = each; });
   renderModulesList();
+}
+
+function editLabField(modIdx, labIdx, key, raw, kind) {
+  const lab = editingModules[modIdx].labs[labIdx];
+  const v = String(raw).trim();
+  if (v === '') delete lab[key];
+  else if (kind === 'int') lab[key] = Math.max(1, parseInt(v, 10) || 1);
+  else if (kind === 'num') lab[key] = Math.min(100, Math.max(1, parseFloat(v) || 100));
+  else lab[key] = v;
+  refreshLabPlanIndicator(modIdx);
+  refreshBudget();
+}
+
+function editLabBlock(modIdx, raw) {
+  const m = editingModules[modIdx];
+  const v = parseFloat(raw);
+  if (v > 0) m.blockHours = v; else delete m.blockHours;
+  refreshLabPlanIndicator(modIdx);
+  refreshBudget();
+}
+
+/** Where experiments overlap in a week, split the block evenly (50:50, 33:33:33 ...). */
+function splitLabBlocks(modIdx) {
+  syncModulesFromDOM();
+  const plan = S().labPlan({ modules: [editingModules[modIdx]] });
+  const count = {};
+  Object.keys(plan.byWeek).forEach((w) => { count[w] = plan.byWeek[w].length; });
+  plan.labs.forEach((e) => {
+    if (!e.scheduled) return;
+    let worst = 1;
+    for (let w = e.startWeek; w <= e.endWeek; w++) worst = Math.max(worst, count[w] || 1);
+    if (worst > 1) e.lab.blockShare = Math.floor((100 / worst) * 100) / 100;
+    else delete e.lab.blockShare;
+  });
+  renderModulesList();
+}
+
+function refreshLabPlanIndicator(modIdx) {
+  const mod = editingModules[modIdx];
+  const el = document.getElementById(`labPlanIndicator-${modIdx}`);
+  if (!mod) return;
+  const plan = S().labPlan({ modules: [mod] });
+  plan.labs.forEach((e) => {
+    const note = document.getElementById(`labHoursNote-${modIdx}-${e.index}`);
+    if (note) note.textContent = e.scheduled ? `= ${S().formatHours(e.totalHours)} h (${e.weeks} wk \u00D7 ${S().formatHours(e.perWeekHours)} h)` : 'no start week: counts the plain Hours';
+  });
+  if (!el) return;
+  const placed = plan.labs.filter((e) => e.scheduled).length;
+  if (plan.overbooked.length) {
+    el.textContent = `Over-booked: ${plan.overbooked.map((o) => `week ${o.week} (${S().formatHours(o.share)}% of the block)`).join(', ')}. Use "Split block where labs overlap".`;
+    el.style.color = '#f87171';
+  } else if (placed) { el.textContent = `${placed} of ${plan.labs.length} experiments placed in the term. No week is over-booked.`; el.style.color = '#4ade80'; }
+  else { el.textContent = 'Optional: give each experiment a start week, how many weeks it runs, its share of the lab block and a due date.'; el.style.color = ''; }
 }
 
 function refreshLabWeightSumIndicator(modIdx) {
@@ -1501,6 +1583,10 @@ function saveCourseData() {
         hours: parseFloat(l.hours) >= 0 ? parseFloat(l.hours) : 3,
         weightPercent: parseFloat(l.weightPercent) || 0,
       }));
+      labs.forEach((l) => {
+        ['startWeek', 'weeks', 'blockShare', 'dueWeek'].forEach((k) => { if (!(parseFloat(l[k]) > 0)) delete l[k]; });
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(l.dueDate || ''))) delete l.dueDate;
+      });
       const sum = labs.reduce((s, l) => s + l.weightPercent, 0);
       return {
         ...mod,
@@ -1508,6 +1594,7 @@ function saveCourseData() {
         title: mod.title || 'Laboratory Component',
         weightPercent: labs.length ? Math.round(sum * 100) / 100 : (parseFloat(mod.weightPercent) || 0),
         isLab: true, isExam: false, labs,
+        ...(parseFloat(mod.blockHours) > 0 ? { blockHours: parseFloat(mod.blockHours) } : {}),
       };
     }
     if (mod.isSession) {

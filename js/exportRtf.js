@@ -236,6 +236,7 @@
 
   function buildScheduleRtf(course, sched, labHrs) {
     const cfg = sched.config;
+    const labPlan = window.Scheduler.labPlan(course, sched);
     const nums = teachingNumbers(course);
     let rtf = heading('2. Course Schedule Overview');
 
@@ -268,6 +269,14 @@
         m.segs.forEach((s, i) => {
           rtf += P(1080, `${segmentText(s, course, nums, cfg)}${i < m.segs.length - 1 ? ';' : ''}`);
         });
+      });
+      const planW = (labPlan.byWeek[week.weekNumber] || []);
+      planW.forEach((x) => {
+        const bits = [x.parts > 1 ? `week ${x.part} of ${x.parts}` : '', x.share < 100 ? `${fmt(x.share)}% of block` : '', `${fmt(x.hours)} h`].filter(Boolean).join(', ');
+        rtf += P(720, `${B('Lab:')} ${escapeRtf(x.entry.display)} ${G(escapeRtf('(' + bits + ')'))}`);
+      });
+      labPlan.labs.filter((e) => e.dueWeek === week.weekNumber).forEach((e) => {
+        rtf += P(720, `${G('Lab report due:')} ${escapeRtf(e.display)}${e.dueDate ? escapeRtf(' \u2013 ' + shortDate(e.dueDate)) : ''}`);
       });
       (week.selfDirected || []).forEach((x) => {
         const mn = nums[x.moduleId] ? ` [Module ${nums[x.moduleId]}]` : '';
@@ -304,6 +313,7 @@
   /** Marks by category, shared with the Word exporter. */
   function collectEvaluation(course, sched) {
     const notes = course.assessmentNotes || {};
+    const labPlan = window.Scheduler.labPlan(course, sched);
     const categories = new Map();
     const cat = (label) => {
       if (!categories.has(label)) categories.set(label, { total: 0, items: [] });
@@ -324,6 +334,7 @@
           else if (!mod.isTakeHome) when = `Not yet scheduled (beyond Week ${sched.config.weeks})`;
         }
         c.items.push({
+          key: mod.id,
           title: mod.title || label,
           weight: w,
           mode: mod.isTakeHome ? 'Take-Home' : 'In-Person',
@@ -339,7 +350,8 @@
           labs.forEach((lab) => {
             const w = parseFloat(lab.weightPercent ?? lab.weight) || 0;
             c.total += w;
-            c.items.push({ title: lab.title || 'Lab Experiment', weight: w, mode: 'In-Person', scope: '', when: pick(lab.scheduleNote) });
+            const ent = labPlan.labs.find((e) => e.lab === lab);
+            c.items.push({ key: lab, title: lab.title || 'Lab Experiment', weight: w, mode: 'In-Person', scope: '', when: pick(lab.scheduleNote, ent ? window.Scheduler.labWhenText(ent) : '') });
           });
         } else {
           const w = parseFloat(mod.weightPercent) || 0;
@@ -581,6 +593,12 @@
 
     // 5. Lab
     rtf += heading('5. Laboratory Information & Safety');
+    const lp = S.labPlan(course, sched);
+    if (lp.any) {
+      rtf += P(360, `${B('Lab block:')} ${escapeRtf(fmt(lp.blockHours) + ' h per session.')}`);
+      lp.labs.forEach((e) => { rtf += bullet(720, `${B(escapeRtf(e.display))} ${G(escapeRtf('(' + fmt(e.totalHours) + ' h' + (S.labWhenText(e) ? '; ' + S.labWhenText(e) : '') + ')'))}`); });
+      if (lp.overbooked.length) rtf += P(360, `\\cf3 ${escapeRtf('Check: ' + lp.overbooked.map((o) => 'week ' + o.week + ' books ' + fmt(o.share) + '% of the lab block').join('; ') + '.')}\\cf1`);
+    }
     const lab = course.labInfo || course.lab;
     if (typeof lab === 'string' && lab.trim()) {
       rtf += P(360, escapeRtf(lab));

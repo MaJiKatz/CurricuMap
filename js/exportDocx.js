@@ -33,7 +33,8 @@
 
   // ---------------- tiny builders ----------------
   function textRuns(text, o = {}) {
-    const parts = String(text == null ? '' : text).replace(/\r\n?/g, '\n').split('\n');
+    // Two spaces in a row trigger grammar underlines in Word, so a run of spaces becomes one em space.
+    const parts = String(text == null ? '' : text).replace(/\r\n?/g, '\n').replace(/ {2,}/g, '\u2003').split('\n');
     const out = [];
     parts.forEach((part, i) => {
       out.push(new (D().TextRun)({
@@ -60,20 +61,29 @@
     return out;
   }
 
+  // Numbering for headings is linked to the heading styles themselves. Courses after the first in a
+  // combined file get their own list instance so numbering restarts at 1 for each course.
+  let CUR_INST = 0; let PLAIN_H1 = false;
+  // While a module's paragraphs are being built, each one carries the module's colour bar so it runs the whole length of the module.
+  let MOD_COLOR = null;
+  const modBorder = () => ({ left: { style: D().BorderStyle.SINGLE, size: 36, color: MOD_COLOR, space: 8 } });
+  const HEAD_LVL = { Heading1: 0, Heading2: 1, Heading3: 2 };
+  const headNum = (st) => (CUR_INST > 0 && st in HEAD_LVL ? { reference: 'heads', level: HEAD_LVL[st], instance: CUR_INST } : undefined);
+
   function para(children, o = {}) {
     const d = D();
     return new d.Paragraph({
       children: norm(children),
-      style: o.style,
+      style: o.bullet !== undefined ? (o.bullet ? 'ListBullet2' : 'ListBullet') : o.style,
       alignment: o.align,
       spacing: { before: o.before ?? 0, after: o.after ?? 60, line: o.line, lineRule: o.line ? (o.exactLine ? D().LineRuleType.EXACT : D().LineRuleType.AUTO) : undefined },
-      indent: o.indent !== undefined ? (typeof o.indent === 'number' ? { left: o.indent } : o.indent) : undefined,
+      indent: MOD_COLOR ? (o.bullet !== undefined ? { left: 620, hanging: 260 } : { left: 360 }) : (o.indent !== undefined ? (typeof o.indent === 'number' ? { left: o.indent } : o.indent) : undefined),
       keepNext: o.keepNext,
       keepLines: o.keepLines,
       pageBreakBefore: o.pageBreakBefore,
       shading: o.fill ? { type: d.ShadingType.CLEAR, fill: o.fill, color: 'auto' } : undefined,
-      border: o.border,
-      numbering: o.bullet !== undefined ? { reference: 'bul', level: o.bullet } : undefined,
+      border: MOD_COLOR && !o.border ? modBorder() : o.border,
+      numbering: headNum(o.style),
       tabStops: o.tabs,
     });
   }
@@ -119,11 +129,12 @@
   const hex = (n) => MOD_COLORS[(n - 1 + MOD_COLORS.length * 10) % MOD_COLORS.length];
 
   // headings (real Word heading styles, so the Navigation Pane works)
-  const H1 = (text, o = {}) => para(t(text), { style: 'Heading1', keepNext: true, before: o.before, pageBreakBefore: o.pageBreakBefore });
+  const H1 = (text, o = {}) => para(t(text), { style: (o.plain || PLAIN_H1) ? 'Heading1Plain' : 'Heading1', keepNext: true, before: o.before, pageBreakBefore: o.pageBreakBefore });
   const H2 = (text, color) => new (D().Paragraph)({
     children: textRuns(text),
-    style: 'Heading2', keepNext: true,
+    style: 'Heading2', keepNext: true, numbering: headNum('Heading2'),
     border: color ? { left: { style: D().BorderStyle.SINGLE, size: 36, color, space: 8 } } : undefined,
+    indent: color ? { left: 360 } : undefined,
   });
   const H3 = (text, o = {}) => para(t(text), { style: 'Heading3', keepNext: true, indent: o.indent });
   const body = (text, o = {}) => para(typeof text === 'string' ? t(text, o.run) : text, { after: o.after ?? 80, indent: o.indent, keepNext: o.keepNext, fill: o.fill });
@@ -177,6 +188,34 @@
     return bytes;
   }
 
+  const mix = (hexc, k) => { const n = parseInt(hexc, 16); const m = (sh) => Math.round(((n >> sh) & 255) * (1 - k) + 255 * k).toString(16).padStart(2, '0'); return (m(16) + m(8) + m(0)).toUpperCase(); };
+  const inkOn = (hexc) => { const n = parseInt(hexc, 16); return (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) > 165 ? C.ink : C.white; };
+  /** A colour swatch that does not depend on any font (a shaded em space). */
+  const swatch = (color) => new (D().TextRun)({ text: '\u2003', shading: { type: D().ShadingType.CLEAR, fill: color, color: 'auto' }, font: FONT, size: 18 });
+
+  /** One colour scheme for every assessment: category colour from the donut, shaded per item. */
+  let CUR_ITEM_COLOR = new Map();
+  function gradePlan(ev) {
+    const slices = []; const legend = []; const itemColor = new Map(); const catColor = new Map();
+    let gi = 0;
+    const addCat = (label, items, explode) => {
+      const its = items.filter((it) => it.weight > 0);
+      const color = GRADE_COLORS[(its.length ? gi++ : gi) % GRADE_COLORS.length];
+      catColor.set(label, color);
+      items.forEach((it) => { if (it.key !== undefined) itemColor.set(it.key, color); });
+      its.forEach((it, i) => {
+        const c2 = mix(color, its.length > 1 ? Math.min(0.5, (i % 4) * 0.17) : 0);
+        if (it.key !== undefined) itemColor.set(it.key, c2);
+        slices.push({ label: it.title, value: it.weight, color: c2, explode });
+      });
+      const total = its.reduce((a2, it) => a2 + it.weight, 0);
+      if (total > 0) legend.push({ label, total, color, items: its });
+    };
+    ev.categories.forEach((cat, label) => addCat(label, cat.items, true));
+    if (ev.ws.hasFinal && ev.ws.finalExam > 0) addCat('Final examination', [{ title: 'Final examination', weight: ev.ws.finalExam }], false);
+    return { slices, legend, itemColor, catColor };
+  }
+
   // ---------------- course facts shared by dashboard + outline ----------------
   function courseFacts(course) {
     const x = X(); const s = S();
@@ -188,7 +227,10 @@
     const notTaught = new Set((sched.electiveGroups || []).flatMap((gr) => gr.notTaught.map((m) => m.id)));
     const teaching = (course.modules || []).filter((m) => !m.isExam && !m.isLab && !m.isSession && !notTaught.has(m.id));
     const topicCount = teaching.reduce((n, m) => n + (m.topics || []).length, 0);
-    return { course, sched, nums, inst, g, ev, teaching, topicCount, labHrs: s.labHours(course), notTaught,
+    const plan = S().labPlan(course, sched);
+    const gp = gradePlan(ev);
+    CUR_ITEM_COLOR = gp.itemColor;
+    return { course, sched, nums, inst, g, ev, teaching, topicCount, plan, gp, labHrs: s.labHours(course), notTaught,
       term: [course.term || g.term, course.version || g.version].filter(Boolean).join(' · ') };
   }
 
@@ -247,7 +289,7 @@
       para(t(course.code || '', { s: 68, c: C.white, b: true }), { after: 0, line: 240 }),
       para(t(course.name || '', { s: 40, c: 'FFE4E6' }), { after: 60 }),
       subtitle ? para(t(subtitle, { s: 20, c: 'FECDD3' }), { after: 0 }) : para(''),
-    ], { w: W, fill: C.mun, margins: { top: 200, bottom: 180, left: 280, right: 280 } })], { cantSplit: true })], [W]));
+    ], { w: W, fill: C.mun, margins: { top: 150, bottom: 130, left: 280, right: 280 } })], { cantSplit: true })], [W]));
     blocks.push(spacer(100));
 
     // --- stat tiles ---
@@ -274,18 +316,7 @@
     blocks.push(spacer(120));
 
     // --- grade donut + module list ---
-    const slices = []; const legend = [];
-    let gi = 0;
-    const mix = (hexc, k) => { const n = parseInt(hexc, 16); const m = (sh) => Math.round(((n >> sh) & 255) * (1 - k) + 255 * k).toString(16).padStart(2, '0'); return (m(16) + m(8) + m(0)).toUpperCase(); };
-    const addCat = (label, items, explode) => {
-      const color = GRADE_COLORS[gi++ % GRADE_COLORS.length];
-      const its = items.filter((it) => it.weight > 0);
-      its.forEach((it, i) => slices.push({ label: it.title, value: it.weight, color: mix(color, its.length > 1 ? Math.min(0.5, (i % 4) * 0.17) : 0), explode }));
-      const total = its.reduce((a2, it) => a2 + it.weight, 0);
-      if (total > 0) legend.push({ label, total, color, items: its });
-    };
-    f.ev.categories.forEach((cat, label) => addCat(label, cat.items, true));
-    if (f.ev.ws.hasFinal && f.ev.ws.finalExam > 0) addCat('Final examination', [{ title: 'Final examination', weight: f.ev.ws.finalExam }], false);
+    const { slices, legend } = f.gp;
     const sum = slices.reduce((a, b) => a + b.value, 0);
     const leftW = 4300; const rightW = W - leftW;
 
@@ -293,11 +324,11 @@
     if (slices.length) {
       donutCell.push(para([new d.ImageRun({
         type: 'png', data: donutPng(slices, `${s.formatHours(Math.round(sum * 10) / 10)}%`, 'of final grade'),
-        transformation: { width: 190, height: 190 },
+        transformation: { width: 160, height: 160 },
         altText: { title: 'Grade breakdown', description: 'Donut chart of the grade breakdown', name: 'grade-donut' },
       })], { after: 40, align: d.AlignmentType.CENTER }));
       legend.forEach((lg) => {
-        donutCell.push(para([...t('\u25A0 ', { c: lg.color, s: 22 }), ...t(lg.label, { s: 19, b: true }), ...t(`   ${s.formatHours(Math.round(lg.total * 100) / 100)}%`, { s: 19, b: true, c: lg.color })], { before: 30, after: 10, indent: 120 }));
+        donutCell.push(para([swatch(lg.color), ...t(` ${lg.label}`, { s: 19, b: true }), ...t(`\u2003${s.formatHours(Math.round(lg.total * 100) / 100)}%`, { s: 19, b: true, c: lg.color })], { before: 30, after: 10, indent: 120 }));
         const same = lg.items.every((it) => it.weight === lg.items[0].weight);
         if (lg.items.length === 1 && lg.items[0].title === lg.label) {
           if (lg.items[0].scope) donutCell.push(para(t(lg.items[0].scope, { s: 15, c: C.grey, i: true }), { after: 10, indent: 360 }));
@@ -336,7 +367,7 @@
     const rightCell = [para(t('WHAT WE COVER', { s: 17, b: true, c: C.accent, sp: 30 }), { after: 60 })];
     if (modRows.length) rightCell.push(table(modRows, [160, midW, 640]), para('', { after: 0, line: 20, exactLine: true }));
     else rightCell.push(para(t('No modules yet.', { i: true, c: C.grey })));
-    if (nSelf) rightCell.push(para([...t('■ ', { c: C.selfFill, s: 20 }), ...t(`${nSelf} self-directed topic${nSelf === 1 ? '' : 's'} (no class time)`, { s: 18, c: C.self })], { before: 60, after: 0 }));
+    if (nSelf) rightCell.push(para([swatch(C.selfFill), ...t(` ${nSelf} self-directed topic${nSelf === 1 ? '' : 's'} (no class time)`, { s: 18, c: C.self })], { before: 60, after: 0 }));
 
     blocks.push(table([row([
       cell(donutCell, { w: leftW, margins: { top: 40, bottom: 40, left: 0, right: 160 } }),
@@ -350,8 +381,9 @@
     const labW = 2500;
     const cw = Math.floor((W - labW) / nW);
     const widths = [labW, ...Array.from({ length: nW }, () => cw)];
-    const white = (side) => ({ style: d.BorderStyle.SINGLE, size: 6, color: C.white });
-    const cb = { ...NO_BORDERS(), left: white(), right: white(), top: white(), bottom: white() };
+    // Wide white gaps between the coloured blocks, so neighbours stay distinct in grey-scale or similar colours.
+    const gap = (size) => ({ style: d.BorderStyle.SINGLE, size, color: C.white });
+    const cb = { ...NO_BORDERS(), left: gap(18), right: gap(18), top: gap(8), bottom: gap(8) };
     const abbr = (title) => {
       const m = String(title || '').trim();
       const num = (m.match(/(\d+)\s*$/) || [])[1] || '';
@@ -362,18 +394,23 @@
     const perWeek = sched.weeks.map((wk) => {
       const hours = {}; const exams = []; const sess = []; const keyBits = [];
       wk.meetings.forEach((m) => m.segs.forEach((sg) => {
-        if (sg.kind === 'exam') { if (!exams.some((e) => e.title === sg.title)) { exams.push({ title: sg.title, date: m.dateLabel }); } }
+        if (sg.kind === 'exam') { if (!exams.some((e) => e.title === sg.title)) { exams.push({ title: sg.title, date: m.dateLabel, color: f.gp.itemColor.get(sg.moduleId) || C.examFill }); } }
         else if (sg.kind === 'session') sess.push(sg.moduleLabel || (s.SESSION_TYPES[sg.sessionType] || {}).label || 'Session');
         else if (sg.kind === 'topic' || sg.kind === 'unassigned') hours[sg.moduleId] = (hours[sg.moduleId] || 0) + sg.hours;
       }));
-      return { wk, hours, exams, sess, due: wk.takeHome.map((mod) => mod.title || mod.label || 'Due'), self: wk.selfDirected || [] };
+      const wn = wk.weekNumber;
+      return { wk, hours, exams, sess, due: wk.takeHome.map((mod) => ({ title: mod.title || mod.label || 'Due', color: f.gp.itemColor.get(mod.id) || '7C3AED' })), self: wk.selfDirected || [],
+        labs: (f.plan.byWeek[wn] || []).map((x) => ({ text: x.entry.label.replace(/^Lab /, 'L') + (x.share < 100 ? '\u00BD' : ''), color: f.gp.itemColor.get(x.entry.lab) || C.labFill })),
+        labDue: f.plan.labs.filter((e) => e.dueWeek === wn).map((e) => ({ text: e.label.replace(/^Lab /, 'L') + ' due', color: f.gp.itemColor.get(e.lab) || C.labFill })) };
     });
     const head = [cell(para('', { after: 0 }), { w: labW, borders: cb }), ...perWeek.map((p, i) => cell([
       para(t(String(p.wk.weekNumber), { s: 16, b: true, c: C.ink }), { after: 0, align: d.AlignmentType.CENTER }),
       ...(sched.hasDates && p.wk.startDate ? [para(t(s.formatDateLabel(p.wk.startDate, false), { s: 11, c: C.grey }), { after: 0, align: d.AlignmentType.CENTER })] : []),
     ], { w: cw, borders: cb, margins: { top: 10, bottom: 10, left: 0, right: 0 } }))];
     const tlRows = [row(head, { h: sched.hasDates ? 330 : 200 })];
-    f.teaching.slice(0, 11).forEach((m) => {
+    const nMarkers = [perWeek.some((p) => p.exams.length), perWeek.some((p) => p.labs.length), perWeek.some((p) => p.due.length || p.labDue.length), perWeek.some((p) => p.sess.length), perWeek.some((p) => p.self.length)].filter(Boolean).length;
+    const maxMods = Math.max(5, 14 - nMarkers);
+    f.teaching.slice(0, maxMods).forEach((m) => {
       const n = nums[m.id]; const color = hex(n);
       tlRows.push(row([
         cell(para([...t(`M${n}  `, { b: true, s: 14, c: color }), ...t((() => { const ti = m.title || m.label || ''; return ti.length > 30 ? ti.slice(0, 29).trim() + '\u2026' : ti; })(), { s: 14 })], { after: 0 }), { w: labW, borders: cb, margins: { top: 0, bottom: 0, left: 40, right: 40 }, v: d.VerticalAlign.CENTER }),
@@ -381,30 +418,36 @@
           const h = p.hours[m.id];
           return cell(para(h ? t(s.formatHours(Math.round(h * 100) / 100), { s: 13, b: true, c: C.white }) : '', { after: 0, align: d.AlignmentType.CENTER }), { w: cw, fill: h ? color : 'F1F5F9', borders: cb, margins: { top: 0, bottom: 0, left: 0, right: 0 }, v: d.VerticalAlign.CENTER });
         }),
-      ], { h: 250, exact: true }));
+      ], { h: 215, exact: true }));
     });
-    if (f.teaching.length > 11) tlRows.push(row([cell(para(t(`+ ${f.teaching.length - 11} more modules`, { i: true, s: 13, c: C.grey }), { after: 0 }), { w: W, span: nW + 1, borders: cb })]));
-    const markerRow = (label, color, textColor, pick) => {
+    if (f.teaching.length > maxMods) tlRows.push(row([cell(para(t(`+ ${f.teaching.length - maxMods} more modules`, { i: true, s: 13, c: C.grey }), { after: 0 }), { w: W, span: nW + 1, borders: cb })]));
+    // Every row has the same grey background; each item is a small block in its own colour.
+    const markerRow = (label, pick) => {
       if (!perWeek.some((p) => pick(p).length)) return;
       tlRows.push(row([
-        cell(para(t(label, { s: 14, b: true, c: color }), { after: 0 }), { w: labW, borders: { ...cb, top: { style: d.BorderStyle.SINGLE, size: 6, color: C.white } }, margins: { top: 0, bottom: 0, left: 40, right: 40 }, v: d.VerticalAlign.CENTER }),
+        cell(para(t(label, { s: 14, b: true, c: C.grey }), { after: 0 }), { w: labW, borders: cb, margins: { top: 0, bottom: 0, left: 40, right: 40 }, v: d.VerticalAlign.CENTER }),
         ...perWeek.map((p) => {
           const items = pick(p);
-          return cell(items.map((x2) => para(t(x2, { s: 12, b: true, c: C.white }), { after: 0, align: d.AlignmentType.CENTER })), { w: cw, fill: items.length ? color : undefined, borders: cb, margins: { top: 10, bottom: 10, left: 0, right: 0 }, v: d.VerticalAlign.CENTER });
+          // One colour in the cell: fill the whole cell. Mixed colours: each item is a full-width shaded block.
+          const same = items.length > 0 && items.every((x2) => x2.color === items[0].color);
+          const kids = items.length ? items.map((x2) => para(t(x2.text, { s: 12, b: true, c: inkOn(x2.color) }), { after: same ? 0 : 10, align: d.AlignmentType.CENTER, fill: same ? undefined : x2.color })) : para('', { after: 0 });
+          return cell(kids, { w: cw, fill: same ? items[0].color : 'F1F5F9', borders: cb, margins: { top: 10, bottom: 10, left: 0, right: 0 }, v: d.VerticalAlign.CENTER });
         }),
       ], { h: 260 }));
     };
-    markerRow('In-class assessments', C.examFill, C.white, (p) => p.exams.map((e) => abbr(e.title)));
-    markerRow('Take-home due', '7C3AED', C.white, (p) => p.due.map((x2) => abbr(x2)));
-    markerRow('Review / guest / workshop', C.sessFill, C.white, (p) => p.sess.map((x2) => String(x2).slice(0, 7)));
-    markerRow('Self-directed topic', C.selfFill, C.white, (p) => p.self.map(() => 'SD'));
+    markerRow('In-class assessments', (p) => p.exams.map((e) => ({ text: abbr(e.title), color: e.color })));
+    markerRow('Laboratory', (p) => p.labs);
+    markerRow('Take-home / lab due', (p) => [...p.due.map((x2) => ({ text: abbr(x2.title), color: x2.color })), ...p.labDue]);
+    markerRow('Review / guest / workshop', (p) => p.sess.map((x2) => ({ text: String(x2).split(/[\s-]+/)[0].slice(0, 8), color: C.sessFill })));
+    markerRow('Self-directed topic', (p) => p.self.map(() => ({ text: 'SD', color: C.selfFill })));
     blocks.push(table(tlRows, widths));
 
     // key dates line
     const keyBits = [];
     perWeek.forEach((p) => {
-      p.exams.forEach((e) => keyBits.push([`${e.title}`, `wk ${p.wk.weekNumber}${e.date ? ', ' + e.date : ''}`, C.exam]));
-      p.due.forEach((x2) => keyBits.push([`${x2} due`, `wk ${p.wk.weekNumber}`, '7C3AED']));
+      p.exams.forEach((e) => keyBits.push([`${e.title}`, `wk ${p.wk.weekNumber}${e.date ? ', ' + e.date : ''}`, e.color]));
+      p.due.forEach((x2) => keyBits.push([`${x2.title} due`, `wk ${p.wk.weekNumber}`, x2.color]));
+      f.plan.labs.filter((e) => e.dueWeek === p.wk.weekNumber).forEach((e) => keyBits.push([`${e.label} due`, `wk ${p.wk.weekNumber}${e.dueDate ? ', ' + s.formatDateLabel(e.dueDate) : ''}`, f.gp.itemColor.get(e.lab) || C.lab]));
     });
     if (keyBits.length) {
       const runs = [];
@@ -455,7 +498,8 @@
   const unitWord = (cfg, n) => (cfg.allOneHour ? (n === 1 ? 'lecture' : 'lectures') : (n === 1 ? 'hour' : 'hours'));
   const fmt = (h) => S().formatHours(h);
 
-  function segRuns(seg, nums, cfg) {
+  function segRuns(seg, nums, cfg, sz) {
+    const t = (x, o = {}) => textRuns(x, { s: sz, ...o });
     const partial = seg.meeting && !seg.fillsClass;
     const unit = cfg.allOneHour ? 'Lec' : 'Part';
     const info = () => {
@@ -463,7 +507,7 @@
       if (partial) return ` (${fmt(seg.hours)} h)`;
       return '';
     };
-    if (seg.kind === 'exam') return [...t('[EXAM] ', { b: true, c: C.exam }), ...t(seg.title || '', { b: true }), ...t(info(), { c: C.grey })];
+    if (seg.kind === 'exam') return [...t('[EXAM] ', { b: true, c: CUR_ITEM_COLOR.get(seg.moduleId) || C.exam }), ...t(seg.title || '', { b: true }), ...t(info(), { c: C.grey })];
     if (seg.kind === 'buffer') return t(`Catch-up / review (${fmt(seg.hours)} h)`, { i: true, c: C.grey });
     if (seg.kind === 'session') {
       const T = S().SESSION_TYPES[seg.sessionType] || S().SESSION_TYPES.other;
@@ -490,66 +534,74 @@
   const hdrCell = (text, w, fill = C.ink, align) => cell(para(t(text, { b: true, c: C.white, s: 18 }), { after: 0, align }), { w, fill, v: D().VerticalAlign.CENTER });
   const gridBorders = () => ({ top: lineB(), bottom: lineB(), left: lineB(), right: lineB() });
 
+  const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   function calendarGrid(f) {
-    const d = D(); const { sched, nums } = f; const cfg = sched.config;
-    const per = cfg.pattern.length; const first = 1400;
+    const d = D(); const { course, sched, nums } = f; const cfg = sched.config; const s = S();
+    const per = cfg.pattern.length; const first = 1300;
     const cw = Math.floor((OW - first) / per);
     const widths = [first, ...Array(per).fill(cw)];
-    const rows = [row([hdrCell('Week', first), ...cfg.pattern.map((_, i) => hdrCell(`Class ${i + 1}`, cw))], { header: true })];
+    // With dates, each cell carries its own weekday/date, and a week can start mid-week, so columns stay "Class n".
+    const named = !sched.hasDates && Array.isArray(course.classDays) && course.classDays.length === per;
+    const days = named ? s.resolveClassDays(course, per).map((n) => DOW[n]) : [];
+    const head = ['Week', ...cfg.pattern.map((h, i) => (named ? days[i] : `Class ${i + 1}`) + (cfg.uniform ? '' : ` (${fmt(h)} h)`))];
+    const rows = [row(head.map((h, i) => hdrCell(h, i ? cw : first)), { header: true })];
+    const span = (kids, fill) => row([cell(kids, { w: OW, span: per + 1, borders: gridBorders(), fill, margins: { top: 40, bottom: 40, left: 120, right: 100 } })]);
     sched.weeks.forEach((wk, wi) => {
       const fill = wi % 2 ? 'F8FAFC' : undefined;
-      const wcell = cell([para(t(String(wk.weekNumber), { b: true, s: 22 }), { after: 0 }), ...(wk.startDate ? [para(t(S().formatDateLabel(wk.startDate, false), { s: 15, c: C.grey }), { after: 0 })] : [])], { w: first, fill: C.pale, borders: gridBorders() });
+      const range = wk.startDate ? (wk.endDate && wk.endDate !== wk.startDate ? `${s.formatDateLabel(wk.startDate, false)} \u2013 ${s.formatDateLabel(wk.endDate, false)}` : s.formatDateLabel(wk.startDate, false)) : '';
+      const wcell = cell([para(t(`Week ${wk.weekNumber}`, { b: true, s: 20, c: C.accent }), { after: 0 }), ...(range ? [para(t(range, { s: 14, c: C.grey }), { after: 0 })] : [])], { w: first, fill: C.pale, borders: gridBorders() });
       const cells = [wcell];
       for (let i = 0; i < per; i++) {
         const m = wk.meetings[i];
-        if (!m) { cells.push(cell(para(t('—', { c: C.mute }), { after: 0 }), { w: cw, borders: gridBorders(), fill })); continue; }
+        if (!m) { cells.push(cell(para(t('\u2014', { c: C.mute }), { after: 0 }), { w: cw, borders: gridBorders(), fill })); continue; }
         const kids = [];
-        if (m.dateLabel) kids.push(para(t(m.dateLabel, { s: 14, c: C.grey }), { after: 0 }));
-        if (!m.segs.length) kids.push(para(t('Open', { i: true, c: C.grey, s: 17 }), { after: 0 }));
+        if (m.dateLabel) kids.push(para(t(m.dateLabel, { s: 14, c: C.grey }), { after: 20 }));
+        if (!m.segs.length) kids.push(para(t('Open / review', { i: true, c: C.grey, s: 17 }), { after: 0 }));
         m.segs.forEach((sg) => {
           const k = sg.kind;
-          const bar = k === 'exam' ? C.examFill : k === 'session' ? C.sessFill : (nums[sg.moduleId] ? hex(nums[sg.moduleId]) : C.line);
-          kids.push(new d.Paragraph({ children: shortSegRuns(sg, nums), spacing: { after: 20 }, border: { left: { style: d.BorderStyle.SINGLE, size: 18, color: bar, space: 4 } } }));
+          const bar = k === 'exam' ? (CUR_ITEM_COLOR.get(sg.moduleId) || C.examFill) : k === 'session' ? C.sessFill : (nums[sg.moduleId] ? hex(nums[sg.moduleId]) : C.line);
+          kids.push(new d.Paragraph({ children: segRuns(sg, nums, cfg, 17), spacing: { after: 30 }, border: { left: { style: d.BorderStyle.SINGLE, size: 18, color: bar, space: 4 } } }));
         });
-        cells.push(cell(kids, { w: cw, borders: gridBorders(), fill: m.segs.some((sg) => sg.kind === 'exam') ? C.examBg : m.segs.some((sg) => sg.kind === 'session') ? C.sessBg : fill }));
+        cells.push(cell(kids, { w: cw, borders: gridBorders(), fill: m.segs.some((sg) => sg.kind === 'exam') ? mix(CUR_ITEM_COLOR.get((m.segs.find((sg) => sg.kind === 'exam') || {}).moduleId) || C.examFill, 0.82) : m.segs.some((sg) => sg.kind === 'session') ? C.sessBg : fill }));
       }
       rows.push(row(cells));
-      (wk.skipNotes || []).filter((n) => n.skipsClass).forEach((n) => {
-        rows.push(row([cell(para(t(n.text, { i: true, c: C.red, s: 17 }), { after: 0 }), { w: OW, span: per + 1, borders: gridBorders(), fill: 'FEF2F2' })]));
+      (wk.skipNotes || []).filter((n) => n.skipsClass).forEach((n) => rows.push(span(para(t(n.text, { i: true, c: C.red, s: 17 }), { after: 0 }), 'FEF2F2')));
+      const extra = [];
+      (wk.skipNotes || []).filter((n) => !n.skipsClass).forEach((n) => extra.push(para(t(n.text, { i: true, c: C.grey, s: 17 }), { after: 10 })));
+      (wk.selfDirected || []).forEach((x) => extra.push(para([...t('Self-directed (no class time): ', { b: true, c: C.self, s: 17 }), ...t(x.title || '', { s: 17 }), ...(nums[x.moduleId] ? t(` [Module ${nums[x.moduleId]}]`, { c: C.grey, s: 15 }) : []), ...(x.optional ? t(' (time permitting)', { i: true, c: C.grey, s: 17 }) : [])], { after: 10 })));
+      wk.takeHome.forEach((mod) => {
+        const w = parseFloat(mod.weightPercent) ? ` (${mod.weightPercent}%)` : '';
+        const due = sched.assessmentDate && sched.assessmentDate[mod.id] ? ` \u2013 due ${s.formatDateLabel(sched.assessmentDate[mod.id])}` : '';
+        extra.push(para([...t('Due this week: ', { b: true, c: '7C3AED', s: 17 }), ...t(mod.title || mod.label || '', { b: true, s: 17 }), ...t(w + due, { s: 17 })], { after: 10 }));
       });
+      if (extra.length) rows.push(span(extra, 'FAFAFF'));
+      const labKids = [];
+      (f.plan.byWeek[wk.weekNumber] || []).forEach((x) => {
+        const bits = [];
+        if (x.parts > 1) bits.push(`week ${x.part} of ${x.parts}`);
+        if (x.share < 100) bits.push(`${fmt(x.share)}% of block`);
+        bits.push(`${fmt(x.hours)} h`);
+        labKids.push(para([...t('Lab: ', { b: true, c: C.lab, s: 17 }), ...t(x.entry.display, { s: 17, b: true }), ...t(`  (${bits.join(' \u00B7 ')})`, { s: 16, c: C.grey })], { after: 10 }));
+      });
+      f.plan.labs.filter((e) => e.dueWeek === wk.weekNumber).forEach((e) => {
+        labKids.push(para([...t('Lab report due: ', { b: true, c: C.lab, s: 17 }), ...t(e.display, { s: 17 }), ...(e.dueDate ? t(` \u2013 ${s.formatDateLabel(e.dueDate)}`, { s: 17, c: C.grey }) : [])], { after: 10 }));
+      });
+      if (labKids.length) rows.push(span(labKids, 'ECFEFF'));
     });
     return table(rows, widths, { borders: { top: lineB(), bottom: lineB(), left: lineB(), right: lineB(), insideHorizontal: lineB(), insideVertical: lineB() } });
   }
 
   function scheduleSection(f) {
     const { course, sched, nums } = f; const cfg = sched.config; const s = S();
-    const out = [H1('2. Course Schedule Overview')];
+    const out = [H1('Course Schedule Overview')];
     const blockText = cfg.uniform ? `${cfg.minutes[0]} min/block` : `${cfg.pattern.map((h) => fmt(h) + ' h').join(' + ')} blocks`;
     let format = `Class Format: ${cfg.pattern.length} ${cfg.allOneHour ? 'lectures' : 'classes'}/week (${blockText}, ${fmt(cfg.capacityHours)} total lecture hrs)`;
     if (f.labHrs > 0) format += ` | ${fmt(f.labHrs)} lab hrs`;
     format += ` across ${cfg.weeks} weeks.`;
     out.push(body(t(format, { c: C.grey })));
-    if (sched.hasDates) { out.push(H3('Calendar at a Glance')); out.push(calendarGrid(f)); out.push(spacer(120)); }
-    out.push(H3('Week by Week'));
-    sched.weeks.forEach((wk) => {
-      const range = wk.startDate ? `  (${wk.endDate !== wk.startDate ? `${s.formatDateLabel(wk.startDate, false)} – ${s.formatDateLabel(wk.endDate, false)}` : s.formatDateLabel(wk.startDate, false)})` : '';
-      out.push(para([...t(`Week ${wk.weekNumber}`, { b: true, s: 24, c: C.accent }), ...t(range, { c: C.grey })], { before: 120, after: 30, keepNext: true, border: { bottom: lineB('E2E8F0', 4) } }));
-      (wk.skipNotes || []).forEach((n) => out.push(para(t(n.text, { i: true, c: n.skipsClass ? C.red : C.grey }), { indent: 360, after: 30 })));
-      wk.meetings.forEach((m) => {
-        const dateBit = m.dateLabel ? `, ${m.dateLabel}` : '';
-        out.push(para(t(cfg.uniform ? `Day ${m.day}${dateBit}` : `Day ${m.day}${dateBit} (${fmt(m.hours)} h)`, { b: true }), { indent: 360, before: 40, after: 20, keepNext: true }));
-        if (!m.segs.length) out.push(para(t('Open / review', { i: true, c: C.grey }), { indent: 720, after: 20 }));
-        m.segs.forEach((sg) => out.push(para(segRuns(sg, nums, cfg), { indent: 720, after: 20 })));
-      });
-      (wk.selfDirected || []).forEach((x) => {
-        out.push(para([...t('Self-directed (no class time): ', { b: true, c: C.self }), ...t(x.title || ''), ...(nums[x.moduleId] ? t(` [Module ${nums[x.moduleId]}]`, { c: C.grey }) : []), ...(x.optional ? t(' (time permitting)', { i: true, c: C.grey }) : [])], { indent: 360, before: 40, after: 20 }));
-      });
-      wk.takeHome.forEach((mod) => {
-        const w = parseFloat(mod.weightPercent) ? ` (${mod.weightPercent}%)` : '';
-        const due = sched.assessmentDate && sched.assessmentDate[mod.id] ? ` – due ${s.formatDateLabel(sched.assessmentDate[mod.id])}` : '';
-        out.push(para([...t('Due this week: ', { c: '7C3AED', b: true }), ...t(mod.title || mod.label || '', { b: true }), ...t(w + due)], { indent: 360, before: 40, after: 20 }));
-      });
-    });
+    out.push(H2('Weekly Schedule'));
+    out.push(calendarGrid(f));
+    out.push(spacer(120));
     if (sched.overflow.length) {
       out.push(para(t(`Not yet scheduled – exceeds the ${fmt(cfg.capacityHours)} available lecture hours by ${fmt(sched.overByHours)} h:`, { b: true, c: C.red }), { before: 160, keepNext: true }));
       X().mergePieces(sched.overflow).forEach((sg) => out.push(bullet(t(`${sg.kind === 'exam' ? '[EXAM] ' : ''}${sg.title}${nums[sg.moduleId] ? ` [Module ${nums[sg.moduleId]}]` : ''} (${fmt(sg.hours)} h)`, { c: C.red }))));
@@ -563,9 +615,8 @@
 
   function evaluationSection(f) {
     const d = D(); const { course, ev } = f; const x = X();
-    const out = [H1('3. Method of Evaluation & Grading System'), para(t('3.1 Allocation of Marks', { b: true }), { keepNext: true })];
+    const out = [H1('Method of Evaluation & Grading System'), H2('Allocation of Marks')];
     const widths = [5000, 900, 1300, 2880];
-    let gi = 0;
     const block = (label, total, notes, items, color) => {
       const rows = [row([cell(para([...t(label, { b: true, c: C.white, s: 22 }), ...(total ? t(`   ${fmt(total)}%`, { b: true, c: C.white, s: 22 }) : [])], { after: 0 }), { w: OW, span: 4, fill: color, v: d.VerticalAlign.CENTER })], { header: true })];
       if (notes) rows.push(row([cell(para(t(notes, { i: true, c: C.grey, s: 19 }), { after: 0 }), { w: OW, span: 4, fill: C.pale })]));
@@ -583,17 +634,16 @@
     };
     ev.categories.forEach((c, label) => {
       const total = Math.round(c.total * 100) / 100;
-      block(label, total, ev.notes[label], c.items, GRADE_COLORS[(total > 0 ? gi++ : gi) % GRADE_COLORS.length]);
+      block(label, total, ev.notes[label], c.items, f.gp.catColor.get(label) || C.accent);
     });
     const ws = ev.ws;
     if (ws.hasFinal && ws.finalExam > 0) {
-      block('Final Examination', ws.finalExam, ev.notes['Final Examination'], [{ title: 'Comprehensive Final Exam', weight: ws.finalExam, mode: 'In-Person', when: 'By University Registrar during examination period' }], GRADE_COLORS[gi++ % GRADE_COLORS.length]);
+      block('Final Examination', ws.finalExam, ev.notes['Final Examination'], [{ title: 'Comprehensive Final Exam', weight: ws.finalExam, mode: 'In-Person', when: 'By University Registrar during examination period' }], f.gp.catColor.get('Final examination') || C.accent);
     }
     if (ws.isOver) out.push(body(t(`Note: assessment weights total ${fmt(ws.defined)}%, which is over 100%.`, { c: C.red, b: true })));
     else if (ws.isShort) out.push(body(t(`Note: assessment weights total ${fmt(ws.defined)}% and this course has no final exam.`, { c: C.red, b: true })));
-    out.push(para([...t('3.2 Grading System: ', { b: true }), ...t(x.pick(course.gradingSystem, f.g.gradingSystem))], { before: 160 }));
-    out.push(para(t('3.3 Alternate Evaluation & Missed Work Policy', { b: true }), { before: 120, keepNext: true }));
-    out.push(body(x.pick(course.missedWorkPolicy, course.alternateEvaluationPolicy, f.g.missedWorkPolicy), { indent: 360 }));
+    out.push(H2('Grading System'), body(x.pick(course.gradingSystem, f.g.gradingSystem)));
+    out.push(H2('Alternate Evaluation & Missed Work Policy'), body(x.pick(course.missedWorkPolicy, course.alternateEvaluationPolicy, f.g.missedWorkPolicy)));
     return out;
   }
 
@@ -613,24 +663,25 @@
       const note = conn.note && conn.note !== 'Created via Connect Mode' ? ` – ${conn.note}` : '';
       (earlier ? up : down).push(bullet([...(tag ? t(`[${tag}] `, { b: true, c: C.accent, s: 17 }) : []), ...t(text + note, { c: C.grey })], 1));
     });
-    const out = [para(t('Curriculum Connections', { b: true }), { before: 100, indent: 360, keepNext: true })];
-    if (up.length) out.push(para(t('Prior Foundations (Builds Upon)', { b: true, c: C.grey, s: 19 }), { indent: 720, keepNext: true, after: 20 }), ...up);
-    if (down.length) out.push(para(t('Target Applications (Leads To)', { b: true, c: C.grey, s: 19 }), { indent: 720, keepNext: true, after: 20 }), ...down);
+    const out = [para(t('Curriculum Connections'), { style: 'ConnLabel' })];
+    if (up.length) out.push(para(t('Prior Foundations (Builds Upon)'), { style: 'ConnSub' }), ...up);
+    if (down.length) out.push(para(t('Target Applications (Leads To)'), { style: 'ConnSub' }), ...down);
     return out;
   }
 
   function modulesSection(f, connections) {
     const { course, sched, nums } = f; const cfg = sched.config; const s = S();
-    const out = [H1('4. Course Modules & Detailed Topics')];
+    const out = [H1('Course Modules & Detailed Topics')];
     (sched.electiveGroups || []).forEach((g) => {
       const names = (list) => list.map((m) => `Module ${nums[m.id]}`).join(', ');
       out.push(para([...t(`Elective group – ${g.name}: `, { b: true }), ...t(`${g.total === g.pick ? 'all' : g.pick} of the ${g.total} modules in this group are taught each term, depending on ${g.basisLabel}. This offering: ${names(g.taught) || 'none'}.`), ...(g.notTaught.length ? t(` Not taught this offering: ${names(g.notTaught)}.`, { c: C.grey }) : [])]));
     });
     (course.modules || []).forEach((mod) => {
+      MOD_COLOR = null;
       if (mod.isSession) {
         const T = s.SESSION_TYPES[s.sessionType(mod)];
         const hrs = s.sessionHours(mod);
-        out.push(new (D().Paragraph)({ children: [...t(`${T.icon || ''} ${(mod.label || T.label)}${mod.title ? ': ' + mod.title : ''}`, { b: true, c: C.sess, s: 24 }), ...t(`   [${fmt(hrs)} ${unitWord(cfg, hrs)}, not a topic]`, { c: C.grey })], style: 'Heading2', keepNext: true, shading: { type: D().ShadingType.CLEAR, fill: C.sessBg, color: 'auto' }, border: { left: { style: D().BorderStyle.SINGLE, size: 36, color: C.sessFill, space: 8 } } }));
+        out.push(new (D().Paragraph)({ children: [...t(`${T.icon || ''} ${(mod.label || T.label)}${mod.title ? ': ' + mod.title : ''}`, { c: C.sess }), ...t(`   [${fmt(hrs)} ${unitWord(cfg, hrs)}, not a topic]`, { c: C.grey, b: false, s: 21 })], style: 'SessionHeading' }));
         if (mod.speaker) out.push(para([...t('Speaker: ', { b: true }), ...t(mod.speaker)], { indent: 360 }));
         if (mod.description) out.push(para(t(mod.description, { i: true }), { indent: 360 }));
         return;
@@ -640,29 +691,65 @@
       let title = mod.title || mod.label || `Module ${k}`;
       if (s.isTimePermitting(mod) && !/time permitting/i.test(title)) title += ' (Time Permitting)';
       if (mod.electiveGroup) title += f.notTaught.has(mod.id) ? ' (Elective – not taught this offering)' : ' (Elective)';
-      out.push(H2(`4.${k}  Module ${k}: ${title}   [${fmt(hrs)} ${unitWord(cfg, hrs)}]`, hex(k)));
+      MOD_COLOR = hex(k);
+      out.push(H2(`Module ${k}: ${title}   [${fmt(hrs)} ${unitWord(cfg, hrs)}]`, hex(k)));
       if (mod.chapter) out.push(para(t(`Reading Reference: Chapter ${mod.chapter}`, { c: C.grey }), { indent: 360 }));
       const topics = Array.isArray(mod.topics) ? mod.topics : [];
       if (!topics.length) out.push(body(mod.description || 'Core topics and competencies for this unit.', { indent: 360 }));
+      // A short unbordered paragraph between topics puts a white break in the colour bar.
+      const breaker = () => new (D().Paragraph)({ children: [new (D().TextRun)({ text: '', size: 8 })], spacing: { before: 0, after: 0, line: 160, lineRule: D().LineRuleType.EXACT } });
       topics.forEach((topic, ti) => {
+        if (ti > 0) out.push(breaker());
         const tp = typeof topic === 'string' ? { title: topic } : topic;
         const th = s.topicHours(tp);
-        out.push(para([...t(`Topic 4.${k}.${ti + 1}: ${tp.title || tp.name || ''}`, { b: true }), ...(tp.selfDirected ? t('  (self-directed, no class time)', { b: true, c: C.self }) : t(`  (${fmt(th)} ${unitWord(cfg, th)})`, { c: C.grey }))], { indent: 360, before: 100, after: 30, keepNext: true }));
-        if (tp.description) out.push(para(t(tp.description, { i: true }), { indent: 720, after: 30 }));
+        out.push(para([...t(`${tp.title || tp.name || ''}`), ...(tp.selfDirected ? t('  (self-directed, no class time)', { c: C.self, s: 19 }) : t(`  (${fmt(th)} ${unitWord(cfg, th)})`, { c: C.grey, b: false, s: 19 }))], { style: 'Heading3', before: ti > 0 ? 0 : 100 }));
+        if (tp.description) out.push(para(t(tp.description, { i: true }), { style: 'TopicDetail' }));
         const objs = (tp.learningObjectives || tp.objectives || []).map((o) => (typeof o === 'string' ? o : (o.text || o.title || ''))).filter((o) => o && o.trim());
-        if (objs.length) { out.push(para(t('Learning Objectives', { b: true, s: 19 }), { indent: 720, keepNext: true, after: 20 })); objs.forEach((o) => out.push(bullet(t(o, { c: C.grey }), 1))); }
+        if (objs.length) { out.push(para(t('Learning Objectives'), { style: 'DetailLabel' })); objs.forEach((o) => out.push(bullet(t(o, { c: C.grey }), 1))); }
         const qs = (tp.textbookQuestions || tp.questions || []).map((q) => (typeof q === 'string' ? q : (q.text || q.title || ''))).filter((q) => q && q.trim());
-        if (qs.length) { out.push(para(t('Recommended Practice Questions', { b: true, s: 19 }), { indent: 720, keepNext: true, after: 20 })); qs.forEach((q) => out.push(bullet(t(q, { c: C.grey }), 1))); }
+        if (qs.length) { out.push(para(t('Recommended Practice Questions'), { style: 'DetailLabel' })); qs.forEach((q) => out.push(bullet(t(q, { c: C.grey }), 1))); }
       });
-      out.push(...connectionLines(course, mod, connections));
+      const conn = connectionLines(course, mod, connections);
+      if (conn.length && topics.length) out.push(breaker());
+      out.push(...conn);
+      MOD_COLOR = null;
     });
+    MOD_COLOR = null;
+    return out;
+  }
+
+  /** Lab plan table. Only the columns that have information are shown. */
+  function labTable(f) {
+    const d = D(); const s = S(); const plan = f.plan;
+    if (!plan.any) return [];
+    const labs = plan.labs;
+    const cols = [{ k: 'lab', h: 'Laboratory', w: 0 }];
+    if (labs.some((e) => e.scheduled)) cols.push({ k: 'weeks', h: 'Weeks', w: 1100 });
+    if (labs.some((e) => e.scheduled && e.share < 100)) cols.push({ k: 'share', h: 'Block share', w: 1300 });
+    if (labs.some((e) => e.scheduled)) cols.push({ k: 'hours', h: 'Hours', w: 900 });
+    if (labs.some((e) => e.dueDate || e.dueWeek)) cols.push({ k: 'due', h: 'Report due', w: 2200 });
+    if (labs.some((e) => parseFloat(e.lab.weightPercent) > 0)) cols.push({ k: 'wt', h: 'Weight', w: 900 });
+    cols[0].w = OW - cols.slice(1).reduce((a, c) => a + c.w, 0);
+    const widths = cols.map((c) => c.w);
+    const text = (e, k) => {
+      if (k === 'lab') return e.display;
+      if (k === 'weeks') return e.scheduled ? (e.weeks > 1 ? `${e.startWeek}\u2013${e.endWeek}` : String(e.startWeek)) : '\u2014';
+      if (k === 'share') return e.scheduled ? `${fmt(e.share)}%` : '';
+      if (k === 'hours') return fmt(e.totalHours);
+      if (k === 'due') return e.dueDate ? `${s.formatDateLabel(e.dueDate)}${e.dueWeek ? ` (wk ${e.dueWeek})` : ''}` : (e.dueWeek ? `Week ${e.dueWeek}` : '');
+      return parseFloat(e.lab.weightPercent) > 0 ? `${fmt(parseFloat(e.lab.weightPercent))}%` : '';
+    };
+    const rows = [row(cols.map((c) => hdrCell(c.h, c.w, C.lab)), { header: true })];
+    labs.forEach((e, i) => rows.push(row(cols.map((c) => cell(para(t(text(e, c.k), { b: c.k === 'lab', s: 19 }), { after: 0 }), { w: c.w, fill: i % 2 ? 'F8FAFC' : undefined, borders: { ...NO_BORDERS(), bottom: lineB('E2E8F0', 4) } })))));
+    const out = [para([...t('Lab block: ', { b: true }), ...t(`${fmt(plan.blockHours)} h per session. `), ...t('Experiments that run at the same time share the block as shown.', { c: C.grey })], { keepNext: true }), table(rows, widths), spacer(80)];
+    if (plan.overbooked.length) out.push(para(t(`Check: ${plan.overbooked.map((o) => `week ${o.week} books ${fmt(o.share)}% of the lab block`).join('; ')}.`, { b: true, c: C.red }), { after: 80 }));
     return out;
   }
 
   function outlineChildren(course, connections) {
     const x = X(); const f = courseFacts(course); const { inst, g } = f;
     const out = [];
-    out.push(para(t(`${course.code}: Course & Instructor Information`), { style: 'Heading1', keepNext: true }));
+    out.push(para(t(`${course.code}: Course & Instructor Information`), { style: 'Heading1Plain', keepNext: true }));
     const info = [
       ['Instructor Name', x.pick(inst.name, 'TBD')], ['Instructor Email', x.pick(inst.email, 'TBD')], ['Office Location', x.pick(inst.office, 'TBD')],
       ['Availability / Consultation Hours', x.pick(inst.officeHours, course.officeHours, 'TBD / By Appointment')],
@@ -673,7 +760,7 @@
     rel.buildsOn.forEach((r) => out.push(para([...t('Course Link: ', { b: true }), ...t(`This course builds ${r.strength === 'strong' ? 'strongly ' : ''}upon ${r.other.code}${r.other.name ? ' (' + r.other.name + ')' : ''}.`)], { before: 80, after: 20 })));
     rel.leadsTo.forEach((r) => out.push(para([...t('Course Link: ', { b: true }), ...t(`This course ${r.strength === 'strong' ? 'strongly ' : ''}supports ${r.other.code}${r.other.name ? ' (' + r.other.name + ')' : ''}.`)], { before: 80, after: 20 })));
 
-    out.push(H1('1. Textbooks & Course Resources'));
+    out.push(H1('Textbooks & Course Resources'));
     let books = Array.isArray(course.textbooks) ? course.textbooks : [];
     if (!books.length && course.textbook) books = typeof course.textbook === 'string' ? [{ title: course.textbook, isRequired: true }] : [course.textbook];
     const bookRuns = (b, bold) => [...t(b.title || 'Untitled', { b: bold }), ...t(`${b.author ? ' by ' + b.author : ''}${b.isbn || b.edition ? ' (' + (b.isbn || b.edition) + ')' : ''}`, { c: C.grey })];
@@ -688,7 +775,8 @@
     out.push(...evaluationSection(f));
     out.push(...modulesSection(f, connections));
 
-    out.push(H1('5. Laboratory Information & Safety'));
+    out.push(H1('Laboratory Information & Safety'));
+    out.push(...labTable(f));
     const lab = course.labInfo || course.lab;
     if (typeof lab === 'string' && lab.trim()) out.push(body(lab));
     else if (lab && typeof lab === 'object') {
@@ -698,14 +786,14 @@
       if (lab.description) out.push(body(lab.description));
     } else out.push(body(t(f.labHrs > 0 ? 'This information will be provided by your laboratory instructor.' : 'This course has no laboratory component.', { i: true })));
 
-    out.push(H1('6. Use of Assistive Tools & Generative AI Policy'));
+    out.push(H1('Use of Assistive Tools & Generative AI Policy'));
     out.push(body(x.pick(course.aiPolicy, g.aiPolicy, x.FALLBACK_AI_POLICY)));
-    out.push(H1('7. Additional Course Information'));
+    out.push(H1('Additional Course Information'));
     out.push(course.additionalInfo ? body(course.additionalInfo) : body(t('[Notes on attendance, communication, late submissions, or supplementary resources]', { i: true, c: C.grey })));
-    out.push(H1('8. University Statements & Institutional Policies'));
-    out.push(para([...t('8.1 Academic Integrity: ', { b: true }), ...t(x.pick(course.academicIntegrity, g.academicIntegrity))], { after: 120 }));
-    out.push(para([...t('8.2 Student Accommodations: ', { b: true }), ...t(x.pick(course.accommodations, g.accommodations))], { after: 120 }));
-    out.push(para([...t('8.3 Student Privacy & Grade Notification (ATIPP): ', { b: true }), ...t(x.pick(course.privacyAtipp, g.privacyAtipp))]));
+    out.push(H1('University Statements & Institutional Policies'));
+    out.push(H2('Academic Integrity'), body(x.pick(course.academicIntegrity, g.academicIntegrity)));
+    out.push(H2('Student Accommodations'), body(x.pick(course.accommodations, g.accommodations)));
+    out.push(H2('Student Privacy & Grade Notification (ATIPP)'), body(x.pick(course.privacyAtipp, g.privacyAtipp)));
     return out;
   }
 
@@ -753,7 +841,7 @@
     const TW = 13680; // landscape, 0.75in margins
     const m = O.buildMatrix(courses, outcomes, { showArchived: false });
     const levelName = { I: 'Introduced', R: 'Reinforced', A: 'Advanced' };
-    const out = [para(t('Program Learning Outcomes', { b: true, s: 40, c: C.ink }), { style: 'Heading1', keepNext: true })];
+    const out = [para(t('Program Learning Outcomes', { b: true, s: 40, c: C.ink }), { style: 'Heading1Plain', keepNext: true })];
     const progs = O.getPrograms();
     m.rows.forEach((r) => {
       const tags = [];
@@ -849,24 +937,58 @@
 
   function makeDocument(sections, title) {
     const d = D();
-    const heading = (id, name, size, color, extra = {}) => ({ id, name, basedOn: 'Normal', next: 'Normal', quickFormat: true, run: { font: FONT, size, bold: true, color }, paragraph: { spacing: { before: extra.before ?? 280, after: extra.after ?? 100 }, outlineLevel: extra.level, keepNext: true, border: extra.border } });
+    const hd = (id, name, size, color, extra = {}) => ({ id, name, basedOn: extra.basedOn || 'Normal', next: 'Normal', quickFormat: true, run: { font: FONT, size, bold: true, color }, paragraph: { spacing: { before: extra.before ?? 280, after: extra.after ?? 100 }, outlineLevel: extra.level, keepNext: true, border: extra.border, indent: extra.indent, numbering: extra.numbering, shading: extra.shading } });
+    const sty = (id, name, run, paragraph) => ({ id, name, basedOn: 'Normal', quickFormat: true, run: { font: FONT, ...run }, paragraph });
+    const h1Border = { bottom: { style: d.BorderStyle.SINGLE, size: 12, color: C.accent, space: 4 } };
     return new d.Document({
       creator: 'CurriMap', title,
       styles: {
-        default: { document: { run: { font: FONT, size: 21 } } },
+        default: {
+          document: { run: { font: FONT, size: 21 } },
+          heading1: { run: { font: FONT, size: 32, bold: true, color: C.ink }, paragraph: { spacing: { before: 360, after: 120 }, keepNext: true, border: h1Border, numbering: { reference: 'heads', level: 0 } } },
+          heading2: { run: { font: FONT, size: 26, bold: true, color: C.ink }, paragraph: { spacing: { before: 280, after: 80 }, keepNext: true, numbering: { reference: 'heads', level: 1 } } },
+          heading3: { run: { font: FONT, size: 22, bold: true, color: C.ink }, paragraph: { spacing: { before: 200, after: 60 }, keepNext: true, numbering: { reference: 'heads', level: 2 } } },
+        },
         paragraphStyles: [
-          heading('Heading1', 'Heading 1', 32, C.ink, { level: 0, before: 360, after: 120, border: { bottom: { style: d.BorderStyle.SINGLE, size: 12, color: C.accent, space: 4 } } }),
-          heading('Heading2', 'Heading 2', 26, C.ink, { level: 1, before: 280, after: 80 }),
-          heading('Heading3', 'Heading 3', 22, C.grey, { level: 2, before: 200, after: 60 }),
+          hd('Heading1Plain', 'Heading 1 (no number)', 32, C.ink, { level: 0, before: 360, after: 120, border: h1Border }),
+          hd('SessionHeading', 'Session Heading', 24, C.sess, { level: 1, before: 280, after: 80, shading: { type: d.ShadingType.CLEAR, fill: C.sessBg, color: 'auto' }, border: { left: { style: d.BorderStyle.SINGLE, size: 36, color: C.sessFill, space: 8 } } }),
+          sty('TopicDetail', 'Topic Description', { italics: true }, { indent: { left: 720 }, spacing: { after: 30 } }),
+          sty('DetailLabel', 'Topic Detail Label', { bold: true, size: 19 }, { indent: { left: 720 }, spacing: { after: 20 }, keepNext: true }),
+          sty('ConnLabel', 'Connections Label', { bold: true }, { indent: { left: 360 }, spacing: { before: 100, after: 30 }, keepNext: true }),
+          sty('ConnSub', 'Connections Sublabel', { bold: true, size: 19, color: C.grey }, { indent: { left: 720 }, spacing: { after: 20 }, keepNext: true }),
+          sty('ListBullet', 'List Bullet', {}, { numbering: { reference: 'bul', level: 0 }, spacing: { after: 40 } }),
+          sty('ListBullet2', 'List Bullet 2', {}, { numbering: { reference: 'bul', level: 1 }, spacing: { after: 40 } }),
         ],
       },
-      numbering: { config: [{ reference: 'bul', levels: [0, 1].map((lv) => ({ level: lv, format: d.LevelFormat.BULLET, text: lv ? '–' : '•', alignment: d.AlignmentType.LEFT, style: { paragraph: { indent: { left: 720 + lv * 360, hanging: 260 } } } })) }] },
+      numbering: { config: [
+        { reference: 'bul', levels: [0, 1].map((lv) => ({ level: lv, format: d.LevelFormat.BULLET, text: lv ? '\u2013' : '\u2022', alignment: d.AlignmentType.LEFT, style: { paragraph: { indent: { left: 720 + lv * 360, hanging: 260 } } } })) },
+        { reference: 'heads', levels: [
+          { level: 0, format: d.LevelFormat.DECIMAL, text: '%1.', alignment: d.AlignmentType.LEFT, suffix: d.LevelSuffix.SPACE },
+          { level: 1, format: d.LevelFormat.DECIMAL, text: '%1.%2', alignment: d.AlignmentType.LEFT, suffix: d.LevelSuffix.SPACE },
+          { level: 2, format: d.LevelFormat.DECIMAL, text: 'Topic %1.%2.%3:', alignment: d.AlignmentType.LEFT, suffix: d.LevelSuffix.SPACE },
+        ] },
+      ] },
       sections,
     });
   }
 
+  /** The docx library writes a pStyle element inside numbered styles, which Word does not allow there. Remove it. */
+  async function tidyDocx(blob) {
+    if (!window.JSZip) return blob;
+    try {
+      const zip = await window.JSZip.loadAsync(blob);
+      const f = zip.file('word/styles.xml');
+      if (!f) return blob;
+      let xml = await f.async('string');
+      xml = xml.replace(/(<w:style [^>]*>(?:(?!<\/w:style>).)*?<w:pPr>)<w:pStyle w:val="ListParagraph"\/>/gs, '$1');
+      zip.file('word/styles.xml', xml);
+      return await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', compression: 'DEFLATE' });
+    } catch (e) { console.warn('docx tidy skipped', e); return blob; }
+  }
+
   async function saveDoc(doc, fileName) {
-    const blob = await D().Packer.toBlob(doc);
+    let blob = await D().Packer.toBlob(doc);
+    blob = await tidyDocx(blob);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = fileName;
@@ -886,6 +1008,7 @@
     const { course, connections } = window.getCourseById(courseId);
     if (!course) { alert('Course data not found.'); return; }
     const used = S().withDateView(course, view);
+    CUR_INST = 0;
     const doc = makeDocument(courseSections(used, connections || []), `${course.code} Course Outline`);
     return saveDoc(doc, outlineFileName(course));
   }
@@ -897,10 +1020,13 @@
     // The combined package uses the program calendar only.
     const used = courses.map((c) => S().withDateView(c, 'global'));
     const conns = window.DATA.connections || [];
+    PLAIN_H1 = true;
     const sections = [{ properties: page(864), headers: headerFooter(null).headers, footers: headerFooter(null).footers, children: summaryChildren(used) }];
     const oc = outcomesChildren(used);
+    PLAIN_H1 = false;
     if (oc) sections.push({ properties: page(1080, true), ...headerFooter(null), children: oc });
-    used.forEach((c) => sections.push(...courseSections(c, conns)));
+    used.forEach((c, i) => { CUR_INST = i; sections.push(...courseSections(c, conns)); });
+    CUR_INST = 0;
     return saveDoc(makeDocument(sections, 'Complete Curriculum Outlines'), 'Complete_Curriculum_Outlines.docx');
   }
 

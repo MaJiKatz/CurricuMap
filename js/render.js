@@ -175,7 +175,7 @@ function renderCourseCard(course, isCollapsed) {
   const downloadBtn = document.createElement('button');
   downloadBtn.type = 'button';
   downloadBtn.className = 'icon-btn btn-download-outline';
-  downloadBtn.title = 'Download Course Outline (RTF)';
+  downloadBtn.title = 'Download Course Outline (Word)';
   downloadBtn.style.background = 'none';
   downloadBtn.style.border = 'none';
   downloadBtn.style.cursor = 'pointer';
@@ -269,6 +269,20 @@ function renderCourseCard(course, isCollapsed) {
     chip.dataset.title = mod.title || mod.label || '';
     chip.dataset.label = mod.label || '';
 
+    // Every chip shows its time in the same place: top left, on its own line.
+    const fmtH = (h) => `${window.Scheduler.formatHours(Math.round(h * 100) / 100)} h`;
+    let timeText;
+    if (mod.isSession) timeText = fmtH(window.Scheduler.sessionHours(mod));
+    else if (mod.isExam) {
+      if (mod.isTakeHome) timeText = 'take-home';
+      else {
+        let eh = 0;
+        if (sched) [...sched.weeks.flatMap((w) => w.meetings.flatMap((m) => m.segs)), ...(sched.overflow || [])].forEach((sg) => { if (sg.kind === 'exam' && sg.moduleId === mod.id) eh += sg.hours; });
+        timeText = eh > 0 ? fmtH(eh) : (window.Scheduler.isPartialExam(mod) ? fmtH(window.Scheduler.examHours(mod)) : `${window.Scheduler.examClasses(mod)} class${window.Scheduler.examClasses(mod) === 1 ? '' : 'es'}`);
+      }
+    } else if (mod.isLab) timeText = fmtH(window.Scheduler.labPlan({ modules: [mod] }).labs.reduce((a, e) => a + e.totalHours, 0));
+    else timeText = fmtH(window.Scheduler.moduleHours(mod));
+
     const deleteBtnHtml = `
       <span 
         class="btn-delete-module" 
@@ -286,10 +300,8 @@ function renderCourseCard(course, isCollapsed) {
       const takeHomeBadge = mod.isTakeHome ? ' 🏠' : '';
       const weightBadge = mod.weightPercent ? ` <span style="font-size:0.75rem; background:#6b21a8; padding:1px 4px; border-radius:3px; color:#f3e8ff;">${mod.weightPercent}%</span>` : '';
       chip.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+        <div class="chip-top"><span class="chip-time" title="Class time">${timeText}</span>${deleteBtnHtml}</div>
           <span class="m-label" style="color: black; font-weight: 600;">📝 ${escapeHtml(mod.label)}${takeHomeBadge}${weightBadge}</span>
-          ${deleteBtnHtml}
-        </div>
         <span class="m-title" style="font-weight: 600; color: black;">${escapeHtml(mod.title)}</span>
       `;
     } else if (mod.isSession) {
@@ -297,10 +309,8 @@ function renderCourseCard(course, isCollapsed) {
       chip.classList.add('session-chip');
       const hrs = window.Scheduler.sessionHours(mod);
       chip.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-          <span class="m-label" style="color: black; font-weight: 600;">${st.icon} ${escapeHtml(mod.label || st.label)} <span style="font-size:0.75rem; background:#047857; padding:1px 4px; border-radius:3px; color:#d1fae5;">${window.Scheduler.formatHours(hrs)} h</span></span>
-          ${deleteBtnHtml}
-        </div>
+        <div class="chip-top"><span class="chip-time" title="Class time">${timeText}</span>${deleteBtnHtml}</div>
+          <span class="m-label" style="color: black; font-weight: 600;">${st.icon} ${escapeHtml(mod.label || st.label)}</span>
         <span class="m-title" style="font-weight: 600; color: black;">${escapeHtml(mod.title || st.label)}</span>
       `;
     } else if (mod.isLab) {
@@ -308,18 +318,14 @@ function renderCourseCard(course, isCollapsed) {
       chip.style.background = 'rgba(6, 182, 212, 0.2)';
       const totalWeight = mod.weightPercent ? ` <span style="font-size:0.75rem; background:#0891b2; padding:1px 4px; border-radius:3px; color:#cffaffe0;">${mod.weightPercent}%</span>` : '';
       chip.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+        <div class="chip-top"><span class="chip-time" title="Class time">${timeText}</span>${deleteBtnHtml}</div>
           <span class="m-label" style="color: black; font-weight: 600;">🧪 ${escapeHtml(mod.label)}${totalWeight}</span>
-          ${deleteBtnHtml}
-        </div>
         <span class="m-title" style="font-weight: 600; color: black;">${escapeHtml(mod.title)}</span>
       `;
     } else {
       chip.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+        <div class="chip-top"><span class="chip-time" title="Class time">${timeText}</span>${deleteBtnHtml}</div>
           <span class="m-label">${escapeHtml(mod.label)}${electiveTag}</span>
-          ${deleteBtnHtml}
-        </div>
         <span class="m-title">${escapeHtml(mod.title)}</span>
       `;
     }
@@ -477,7 +483,7 @@ function renderDrawer(data, moduleId) {
           <div class="topic-item lab-item">
             <div>
               <strong>Lab ${i + 1}:</strong> ${escapeHtml(lab.title)}
-              <div class="lab-subtext">⏳ ${lab.hours ?? 3} hours per session</div>
+              <div class="lab-subtext">${(() => { const e = window.Scheduler.labPlan({ modules: [mod] }).labs[i]; const w = e ? window.Scheduler.labWhenText(e) : ''; return `⏳ ${e && e.scheduled ? window.Scheduler.formatHours(e.totalHours) + ' h in total' : (lab.hours ?? 3) + ' hours per session'}${w ? ' · ' + escapeHtml(w) : ''}`; })()}</div>
             </div>
             <span class="lab-weight">${lab.weightPercent ?? 0}%</span>
           </div>
