@@ -354,8 +354,26 @@ function openCourseModal(courseData = null, connectionsData = []) {
   switchTab('general');
 
   const modal = document.getElementById('courseModal');
+  applyCourseModalSize();
   if (modal) { modal.classList.remove('hidden'); modal.style.display = 'block'; }
 }
+
+function applyCourseModalSize() {
+  const box = document.querySelector('#courseModal .modal-container');
+  const btn = document.getElementById('modalSizeBtn');
+  let large = false;
+  try { large = localStorage.getItem('currimap_editor_large') === '1'; } catch (e) { /* storage unavailable */ }
+  if (box) box.classList.toggle('modal-large', large);
+  if (btn) btn.textContent = large ? '\u2923 Small view' : '\u2922 Large view';
+}
+
+function toggleCourseModalSize() {
+  const box = document.querySelector('#courseModal .modal-container');
+  const large = !(box && box.classList.contains('modal-large'));
+  try { localStorage.setItem('currimap_editor_large', large ? '1' : '0'); } catch (e) { /* storage unavailable */ }
+  applyCourseModalSize();
+}
+window.toggleCourseModalSize = toggleCourseModalSize;
 
 function closeCourseModal() {
   const modal = document.getElementById('courseModal');
@@ -615,7 +633,7 @@ function sessionRowHtml(mod, modIdx) {
         <select class="input-sess-type" onchange="changeSessionType(${modIdx}, this.value)" title="Type of session">
           ${Object.entries(types).map(([k, v]) => `<option value="${k}" ${k === type ? 'selected' : ''}>${v.label}</option>`).join('')}
         </select>
-        <input type="text" class="input-sess-label" value="${escapeHtml(mod.label || types[type].label)}" placeholder="Label" style="width: 130px;">
+        <input type="text" class="input-sess-label" value="${escapeHtml(mod.label || types[type].label)}" placeholder="Label" style="width: 200px;">
         <input type="text" class="input-sess-title" value="${escapeHtml(mod.title || '')}" placeholder="Title (e.g. Midterm review, Industry perspectives)" style="flex: 1; min-width: 160px;">
         <label class="inline-field" title="Class time used, in lecture hours (1 = one 50-minute class).">Hours
           <input type="number" class="input-sess-hours" min="0.25" step="0.25" value="${S().sessionHours(mod)}" style="width: 70px;">

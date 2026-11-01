@@ -185,7 +185,9 @@ function renderCourseCard(course, isCollapsed) {
   downloadBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     e.preventDefault();
-    if (typeof window.downloadCourseOutlineRTF === 'function') {
+    if (typeof window.downloadCourseOutlineDocx === 'function') {
+      window.downloadCourseOutlineDocx(course.id);
+    } else if (typeof window.downloadCourseOutlineRTF === 'function') {
       window.downloadCourseOutlineRTF(course.id);
     }
   });

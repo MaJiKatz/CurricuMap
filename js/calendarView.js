@@ -146,7 +146,8 @@
               <option value="global" ${view === 'global' ? 'selected' : ''}>Program calendar only</option>
               <option value="generic" ${view === 'generic' ? 'selected' : ''}>Generic (no dates)</option>
             </select></label>
-          <button type="button" class="btn btn-secondary btn-sm" id="calDownloadBtn">Download this outline (RTF)</button>
+          <button type="button" class="btn btn-primary btn-sm" id="calDownloadBtn">Download outline (Word)</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="calDownloadRtfBtn">RTF</button>
         </div>
         <div class="calendar-scroll">
           ${overflowHtml}
@@ -159,7 +160,8 @@
     modal.classList.remove('hidden');
     modal.onclick = (e) => { if (e.target === modal) closeCalendarModal(); };
     modal.querySelector('#calViewSel').onchange = (e) => openCalendarModal(savedCourse, e.target.value);
-    modal.querySelector('#calDownloadBtn').onclick = () => window.downloadCourseOutlineRTF(savedCourse.id, view);
+    modal.querySelector('#calDownloadBtn').onclick = () => window.downloadCourseOutlineDocx(savedCourse.id, view);
+    modal.querySelector('#calDownloadRtfBtn').onclick = () => window.downloadCourseOutlineRTF(savedCourse.id, view);
   }
 
   function closeCalendarModal() {

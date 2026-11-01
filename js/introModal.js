@@ -21,7 +21,7 @@ const INTRO_STEPS = [
   },
   {
     title: "2. Modules, Topics, Assessments & Labs",
-    content: "On the <b>Modules</b> tab add modules and topics (in lecture hours; 0.25 or 1.5 is fine), learning objectives, practice questions, assessments (in class or take-home, with weights) and lab sections. A live time budget shows what fits in the term and flags anything over. Mark a module <b>time permitting</b> and it is only scheduled if there is room. Use <b>+ Add Session</b> for class time that isn't a topic: a <b>review</b>, <b>self-reflection</b>, <b>guest lecture</b> (with speaker) or other session. Sessions use class time, are green on the map, and appear in the calendar and outline without being numbered as modules. Tick <b>Self-directed</b> on a topic to give it 0 lecture hours: it is listed separately in the week it comes up, and in the outline. <b>Outline &amp; Policies</b> holds the instructor details, prerequisites and policy text that appear in the printed outline.",
+    content: "On the <b>Modules</b> tab add modules and topics (in lecture hours; 0.25 or 1.5 is fine), learning objectives, practice questions, assessments (in class or take-home, with weights) and lab sections. A live time budget shows what fits in the term and flags anything over. Mark a module <b>time permitting</b> and it is only scheduled if there is room. Use <b>+ Add Session</b> for class time that isn't a topic: a <b>review</b>, <b>self-reflection</b>, <b>problem-solving workshop</b> (students work through problems together in class), <b>guest lecture</b> (with speaker) or other session. Sessions use class time, are green on the map, and appear in the calendar and outline without being numbered as modules. Tick <b>Self-directed</b> on a topic to give it 0 lecture hours: it is listed separately in the week it comes up, and in the outline. <b>Outline &amp; Policies</b> holds the instructor details, prerequisites and policy text that appear in the printed outline.",
     badge: "3 of 11"
   },
   {
@@ -61,7 +61,7 @@ const INTRO_STEPS = [
   },
   {
     title: "10. Settings & Exporting Outlines",
-    content: "<b>\u2699\ufe0f Settings</b> also holds page-header defaults (term, version) and institutional policies; instructor name, email and office hours are set per course. The document icon on a card downloads one course outline (RTF). <b>\ud83d\udcc4 Download All Outlines (RTF)</b> builds the full package: program hour totals and warnings, the outcome list, the curriculum matrix (overall and for each program), then every course outline with schedule, evaluation, modules and connections. Word opens the RTF directly.",
+    content: "<b>\u2699\ufe0f Settings</b> also holds page-header defaults (term, version) and institutional policies; instructor name, email and office hours are set per course. The document icon on a card downloads one course outline as a Word file whose first page is a colourful course dashboard (grades chart, modules, term timeline, connections, outcomes). <b>\ud83d\udcc4 Download All Outlines (Word)</b> builds the full package (an RTF button sits beside it for the older format): program hour totals and warnings, the outcome list, the curriculum matrix (overall and for each program), then every course outline with schedule, evaluation, modules and connections. The calendar window has Word and RTF download buttons that follow its Dates setting.",
     badge: "11 of 11"
   },
 ];

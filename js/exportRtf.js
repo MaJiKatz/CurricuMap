@@ -301,7 +301,8 @@
   }
 
   // ---------------- evaluation section ----------------
-  function buildEvaluationRtf(course, sched) {
+  /** Marks by category, shared with the Word exporter. */
+  function collectEvaluation(course, sched) {
     const notes = course.assessmentNotes || {};
     const categories = new Map();
     const cat = (label) => {
@@ -349,6 +350,11 @@
     });
 
     const ws = window.Scheduler.weightSummary(course);
+    return { notes, categories, ws };
+  }
+
+  function buildEvaluationRtf(course, sched) {
+    const { notes, categories, ws } = collectEvaluation(course, sched);
     let rtf = P(360, '\\b 3.1 Allocation of Marks:\\b0');
 
     categories.forEach((c, label) => {
@@ -831,6 +837,10 @@
   }
 
   // ---------------- exports ----------------
+  window.ExportShared = {
+    globals, pick, fmt, shortDate, fileSafe, allCourses, findModuleAnywhere, teachingNumbers,
+    resolveScope, pedagogicalTag, collectEvaluation, mergePieces, FALLBACK_AI_POLICY,
+  };
   window.escapeRtf = escapeRtf;
   window.buildCourseRtfContent = buildCourseRtfContent;
   window.buildSingleCourseDocument = buildSingleCourseDocument;

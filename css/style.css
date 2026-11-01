@@ -1296,3 +1296,10 @@ body.connect-mode-active .connection-layer .conn-hit-area { pointer-events: none
 .cal-seg-selfdir .cal-seg-tag { color: #4338ca; }
 .topic-selfdir-tag { font-size: .72rem; background: #e0e7ff; color: #3730a3; padding: 1px 6px; border-radius: 999px; margin-left: 6px; }
 .module-chip.session-chip { border-color: #10b981 !important; background: rgba(16, 185, 129, 0.22) !important; }
+
+/* Course editor: small (default) and large view */
+.modal-header-btns { display: flex; align-items: center; gap: 10px; }
+.size-btn { font-size: .85rem; border: 1px solid #333a4a; border-radius: 6px; padding: 4px 10px; }
+.size-btn:hover { color: #64ffda; border-color: #64ffda; }
+#courseModal .modal-container.modal-large { width: 96vw; max-width: 1900px; height: 94vh; max-height: 94vh; }
+#courseModal .modal-container.modal-large .modal-body { padding: 24px 32px; }

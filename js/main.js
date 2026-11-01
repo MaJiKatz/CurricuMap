@@ -674,7 +674,9 @@ window.defaultScheduleConfig = {
         e.preventDefault();
         const card = downloadBtn.closest('.course-card');
         if (card && card.dataset.courseId) {
-          if (typeof window.downloadCourseOutlineRTF === 'function') {
+          if (typeof window.downloadCourseOutlineDocx === 'function') {
+            window.downloadCourseOutlineDocx(card.dataset.courseId);
+          } else if (typeof window.downloadCourseOutlineRTF === 'function') {
             window.downloadCourseOutlineRTF(card.dataset.courseId);
           }
         }

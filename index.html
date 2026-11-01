@@ -64,9 +64,10 @@
           ❓ Guide
         </button>
 
-        <button onclick="downloadAllCourseOutlinesRTF()" class="btn btn-outline-primary">
-          📄 Download All Outlines (RTF)
+        <button onclick="downloadAllCourseOutlinesDocx()" class="btn btn-outline-primary" title="One Word file: program summary, outcomes matrix, then every course with its dashboard page">
+          📄 Download All Outlines (Word)
         </button>
+        <button onclick="downloadAllCourseOutlinesRTF()" class="btn btn-outline-secondary btn-sm" title="Older RTF format">RTF</button>
       </div>
     </div>
   </header>
@@ -112,7 +113,10 @@
     <div class="modal-container">
       <div class="modal-header">
         <h2 id="modalTitle">Course Editor</h2>
-        <button class="close-btn" onclick="closeCourseModal()">&times;</button>
+        <div class="modal-header-btns">
+          <button type="button" id="modalSizeBtn" class="close-btn size-btn" onclick="toggleCourseModalSize()" title="Switch between small and large editor">&#x2922; Large view</button>
+          <button class="close-btn" onclick="closeCourseModal()">&times;</button>
+        </div>
       </div>
 
       <!-- Modal Tabs -->
@@ -221,6 +225,7 @@
               <option value="">+ Add Session…</option>
               <option value="review">Review</option>
               <option value="reflection">Self-reflection</option>
+              <option value="workshop">Problem-solving workshop</option>
               <option value="guest">Guest lecture</option>
               <option value="other">Other session</option>
             </select>
@@ -310,6 +315,8 @@
   <script src="js/outcomes.js"></script>
   <script src="js/termCalendar.js"></script>
   <script src="js/exportRtf.js"></script>
+  <script src="js/vendor/docx.iife.js"></script>
+  <script src="js/exportDocx.js"></script>
   <script src="js/settings.js"></script>
   <script src="js/introModal.js"></script>
   <script type="module" src="js/main.js"></script>

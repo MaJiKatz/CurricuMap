@@ -11,6 +11,7 @@
 * **Dynamic Connections:** Interactive SVG rendering to link prerequisite courses, modules, and topics with custom connection levels (Strong, Related, Weak). Click a line to cycle its strength. Link whole courses with a rose dashed line.
 * **Course CRUD Editor:** Built-in modal to add, edit, or delete courses, modules, learning objectives, and textbook details.
 * **Topic Drawer:** Slide-out inspection drawer for detailed module and objective breakdowns.
+* **Word (.docx) Outlines:** Each course exports as a colourful Word file whose first page is a one-page dashboard (code and title banner, stat tiles, grade donut chart, module list, term timeline with exam/session markers, builds-on / leads-to courses and program outcomes), followed by the full outline with real Heading styles (Navigation Pane), shaded calendar and evaluation tables, and page numbers. "Download All" adds a program summary and landscape outcome matrices. The older RTF export is still available (small **RTF** buttons).
 * **RTF Document & Syllabus Exporter:** Generate formatted `.rtf` course outlines for individual courses or complete program curriculum packages. Includes:
   * Automatic aggregate workload stats (lecture hours, lab hours, contact hours).
   * Per-topic lecture scheduling & calendar calculation.
@@ -65,7 +66,8 @@ js/
    main.js         # Core initialization, autosave & event orchestration
    render.js       # Board, card, and drawer DOM rendering
    courseEditor.js # Modal editor logic & data mutation
-   exportRtf.js    # RTF syllabus engine & curriculum summary generator
+   exportRtf.js    # RTF syllabus engine & curriculum summary generator (also exposes ExportShared helpers)
+   exportDocx.js   # Word (.docx) exporter: dashboard page + outline (uses vendor/docx.iife.js, MIT)
    storage.js      # JSON import/export & LocalStorage helpers
 data/
    curriculum.json # Default curriculum dataset / fallback template
@@ -150,7 +152,7 @@ CurriMap uses a standard JSON schema to represent courses, modules, and prerequi
 | outcome | `programId`, `area` | `programId` null = overall (applies to everyone; children inherit their parent's). `area` = subject-area tag (e.g. "Physical"), also inherited. The matrix can be filtered by program and area. With a program selected it shows required courses, then electives, plus Guaranteed (required only) and Possible (with electives) columns |
 | file | `calendar` | Program-wide term calendar: `{ "enabled": true, "startDate": "2027-01-08", "importantDates": [{ "date", "endDate", "label", "skipsClass" }], "extraDays": [{ "date": "2027-01-12", "actsAs": "WE", "label": "" }] }`. `extraDays` are day swaps: that date runs another weekday's schedule |
 | course | `dateMode` | `"inherit"` (default): the program calendar, plus this course's own changes: `startDate` replaces the program's first day, `importantDates` and `extraDays` are added, and `skipGlobal` (e.g. `["swap|2027-01-12"]`) switches off individual program entries. `"custom"`: only the course's own dates, ignoring the program calendar. `"off"`: outline without dates. Class days (`classDays`) are always per course. Older files with a `startDate` and no mode count as custom |
-| course module | `isSession`, `sessionType`, `speaker` | A non-topic item that uses class time: `sessionType` is `"review"`, `"reflection"`, `"guest"` or `"other"`; `lectureCount` is its hours; `label`, `title`, `description` (notes), `speaker` (guest lectures) and `startsFreshClass` are optional. Not numbered as a module and not connectable in outlines; drawn in green on the map |
+| course module | `isSession`, `sessionType`, `speaker` | A non-topic item that uses class time: `sessionType` is `"review"`, `"reflection"`, `"workshop"` (problem-solving workshop), `"guest"` or `"other"`; `lectureCount` is its hours; `label`, `title`, `description` (notes), `speaker` (guest lectures) and `startsFreshClass` are optional. Not numbered as a module and not connectable in outlines; drawn in green on the map |
 | topic | `selfDirected` | `true` = 0 lecture hours (`lectureCount: 0`). No class time is used; it is listed under "Self-directed" in the week the schedule has reached, and marked in the outline |
 | topic | `outcomes` | `[{ "id": "po-1", "level": "I" \| "R" \| "A" }]` — Introduced / Reinforced / Advanced (older D/M levels become R/A on load). The matrix is read-only and computed from these tags |
 | connection | `from`/`to` = two **course** ids | Whole-course link (`level: "course"`); outlines say "This course builds strongly upon …" |
@@ -160,4 +162,4 @@ CurriMap is designed with a privacy-first architecture. All operations—includi
 
 ### Which dates does an export use?
 - Card outline button and the **Download this outline** button in the course calendar window: the course's own setting by default; the calendar window's *Dates* switch can instead use the program calendar only, or a generic version without dates.
-- **Download All Outlines (RTF)**: the program calendar only. Course-level date changes, independent calendars and "no dates" are ignored there.
+- **Download All Outlines (Word or RTF)**: the program calendar only. Course-level date changes, independent calendars and "no dates" are ignored there.

@@ -60,6 +60,7 @@
   const SESSION_TYPES = {
     review:     { label: 'Review',          icon: '\uD83D\uDD01' },
     reflection: { label: 'Self-reflection', icon: '\uD83D\uDCAD' },
+    workshop:   { label: 'Problem-solving workshop', icon: '\uD83E\uDDE9' },
     guest:      { label: 'Guest lecture',   icon: '\uD83C\uDFA4' },
     other:      { label: 'Other session',   icon: '\uD83D\uDCCC' },
   };
