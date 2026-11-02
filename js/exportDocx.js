@@ -236,32 +236,67 @@
   }
 
   /** Other courses this one builds on / leads to (course links and module links, de-duplicated). */
+  const STRENGTH = {
+    strong: { label: 'Essential', color: 'DC2626', rank: 3 },
+    related: { label: 'Related', color: '2563EB', rank: 2 },
+    weak: { label: 'Background', color: '0F9F6E', rank: 1 },
+  };
+  const strengthOf = (conn) => { const k = String(conn.strength || conn.level || 'related').toLowerCase(); return STRENGTH[k] ? k : 'related'; };
+
+  /**
+   * Other courses this one builds on / leads to. Each group is one course: `whole` is set when the course itself is
+   * linked, and `modules` lists the specific modules linked, each with how strong the connection is.
+   */
   function relatedCourses(course, connections) {
     const x = X();
     const myIds = new Set([course.id, ...(course.modules || []).map((m) => m.id)]);
-    const owner = (id) => {
-      const c = x.allCourses().find((cc) => cc.id === id);
-      if (c) return c;
-      const hit = x.findModuleAnywhere(id);
-      return hit ? hit.course : null;
-    };
-    const rank = { strong: 3, related: 2, weak: 1 };
-    const map = new Map();
+    const groups = new Map();
     (connections || []).forEach((conn) => {
       const fromMine = myIds.has(conn.from); const toMine = myIds.has(conn.to);
       if (fromMine === toMine) return;
-      const other = owner(fromMine ? conn.to : conn.from);
+      const otherId = fromMine ? conn.to : conn.from;
+      const wholeCourse = x.allCourses().find((cc) => cc.id === otherId);
+      const hit = wholeCourse ? null : x.findModuleAnywhere(otherId);
+      const other = wholeCourse || (hit && hit.course);
       if (!other || other.id === course.id) return;
       const myYear = Number(course.year) || 0; const otherYear = Number(other.year) || 0;
       const earlier = otherYear !== myYear ? otherYear < myYear : toMine;
-      const strength = String(conn.strength || conn.level || 'related').toLowerCase();
+      const st = strengthOf(conn);
       const key = `${earlier ? 'e' : 'l'}|${other.id}`;
-      const cur = map.get(key);
-      if (!cur || (rank[strength] || 0) > (rank[cur.strength] || 0)) map.set(key, { other, earlier, strength });
+      if (!groups.has(key)) groups.set(key, { other, earlier, whole: null, modules: new Map(), best: 'weak' });
+      const g = groups.get(key);
+      const keep = (cur) => (!cur || STRENGTH[st].rank > STRENGTH[cur.strength].rank ? { strength: st, note: conn.note } : cur);
+      if (wholeCourse) g.whole = keep(g.whole);
+      else g.modules.set(otherId, { ...keep(g.modules.get(otherId)), module: hit.module });
+      if (STRENGTH[st].rank > STRENGTH[g.best].rank) g.best = st;
     });
-    const all = [...map.values()].sort((a, b) => (rank[b.strength] || 0) - (rank[a.strength] || 0));
+    const all = [...groups.values()].map((g) => ({ ...g, strength: g.best, modules: [...g.modules.values()].sort((a, b) => STRENGTH[b.strength].rank - STRENGTH[a.strength].rank) }))
+      .sort((a, b) => STRENGTH[b.best].rank - STRENGTH[a.best].rank || String(a.other.code).localeCompare(String(b.other.code)));
     return { buildsOn: all.filter((r) => r.earlier), leadsTo: all.filter((r) => !r.earlier) };
   }
+
+  /** Items for one Builds on / Leads to list, grouped by connection strength (Essential first). */
+  function relLines(list, cap) {
+    const x = X(); const tiers = { strong: [], related: [], weak: [] };
+    list.forEach((r) => {
+      const nums = x.teachingNumbers(r.other);
+      if (r.whole) tiers[r.whole.strength].push({ course: r.other, whole: true });
+      r.modules.forEach((m) => {
+        const k = nums[m.module.id];
+        const title = m.module.title || m.module.label || '';
+        tiers[m.strength].push({ course: r.other, text: `${k ? `Module ${k}: ` : (m.module.label ? m.module.label + ': ' : '')}${title}` });
+      });
+    });
+    let left = cap; const out = []; let total = 0;
+    ['strong', 'related', 'weak'].forEach((st) => {
+      total += tiers[st].length;
+      const items = tiers[st].slice(0, Math.max(0, left)); left -= items.length;
+      if (items.length) out.push({ st, items });
+    });
+    const shown = out.reduce((n, g) => n + g.items.length, 0);
+    return { tiers: out, shown: Array(shown).fill(0), more: total - shown };
+  }
+  const strengthPill = (st, sz = 13) => new (D().TextRun)({ text: `\u00A0${STRENGTH[st].label}\u00A0`, size: sz, bold: true, color: C.white, font: FONT, shading: { type: D().ShadingType.CLEAR, fill: STRENGTH[st].color, color: 'auto' } });
 
   /** Outcomes this course touches, with highest level: [{code,title,level,derived}] */
   function courseOutcomes(course) {
@@ -376,6 +411,10 @@
     ])], [leftW, rightW]));
     blocks.push(spacer(100));
 
+    const rel = relatedCourses(course, connections);
+    const REL_CAP = 12;
+    const relB = relLines(rel.buildsOn, REL_CAP); const relL = relLines(rel.leadsTo, REL_CAP);
+    const relRows = Math.max(relB.shown.length + (relB.more ? 1 : 0), relL.shown.length + (relL.more ? 1 : 0));
     // --- term timeline: one row per module, assessments underneath ---
     blocks.push(para(t('TERM AT A GLANCE', { s: 17, b: true, c: C.accent, sp: 30 }), { after: 60, keepNext: true }));
     const nW = sched.weeks.length;
@@ -458,14 +497,21 @@
     } else blocks.push(spacer(100));
 
     // --- bottom row: builds on / leads to / outcomes ---
-    const rel = relatedCourses(course, connections);
-    const relCell = (title, list, accent) => {
+    const relCell = (title, lines, accent) => {
       const kids = [para(t(title, { s: 17, b: true, c: accent, sp: 30 }), { after: 60 })];
-      if (!list.length) kids.push(para(t('—', { c: C.mute })));
-      list.slice(0, 5).forEach((r) => {
-        kids.push(para([...t(r.other.code, { b: true, s: 19 }), ...t(`  ${r.other.name || ''}`, { s: 17, c: C.grey })], { after: 20 }));
+      if (!lines.tiers.length) kids.push(para(t('\u2014', { c: C.mute })));
+      const clip = (txt, n) => (txt.length > n ? txt.slice(0, n - 1).trim() + '\u2026' : txt);
+      lines.tiers.forEach((g) => {
+        const stt = STRENGTH[g.st]; const tint = mix(stt.color, 0.9);
+        kids.push(para(t(` ${stt.label.toUpperCase()}`, { s: 14, b: true, c: C.white, sp: 20 }), { after: 0, before: 50, fill: stt.color, keepNext: true }));
+        g.items.forEach((it, i) => {
+          const runs = it.whole
+            ? [...t(` ${it.course.code}`, { b: true, s: 18 }), ...t(`  ${clip(it.course.name || '', 24)}`, { s: 16, c: C.grey })]
+            : [...t(` ${it.course.code}`, { b: true, s: 16 }), ...t(`  ${clip(it.text, 30)}`, { s: 16 })];
+          kids.push(para(runs, { after: 0, before: 0, fill: tint, keepNext: i < g.items.length - 1 }));
+        });
       });
-      if (list.length > 5) kids.push(para(t(`+ ${list.length - 5} more`, { i: true, c: C.grey, s: 17 })));
+      if (lines.more) kids.push(para(t(`+ ${lines.more} more`, { i: true, c: C.grey, s: 16 }), { before: 40 }));
       return kids;
     };
     const outs = courseOutcomes(course);
@@ -478,8 +524,8 @@
     const bw = Math.floor(W / 3);
     const sep = { ...NO_BORDERS(), left: lineB('E2E8F0', 6) };
     blocks.push(table([row([
-      cell(relCell('BUILDS ON', rel.buildsOn, C.accent), { w: bw, margins: { top: 40, bottom: 40, left: 0, right: 140 } }),
-      cell(relCell('LEADS TO', rel.leadsTo, 'E11D48'), { w: bw, borders: sep, margins: { top: 40, bottom: 40, left: 160, right: 140 } }),
+      cell(relCell('BUILDS ON', relB, C.accent), { w: bw, margins: { top: 40, bottom: 40, left: 0, right: 140 } }),
+      cell(relCell('LEADS TO', relL, 'E11D48'), { w: bw, borders: sep, margins: { top: 40, bottom: 40, left: 160, right: 140 } }),
       cell(outCell, { w: W - 2 * bw, borders: sep, margins: { top: 40, bottom: 40, left: 160, right: 0 } }),
     ])], [bw, bw, W - 2 * bw]));
 
@@ -756,9 +802,6 @@
       ['Required Prerequisites', x.pick(course.prerequisites, course.prereqs, 'None')], ['Required Co-requisites', x.pick(course.corequisites, course.coreqs, 'None')],
     ];
     out.push(table(info.map(([k, v]) => row([cell(para(t(k, { b: true, c: C.accent, s: 19 }), { after: 0 }), { w: 3000, fill: C.accentBg, borders: { ...NO_BORDERS(), bottom: lineB(C.white, 8) } }), cell(para(t(v), { after: 0 }), { w: OW - 3000, fill: C.pale, borders: { ...NO_BORDERS(), bottom: lineB(C.white, 8) } })])), [3000, OW - 3000]));
-    const rel = relatedCourses(course, window.DATA ? window.DATA.connections : connections);
-    rel.buildsOn.forEach((r) => out.push(para([...t('Course Link: ', { b: true }), ...t(`This course builds ${r.strength === 'strong' ? 'strongly ' : ''}upon ${r.other.code}${r.other.name ? ' (' + r.other.name + ')' : ''}.`)], { before: 80, after: 20 })));
-    rel.leadsTo.forEach((r) => out.push(para([...t('Course Link: ', { b: true }), ...t(`This course ${r.strength === 'strong' ? 'strongly ' : ''}supports ${r.other.code}${r.other.name ? ' (' + r.other.name + ')' : ''}.`)], { before: 80, after: 20 })));
 
     out.push(H1('Textbooks & Course Resources'));
     let books = Array.isArray(course.textbooks) ? course.textbooks : [];
